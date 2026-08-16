@@ -2,11 +2,15 @@ package service
 
 import (
 	"context"
+	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
@@ -247,6 +251,86 @@ func TestWriteOpenAIPassthroughResponseHeaders_RelaysAndClearsTurnState(t *testi
 	// 上游缺失时清除残留（failover 换号防串扰）
 	writeOpenAIPassthroughResponseHeaders(dst, http.Header{"Content-Type": []string{"application/json"}}, nil)
 	require.Empty(t, dst.Get("X-Codex-Turn-State"))
+}
+
+func TestOpenAIGatewayService_PassthroughFailoverDoesNotPoisonTurnStateProvenance(t *testing.T) {
+	successfulStream := func(responseID string, headers http.Header) *http.Response {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     headers,
+			Body: io.NopCloser(strings.NewReader(strings.Join([]string{
+				`data: {"type":"response.output_text.delta","delta":"ok"}`,
+				"",
+				`data: {"type":"response.completed","response":{"id":"` + responseID + `","usage":{"input_tokens":2,"output_tokens":1}}}`,
+				"",
+				"data: [DONE]",
+				"",
+			}, "\n"))),
+		}
+	}
+
+	accountBTurnState := http.Header{"X-Codex-Turn-State": []string{"turn-state-account-b"}}
+	upstream := &httpUpstreamRecorder{responses: []*http.Response{
+		successfulStream("resp_seed_account_b", accountBTurnState),
+		{
+			StatusCode: http.StatusOK,
+			Header: http.Header{
+				"Content-Type":       []string{"text/event-stream"},
+				"X-Codex-Turn-State": []string{"turn-state-account-a"},
+			},
+			Body: io.NopCloser(strings.NewReader(strings.Join([]string{
+				`event: response.failed`,
+				`data: {"type":"response.failed","response":{"id":"resp_failed_account_a","error":{"type":"server_error","code":"server_is_overloaded","message":"retry another account"}}}`,
+				"",
+			}, "\n"))),
+		},
+		successfulStream("resp_after_passthrough_failover", http.Header{"Content-Type": []string{"text/event-stream"}}),
+	}}
+
+	svc := &OpenAIGatewayService{
+		cfg:          &config.Config{},
+		httpUpstream: upstream,
+	}
+	newPassthroughAccount := func(id int64, name string) *Account {
+		return &Account{
+			ID:          id,
+			Name:        name,
+			Platform:    PlatformOpenAI,
+			Type:        AccountTypeAPIKey,
+			Status:      StatusActive,
+			Schedulable: true,
+			Concurrency: 1,
+			Credentials: map[string]any{
+				"api_key":  "sk-test",
+				"base_url": "https://example.invalid/v1/responses",
+			},
+			Extra: map[string]any{"openai_passthrough": true},
+		}
+	}
+	accountA := newPassthroughAccount(301, "account-a")
+	accountB := newPassthroughAccount(302, "account-b")
+	body := []byte(`{"model":"gpt-5.1","stream":true,"input":"hello"}`)
+
+	seedContext, _ := newTurnStateTestContext(t, 701, "session-passthrough-failover")
+	seedResult, err := svc.Forward(context.Background(), seedContext, accountB, body)
+	require.NoError(t, err)
+	require.NotNil(t, seedResult)
+
+	failoverContext, _ := newTurnStateTestContext(t, 701, "session-passthrough-failover")
+	failoverContext.Request.Header.Set(openAICodexTurnStateHeader, "turn-state-account-b")
+	result, err := svc.Forward(context.Background(), failoverContext, accountA, body)
+	require.Error(t, err)
+	require.Nil(t, result)
+	var failoverErr *UpstreamFailoverError
+	require.True(t, errors.As(err, &failoverErr))
+	require.False(t, failoverContext.Writer.Written(), "pre-output failure must remain safe for account failover")
+
+	result, err = svc.Forward(context.Background(), failoverContext, accountB, body)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Len(t, upstream.requests, 3)
+	require.Equal(t, "turn-state-account-b", upstream.requests[2].Header.Get(openAICodexTurnStateHeader),
+		"failed account A must not replace the provenance of state already minted by account B")
 }
 
 func TestEnsureOpenAIRemoteCompactionV2BetaFeature(t *testing.T) {

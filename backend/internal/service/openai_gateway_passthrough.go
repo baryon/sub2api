@@ -261,13 +261,6 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 
 	serviceTier := extractOpenAIServiceTierFromBody(body)
 
-	// x-codex-turn-state 溯源：下游回传由 writeOpenAIPassthroughResponseHeaders
-	// 在各 handler 的写头点强制放行，铸造账号在此统一记录，供出站守卫剥离
-	// failover 换号后的跨账号回带（openai_codex_turn_state.go）。
-	if extractOpenAICodexTurnState(resp.Header) != "" {
-		s.noteOpenAICodexTurnStateProvenance(c, account)
-	}
-
 	var usage *OpenAIUsage
 	var firstTokenMs *int
 	responseID := ""
@@ -287,6 +280,11 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 		result, err := s.handleNonStreamingResponsePassthrough(ctx, resp, c, reqModel, upstreamPassthroughModel)
 		if err != nil {
 			return nil, err
+		}
+		// Non-streaming handlers commit the response before returning. Only now
+		// may this account become the recorded origin of the state seen by the client.
+		if extractOpenAICodexTurnState(resp.Header) != "" {
+			s.noteOpenAICodexTurnStateProvenance(c, account)
 		}
 		usage = result.usage
 		responseID = strings.TrimSpace(result.responseID)
@@ -1266,6 +1264,14 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 	upstreamRequestID := strings.TrimSpace(resp.Header.Get("x-request-id"))
 	// pendingLines 在首个可见输出前保留前导事件，确保无输出失败仍可安全 failover。
 	pendingLines := make([]string, 0, 8)
+	turnStateProvenanceRecorded := false
+	recordTurnStateProvenance := func() {
+		if turnStateProvenanceRecorded || extractOpenAICodexTurnState(resp.Header) == "" {
+			return
+		}
+		s.noteOpenAICodexTurnStateProvenance(c, account)
+		turnStateProvenanceRecorded = true
+	}
 	// flushPending 表示已写入但未到 SSE 空行边界的脏状态；defer 兜底函数退出前的残留，断连后不再 Flush。
 	flushPending := false
 	flushPendingOutput := func() {
@@ -1277,6 +1283,9 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 	}
 	defer flushPendingOutput()
 	writePendingLines := func() bool {
+		if len(pendingLines) > 0 {
+			recordTurnStateProvenance()
+		}
 		for _, pending := range pendingLines {
 			if _, err := fmt.Fprintln(w, pending); err != nil {
 				clientDisconnected = true
@@ -1370,6 +1379,7 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 						s.recordOpenAIStreamUpstreamError(c, account, true, upstreamRequestID, "http_error", dataBytes, failedMessage)
 						MarkResponseCommitted(c)
 						c.Writer.Header().Set("Content-Type", "application/json; charset=utf-8")
+						recordTurnStateProvenance()
 						c.JSON(status, gin.H{
 							"error": gin.H{
 								"type":    errType,
@@ -1435,6 +1445,7 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 					continue
 				}
 			}
+			recordTurnStateProvenance()
 			if _, err := fmt.Fprintln(w, line); err != nil {
 				clientDisconnected = true
 				logger.LegacyPrintf("service.openai_gateway", "[OpenAI passthrough] Client disconnected during streaming, continue draining upstream for usage: account=%d", account.ID)

@@ -1226,6 +1226,116 @@ func TestOpenAIGatewayService_Forward_WSv2_TurnStateAndMetadataReplayOnReconnect
 	require.Equal(t, "turn_state_first", secondHandshakeHeaders.Get("X-Codex-Turn-State"))
 }
 
+func TestOpenAIGatewayService_Forward_WSv2_FailoverDoesNotLeakTurnStateAcrossAccounts(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	upgrader := websocket.Upgrader{CheckOrigin: func(r *http.Request) bool { return true }}
+	failingServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		responseHeaders := http.Header{}
+		responseHeaders.Set(openAICodexTurnStateHeader, "turn-state-account-a")
+		conn, err := upgrader.Upgrade(w, r, responseHeaders)
+		if err != nil {
+			t.Errorf("upgrade failing websocket: %v", err)
+			return
+		}
+		defer func() { _ = conn.Close() }()
+
+		var request map[string]any
+		if err := conn.ReadJSON(&request); err != nil {
+			t.Errorf("read failing websocket request: %v", err)
+			return
+		}
+		closePayload := websocket.FormatCloseMessage(websocket.CloseInternalServerErr, "retry another account")
+		_ = conn.WriteControl(websocket.CloseMessage, closePayload, time.Now().Add(time.Second))
+	}))
+	defer failingServer.Close()
+
+	successHeaders := make(chan http.Header, 1)
+	successServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		successHeaders <- cloneHeader(r.Header)
+		conn, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			t.Errorf("upgrade successful websocket: %v", err)
+			return
+		}
+		defer func() { _ = conn.Close() }()
+
+		var request map[string]any
+		if err := conn.ReadJSON(&request); err != nil {
+			t.Errorf("read successful websocket request: %v", err)
+			return
+		}
+		if err := conn.WriteJSON(map[string]any{
+			"type": "response.completed",
+			"response": map[string]any{
+				"id":    "resp_after_account_failover",
+				"model": "gpt-5.1",
+				"usage": map[string]any{
+					"input_tokens":  2,
+					"output_tokens": 1,
+				},
+			},
+		}); err != nil {
+			t.Errorf("write successful websocket response: %v", err)
+		}
+	}))
+	defer successServer.Close()
+
+	cfg := newOpenAIWSV2TestConfig()
+	cfg.Security.URLAllowlist.Enabled = false
+	cfg.Security.URLAllowlist.AllowInsecureHTTP = true
+	cfg.Gateway.OpenAIWS.MinIdlePerAccount = 0
+	cfg.Gateway.OpenAIWS.MaxIdlePerAccount = 0
+	cfg.Gateway.OpenAIWS.RetryBackoffInitialMS = 1
+	cfg.Gateway.OpenAIWS.RetryBackoffMaxMS = 1
+	cfg.Gateway.OpenAIWS.RetryJitterRatio = 0
+
+	svc := &OpenAIGatewayService{
+		cfg:              cfg,
+		httpUpstream:     &httpUpstreamRecorder{},
+		cache:            &stubGatewayCache{},
+		openaiWSResolver: NewOpenAIWSProtocolResolver(cfg),
+		toolCorrector:    NewCodexToolCorrector(),
+	}
+	newAccount := func(id int64, name, baseURL string) *Account {
+		return &Account{
+			ID:          id,
+			Name:        name,
+			Platform:    PlatformOpenAI,
+			Type:        AccountTypeAPIKey,
+			Status:      StatusActive,
+			Schedulable: true,
+			Concurrency: 1,
+			Credentials: map[string]any{
+				"api_key":  "sk-test",
+				"base_url": baseURL,
+			},
+			Extra: map[string]any{"responses_websockets_v2_enabled": true},
+		}
+	}
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/openai/v1/responses", nil)
+	c.Request.Header.Set("session_id", "session-account-failover")
+	groupID := int64(501)
+	c.Set("api_key", &APIKey{ID: 601, GroupID: &groupID})
+	body := []byte(`{"model":"gpt-5.1","stream":false,"input":[{"type":"input_text","text":"hello"}]}`)
+
+	result, err := svc.Forward(context.Background(), c, newAccount(101, "account-a", failingServer.URL), body)
+	require.Error(t, err)
+	require.Nil(t, result)
+	require.False(t, c.Writer.Written(), "a pre-output failure must remain safe for account failover")
+
+	result, err = svc.Forward(context.Background(), c, newAccount(202, "account-b", successServer.URL), body)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Empty(t, (<-successHeaders).Get(openAICodexTurnStateHeader),
+		"account B must not receive state minted by failed account A")
+	require.Empty(t, c.Writer.Header().Get(openAICodexTurnStateHeader),
+		"the downstream response must not expose state from failed account A")
+}
+
 func TestOpenAIGatewayService_Forward_WSv2_GeneratePrewarm(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
