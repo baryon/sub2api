@@ -416,6 +416,8 @@ func validateGroupPlatform(platform string) error {
 		PlatformAntigravity,
 		PlatformGrok,
 		PlatformDeepSeek,
+		PlatformKimi,
+		PlatformZhipu,
 		PlatformComposite:
 		return nil
 	default:

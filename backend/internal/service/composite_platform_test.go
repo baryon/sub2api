@@ -61,7 +61,16 @@ func TestCompositeGroupSchedulerHasAllCanonicalPlatformBuckets(t *testing.T) {
 		platforms = append(platforms, platform)
 	}
 	require.ElementsMatch(t,
-		[]string{PlatformAnthropic, PlatformGemini, PlatformOpenAI, PlatformAntigravity, PlatformGrok, PlatformDeepSeek},
+		[]string{
+			PlatformAnthropic,
+			PlatformGemini,
+			PlatformOpenAI,
+			PlatformAntigravity,
+			PlatformGrok,
+			PlatformDeepSeek,
+			PlatformKimi,
+			PlatformZhipu,
+		},
 		platforms,
 	)
 }

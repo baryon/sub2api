@@ -255,6 +255,10 @@ func defaultModelsListCandidateIDs(platform string) []string {
 		return xai.DefaultModelIDs()
 	case PlatformDeepSeek:
 		return DeepSeekDefaultModelIDs()
+	case PlatformKimi:
+		return KimiDefaultModelIDs()
+	case PlatformZhipu:
+		return ZhipuDefaultModelIDs()
 	case PlatformComposite:
 		return compositeDefaultModelsListCandidateIDs()
 	default:
@@ -275,7 +279,16 @@ func defaultAllowImageGenerationForPlatform(platform string) bool {
 func compositeDefaultModelsListCandidateIDs() []string {
 	seen := make(map[string]struct{})
 	ids := make([]string, 0)
-	for _, platform := range []string{PlatformAnthropic, PlatformGemini, PlatformOpenAI, PlatformAntigravity, PlatformGrok, PlatformDeepSeek} {
+	for _, platform := range []string{
+		PlatformAnthropic,
+		PlatformGemini,
+		PlatformOpenAI,
+		PlatformAntigravity,
+		PlatformGrok,
+		PlatformDeepSeek,
+		PlatformKimi,
+		PlatformZhipu,
+	} {
 		for _, id := range defaultModelsListCandidateIDs(platform) {
 			if _, ok := seen[id]; ok {
 				continue
@@ -304,7 +317,8 @@ func groupSupportsOAuthOnlyFilter(platform string) bool {
 }
 
 func sanitizeGroupOAuthRequirement(group *Group) {
-	if group != nil && group.Platform == PlatformDeepSeek {
+	if group != nil &&
+		(group.Platform == PlatformDeepSeek || group.Platform == PlatformKimi || group.Platform == PlatformZhipu) {
 		group.RequireOAuthOnly = false
 	}
 }

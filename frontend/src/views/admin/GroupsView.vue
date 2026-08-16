@@ -4730,6 +4730,8 @@ const platformOptions = computed(() => [
   { value: "antigravity", label: "Antigravity" },
   { value: "grok", label: "Grok" },
   { value: "deepseek", label: "DeepSeek" },
+  { value: "kimi", label: "Kimi" },
+  { value: "zhipu", label: "Zhipu GLM" },
   { value: "composite", label: "Composite" },
 ]);
 
@@ -4741,6 +4743,8 @@ const platformFilterOptions = computed(() => [
   { value: "antigravity", label: "Antigravity" },
   { value: "grok", label: "Grok" },
   { value: "deepseek", label: "DeepSeek" },
+  { value: "kimi", label: "Kimi" },
+  { value: "zhipu", label: "Zhipu GLM" },
   { value: "composite", label: "Composite" },
 ]);
 
@@ -4751,6 +4755,8 @@ const compositeRoutePlatformOptions = computed(() => [
   { value: "antigravity", label: "Antigravity" },
   { value: "grok", label: "Grok" },
   { value: "deepseek", label: "DeepSeek" },
+  { value: "kimi", label: "Kimi" },
+  { value: "zhipu", label: "Zhipu GLM" },
 ]);
 
 const compositeRouteEndpointOptions = computed(() => [

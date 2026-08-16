@@ -32,7 +32,9 @@ func normalizeAccountPlatform(platform string) (string, error) {
 		PlatformGemini,
 		PlatformAntigravity,
 		PlatformGrok,
-		PlatformDeepSeek:
+		PlatformDeepSeek,
+		PlatformKimi,
+		PlatformZhipu:
 		return platform, nil
 	default:
 		return "", infraerrors.BadRequest("ACCOUNT_PLATFORM_INVALID", "account platform is not supported")

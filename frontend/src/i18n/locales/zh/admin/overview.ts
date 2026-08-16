@@ -884,6 +884,8 @@ export default {
         antigravity: 'Antigravity',
         grok: 'Grok',
         deepseek: 'DeepSeek',
+        kimi: 'Kimi',
+        zhipu: '智谱 GLM',
         composite: 'Composite',
       },
       saving: '保存中...',

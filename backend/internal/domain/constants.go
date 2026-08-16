@@ -24,7 +24,24 @@ const (
 	PlatformAntigravity = "antigravity"
 	PlatformGrok        = "grok"
 	PlatformDeepSeek    = "deepseek"
+	PlatformKimi        = "kimi"
+	PlatformZhipu       = "zhipu"
 	PlatformComposite   = "composite"
+)
+
+// Account mode constants distinguish pay-as-you-go accounts from Coding Plans.
+// They are stored in credentials["account_mode"].
+const (
+	AccountModePayG   = "payg"
+	AccountModeCoding = "coding"
+)
+
+// API protocol constants select the native upstream protocol for Kimi and
+// Zhipu accounts. DeepSeek has dedicated native protocol routing.
+const (
+	APIProtocolChatCompletions = "chat_completions"
+	APIProtocolAnthropic       = "anthropic"
+	APIProtocolResponses       = "responses"
 )
 
 // Account type constants

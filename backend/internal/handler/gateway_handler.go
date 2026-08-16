@@ -1147,8 +1147,8 @@ func (h *GatewayHandler) Models(c *gin.Context) {
 		writeGrokModelsList(c, xai.DefaultModelIDs())
 		return
 	}
-	if platform == service.PlatformDeepSeek {
-		writeModelsList(c, platform, service.DeepSeekDefaultModelIDs())
+	if platform == service.PlatformDeepSeek || platform == service.PlatformKimi || platform == service.PlatformZhipu {
+		writeModelsList(c, platform, defaultModelIDsForPlatform(platform))
 		return
 	}
 
@@ -1165,7 +1165,16 @@ func (h *GatewayHandler) compositeAvailableModels(ctx context.Context, groupID *
 	seen := make(map[string]struct{})
 	models := make([]string, 0)
 	schedulablePlatforms := h.gatewayService.GetSchedulablePlatforms(ctx, groupID)
-	for _, platform := range []string{service.PlatformAnthropic, service.PlatformGemini, service.PlatformOpenAI, service.PlatformAntigravity, service.PlatformGrok, service.PlatformDeepSeek} {
+	for _, platform := range []string{
+		service.PlatformAnthropic,
+		service.PlatformGemini,
+		service.PlatformOpenAI,
+		service.PlatformAntigravity,
+		service.PlatformGrok,
+		service.PlatformDeepSeek,
+		service.PlatformKimi,
+		service.PlatformZhipu,
+	} {
 		platformModels := h.gatewayService.GetAvailableModels(ctx, groupID, platform)
 		if len(platformModels) == 0 {
 			if _, ok := schedulablePlatforms[platform]; ok {
@@ -1389,10 +1398,23 @@ func defaultModelIDsForPlatform(platform string) []string {
 		return xai.DefaultModelIDs()
 	case service.PlatformDeepSeek:
 		return service.DeepSeekDefaultModelIDs()
+	case service.PlatformKimi:
+		return service.KimiDefaultModelIDs()
+	case service.PlatformZhipu:
+		return service.ZhipuDefaultModelIDs()
 	case service.PlatformComposite:
 		ids := make([]string, 0)
 		seen := make(map[string]struct{})
-		for _, concretePlatform := range []string{service.PlatformAnthropic, service.PlatformGemini, service.PlatformOpenAI, service.PlatformAntigravity, service.PlatformGrok, service.PlatformDeepSeek} {
+		for _, concretePlatform := range []string{
+			service.PlatformAnthropic,
+			service.PlatformGemini,
+			service.PlatformOpenAI,
+			service.PlatformAntigravity,
+			service.PlatformGrok,
+			service.PlatformDeepSeek,
+			service.PlatformKimi,
+			service.PlatformZhipu,
+		} {
 			for _, id := range defaultModelIDsForPlatform(concretePlatform) {
 				if _, ok := seen[id]; ok {
 					continue

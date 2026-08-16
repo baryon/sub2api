@@ -119,7 +119,19 @@ func (s *AccountTestService) ProbeOpenAIAPIKeyResponsesSupport(ctx context.Conte
 		logger.LegacyPrintf("service.openai_probe", "probe_load_account_failed: account_id=%d err=%v", accountID, err)
 		return
 	}
-	if account.Platform != PlatformOpenAI || account.Type != AccountTypeAPIKey {
+	if account.Type != AccountTypeAPIKey {
+		return
+	}
+	if account.IsKimi() || account.IsZhipu() {
+		// Kimi and Zhipu do not expose a native Responses endpoint. Their OpenAI
+		// gateway traffic therefore uses Chat Completions unless the account is
+		// configured for the native Anthropic path.
+		_ = s.accountRepo.UpdateExtra(ctx, account.ID, map[string]any{
+			openai_compat.ExtraKeyResponsesSupported: false,
+		})
+		return
+	}
+	if account.Platform != PlatformOpenAI {
 		// 仅 OpenAI APIKey 账号需要探测；其他账号类型无能力差异。
 		return
 	}

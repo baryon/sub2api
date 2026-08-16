@@ -204,18 +204,10 @@ func wrapUsageRecordTaskContext(parent context.Context, task service.UsageRecord
 
 func openAICompatibleRequestPlatform(ctx context.Context, apiKey *service.APIKey) string {
 	if platform, ok := service.ResolvedTargetPlatformFromContext(ctx); ok {
-		switch platform {
-		case service.PlatformGrok, service.PlatformDeepSeek:
-			return platform
-		default:
-			return service.PlatformOpenAI
-		}
+		return service.NormalizeOpenAICompatiblePlatform(platform)
 	}
 	if apiKey != nil && apiKey.Group != nil {
-		switch apiKey.Group.Platform {
-		case service.PlatformGrok, service.PlatformDeepSeek:
-			return apiKey.Group.Platform
-		}
+		return service.NormalizeOpenAICompatiblePlatform(apiKey.Group.Platform)
 	}
 	return service.PlatformOpenAI
 }
@@ -243,7 +235,9 @@ func allowOpenAICompatibleMessagesDispatch(c *gin.Context, apiKey *service.APIKe
 	if apiKey == nil || apiKey.Group == nil {
 		return true
 	}
-	if apiKey.Group.Platform == service.PlatformGrok {
+	if apiKey.Group.Platform == service.PlatformGrok ||
+		apiKey.Group.Platform == service.PlatformKimi ||
+		apiKey.Group.Platform == service.PlatformZhipu {
 		return true
 	}
 	if apiKey.Group.Platform == service.PlatformComposite {
@@ -251,13 +245,19 @@ func allowOpenAICompatibleMessagesDispatch(c *gin.Context, apiKey *service.APIKe
 			return false
 		}
 		platform, ok := service.ResolvedTargetPlatformFromContext(c.Request.Context())
-		return ok && (platform == service.PlatformOpenAI || platform == service.PlatformGrok)
+		return ok &&
+			(platform == service.PlatformOpenAI ||
+				platform == service.PlatformGrok ||
+				platform == service.PlatformKimi ||
+				platform == service.PlatformZhipu)
 	}
 	return apiKey.Group.AllowMessagesDispatch
 }
 
 func openAICompatibleTextTargetAllowed(c *gin.Context, apiKey *service.APIKey, model string) bool {
-	return compositeTargetPlatformAllowed(c, apiKey, model, service.PlatformOpenAI, service.PlatformGrok, service.PlatformDeepSeek)
+	return compositeTargetPlatformAllowed(c, apiKey, model,
+		service.PlatformOpenAI, service.PlatformGrok,
+		service.PlatformKimi, service.PlatformZhipu, service.PlatformDeepSeek)
 }
 
 // NewOpenAIGatewayHandler creates a new OpenAIGatewayHandler

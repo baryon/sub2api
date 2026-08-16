@@ -448,7 +448,9 @@ export default {
       anthropic: 'Anthropic',
       gemini: 'Gemini',
       grok: 'Grok',
-      deepseek: 'DeepSeek'
+      deepseek: 'DeepSeek',
+      kimi: 'Kimi',
+      zhipu: 'Zhipu GLM'
     },
     extraModelsHeader: 'Extra Models',
     extraModelsEmpty: 'No extra models',

@@ -73,12 +73,9 @@ func RegisterGatewayRoutes(
 			next(c)
 		}
 	}
-	isOpenAIGatewayPlatform := func(c *gin.Context) bool {
-		return getGroupPlatform(c) == service.PlatformOpenAI
-	}
 	countTokensHandler := func(c *gin.Context) {
 		switch getGroupPlatform(c) {
-		case service.PlatformOpenAI:
+		case service.PlatformOpenAI, service.PlatformKimi, service.PlatformZhipu:
 			h.OpenAIGateway.CountTokens(c)
 		case service.PlatformGrok:
 			h.OpenAIGateway.GrokCountTokens(c)
@@ -87,6 +84,9 @@ func RegisterGatewayRoutes(
 		default:
 			h.Gateway.CountTokens(c)
 		}
+	}
+	isOpenAIGatewayPlatform := func(c *gin.Context) bool {
+		return getGroupPlatform(c) == service.PlatformOpenAI
 	}
 	modelsHandler := func(c *gin.Context) {
 		if isOpenAIGatewayPlatform(c) && c.Query("client_version") != "" {
@@ -491,7 +491,8 @@ func RegisterGatewayRoutes(
 // native handler after a composite group has resolved to a concrete provider.
 func dispatchChatResponsesGateway(c *gin.Context, openAIHandler, genericHandler gin.HandlerFunc) {
 	switch getGroupPlatform(c) {
-	case service.PlatformOpenAI, service.PlatformGrok, service.PlatformDeepSeek:
+	case service.PlatformOpenAI, service.PlatformGrok, service.PlatformDeepSeek,
+		service.PlatformKimi, service.PlatformZhipu:
 		openAIHandler(c)
 	default:
 		genericHandler(c)
@@ -503,7 +504,7 @@ func dispatchChatResponsesGateway(c *gin.Context, openAIHandler, genericHandler 
 // without converting it through the OpenAI compatibility path.
 func dispatchMessagesGateway(c *gin.Context, openAIHandler, genericHandler gin.HandlerFunc) {
 	switch getGroupPlatform(c) {
-	case service.PlatformOpenAI, service.PlatformGrok:
+	case service.PlatformOpenAI, service.PlatformGrok, service.PlatformKimi, service.PlatformZhipu:
 		openAIHandler(c)
 	default:
 		genericHandler(c)

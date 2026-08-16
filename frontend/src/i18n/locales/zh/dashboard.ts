@@ -451,7 +451,9 @@ export default {
       anthropic: 'Anthropic',
       gemini: 'Gemini',
       grok: 'Grok',
-      deepseek: 'DeepSeek'
+      deepseek: 'DeepSeek',
+      kimi: 'Kimi',
+      zhipu: '智谱 GLM'
     },
     extraModelsHeader: '附加模型',
     extraModelsEmpty: '无附加模型',

@@ -42,7 +42,12 @@ func isGrokOAuthAccount(account *Account) bool {
 }
 
 func isOpenAIAccount(account *Account) bool {
-	return account != nil && (account.Platform == PlatformOpenAI || account.Platform == PlatformGrok || account.Platform == PlatformDeepSeek)
+	return account != nil &&
+		(account.Platform == PlatformOpenAI ||
+			account.Platform == PlatformGrok ||
+			account.Platform == PlatformDeepSeek ||
+			account.Platform == PlatformKimi ||
+			account.Platform == PlatformZhipu)
 }
 
 // handleOpenAIAccountUpstreamError expects canonicalModel to be the model used
