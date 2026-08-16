@@ -563,13 +563,13 @@ func TestSchedulerFullRebuildActiveTombstoneLazyRecoveryDiscardsPartialCaptureTa
 		held, reopenCount := cache.leaseHeldAndTokenCount()
 		require.False(t, held)
 		require.Equal(t, len(canonical), reopenCount)
-		require.Equal(t, 21, capturesAtFirstDB)
+		require.Equal(t, len(canonical)+7, capturesAtFirstDB)
 	}
 	svc := newFullRebuildLifecycleService(cache, nil, accounts, groups, config.RunModeStandard)
 
 	require.NoError(t, svc.rebuildFullSnapshot(context.Background(), "test"))
 	require.Equal(t, capturesAtFirstDB, cache.captureAttemptCount())
-	require.Equal(t, 17, accounts.callCount())
+	require.Equal(t, 2*expectedSchedulerAccountQueriesPerGroup()+1, accounts.callCount())
 	for _, bucket := range canonical {
 		attempts, published := cache.counts(bucket)
 		require.Equal(t, 1, attempts, "discarded pre-recovery tokens must never publish: %s", bucket.String())
