@@ -3897,22 +3897,12 @@ const apiKeyBaseUrlPlaceholder = computed(() => {
 })
 
 const apiKeyValuePlaceholder = computed(() => {
-  switch (form.platform) {
-    case 'openai':
-      return 'sk-proj-...'
-    case 'gemini':
-      return 'AIza...'
-    case 'grok':
-      return 'xai-...'
-    case 'kimi':
-      return 'sk-...'
-    case 'zhipu':
-      return '<api-key>.<secret>'
-    case 'deepseek':
-      return 'sk-...'
-    default:
-      return 'sk-ant-...'
-  }
+  if (form.platform === 'openai') return 'sk-proj-...'
+  if (form.platform === 'gemini') return 'AIza...'
+  if (form.platform === 'grok') return 'xai-...'
+  if (form.platform === 'kimi' || form.platform === 'deepseek') return 'sk-...'
+  if (form.platform === 'zhipu') return '<api-key>.<secret>'
+  return 'sk-ant-...'
 })
 
 interface Props {
