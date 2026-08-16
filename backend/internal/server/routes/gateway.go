@@ -85,12 +85,16 @@ func RegisterGatewayRoutes(
 			h.Gateway.CountTokens(c)
 		}
 	}
-	isOpenAIGatewayPlatform := func(c *gin.Context) bool {
-		return getGroupPlatform(c) == service.PlatformOpenAI
+	codexModelsHandler := func(c *gin.Context) {
+		if getGroupPlatform(c) == service.PlatformOpenAI {
+			h.OpenAIGateway.CodexModels(c)
+			return
+		}
+		h.Gateway.CodexModels(c)
 	}
 	modelsHandler := func(c *gin.Context) {
-		if isOpenAIGatewayPlatform(c) && c.Query("client_version") != "" {
-			h.OpenAIGateway.CodexModels(c)
+		if c.Query("client_version") != "" {
+			codexModelsHandler(c)
 			return
 		}
 		h.Gateway.Models(c)
@@ -364,7 +368,7 @@ func RegisterGatewayRoutes(
 		codexDirect.POST("/responses/*subpath", guardResponsesSubpath(allowDeepSeekStandaloneCompact("Codex Responses API", responsesHandler)))
 		codexDirect.POST("/alpha/search", textBodyLimit, rejectDeepSeekFeature("Codex alpha search API", h.OpenAIGateway.AlphaSearch))
 		codexDirect.GET("/responses", h.OpenAIGateway.ResponsesWebSocket)
-		codexDirect.GET("/models", rejectDeepSeekFeature("Codex models API", h.OpenAIGateway.CodexModels))
+		codexDirect.GET("/models", codexModelsHandler)
 	}
 	// OpenAI Chat Completions API（不带v1前缀的别名）— auto-route based on group platform
 	r.POST("/chat/completions", bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), compositeTarget, requireGroupAnthropic, func(c *gin.Context) {

@@ -1158,6 +1158,59 @@ func (h *GatewayHandler) Models(c *gin.Context) {
 	})
 }
 
+// CodexModels returns the Codex model-picker manifest for non-OpenAI groups.
+// The list is derived only from schedulable accounts linked to the authenticated
+// key's group, then constrained by the group's optional custom model list.
+func (h *GatewayHandler) CodexModels(c *gin.Context) {
+	apiKey, ok := middleware2.GetAPIKeyFromContext(c)
+	if !ok || apiKey.Group == nil {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error": gin.H{
+				"type":    "invalid_request_error",
+				"message": "API key group is required",
+			},
+		})
+		return
+	}
+
+	groupID := apiKey.Group.ID
+	platform := apiKey.Group.Platform
+	if forcedPlatform, ok := middleware2.GetForcePlatformFromContext(c); ok && strings.TrimSpace(forcedPlatform) != "" {
+		platform = forcedPlatform
+	}
+
+	var modelIDs []string
+	if platform == service.PlatformComposite {
+		modelIDs = h.compositeAvailableModels(c.Request.Context(), &groupID)
+		if apiKey.Group.CustomModelsListEnabled() {
+			modelIDs = filterModelsByCustomList(modelIDs, nil, apiKey.Group.ModelsListConfig.Models)
+		}
+	} else {
+		modelIDs = h.gatewayService.GetAvailableModels(c.Request.Context(), &groupID, platform)
+		schedulablePlatforms := h.gatewayService.GetSchedulablePlatforms(c.Request.Context(), &groupID)
+		fallbackModels := []string(nil)
+		if _, available := schedulablePlatforms[platform]; available {
+			fallbackModels = defaultModelIDsForPlatform(platform)
+		}
+
+		if apiKey.Group.CustomModelsListEnabled() {
+			source := customModelsListSource(platform, modelIDs, fallbackModels)
+			modelIDs = filterModelsByCustomList(source, fallbackModels, apiKey.Group.ModelsListConfig.Models)
+		} else if len(modelIDs) == 0 {
+			modelIDs = fallbackModels
+		}
+	}
+
+	type codexModel struct {
+		Slug string `json:"slug"`
+	}
+	models := make([]codexModel, 0, len(modelIDs))
+	for _, modelID := range mergeModelIDs(modelIDs, nil) {
+		models = append(models, codexModel{Slug: modelID})
+	}
+	c.JSON(http.StatusOK, gin.H{"models": models})
+}
+
 func (h *GatewayHandler) compositeAvailableModels(ctx context.Context, groupID *int64) []string {
 	if h == nil || h.gatewayService == nil {
 		return nil

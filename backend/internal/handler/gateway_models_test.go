@@ -41,6 +41,14 @@ type gatewayReasoningEffortOptionForTest struct {
 	Default bool   `json:"default"`
 }
 
+type codexModelForTest struct {
+	Slug string `json:"slug"`
+}
+
+type codexModelsResponseForTest struct {
+	Models []codexModelForTest `json:"models"`
+}
+
 func (s *gatewayModelsAccountRepoStub) ListSchedulableByGroupID(ctx context.Context, groupID int64) ([]service.Account, error) {
 	accounts, ok := s.byGroup[groupID]
 	if !ok {
@@ -103,6 +111,81 @@ func TestGatewayModels_DeepSeekGroupFallsBackToDeepSeekModels(t *testing.T) {
 	var got gatewayModelsResponseForTest
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
 	require.Equal(t, []string{"deepseek-v4-flash", "deepseek-v4-pro"}, modelIDsForTest(got.Data))
+}
+
+func TestGatewayCodexModels_ListsAdminConfiguredDeepSeekModel(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	groupID := int64(48)
+	h := newGatewayModelsHandlerForTest(
+		&gatewayModelsAccountRepoStub{
+			byGroup: map[int64][]service.Account{
+				groupID: {
+					{
+						ID:       1,
+						Platform: service.PlatformDeepSeek,
+						Credentials: map[string]any{
+							"model_mapping": map[string]any{
+								"deepseek-4-pro": "deepseek-v4-pro",
+							},
+						},
+					},
+				},
+			},
+		},
+	)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodGet, "/models?client_version=0.147.0", nil)
+	c.Set(string(middleware2.ContextKeyAPIKey), &service.APIKey{
+		Group: &service.Group{ID: groupID, Platform: service.PlatformDeepSeek},
+	})
+
+	h.CodexModels(c)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	var got codexModelsResponseForTest
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
+	require.Equal(t, []string{"deepseek-4-pro"}, codexModelSlugsForTest(got.Models))
+}
+
+func TestGatewayCodexModels_UsesOnlyCurrentGroupsSchedulableModels(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	linkedGroupID := int64(49)
+	emptyGroupID := int64(50)
+	h := newGatewayModelsHandlerForTest(
+		&gatewayModelsAccountRepoStub{
+			byGroup: map[int64][]service.Account{
+				linkedGroupID: {
+					{
+						ID:       1,
+						Platform: service.PlatformDeepSeek,
+						Credentials: map[string]any{
+							"model_mapping": map[string]any{
+								"deepseek-4-pro": "deepseek-v4-pro",
+							},
+						},
+					},
+				},
+			},
+		},
+	)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodGet, "/models?client_version=0.147.0", nil)
+	c.Set(string(middleware2.ContextKeyAPIKey), &service.APIKey{
+		Group: &service.Group{ID: emptyGroupID, Platform: service.PlatformDeepSeek},
+	})
+
+	h.CodexModels(c)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	var got codexModelsResponseForTest
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
+	require.Empty(t, got.Models)
 }
 
 func TestGatewayModels_CompositeIncludesSchedulableDeepSeekDefaults(t *testing.T) {
@@ -765,4 +848,12 @@ func modelIDsForTest(models []gatewayModelItemForTest) []string {
 		ids = append(ids, model.ID)
 	}
 	return ids
+}
+
+func codexModelSlugsForTest(models []codexModelForTest) []string {
+	slugs := make([]string, 0, len(models))
+	for _, model := range models {
+		slugs = append(slugs, model.Slug)
+	}
+	return slugs
 }
