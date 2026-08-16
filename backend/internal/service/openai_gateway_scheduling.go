@@ -246,6 +246,10 @@ func (s *OpenAIGatewayService) SelectAccountForModelWithExclusions(ctx context.C
 // NormalizeOpenAICompatiblePlatform preserves concrete platforms that share
 // the OpenAI gateway while keeping account selection isolated per platform.
 func NormalizeOpenAICompatiblePlatform(platform string) string {
+	return normalizeOpenAICompatiblePlatform(platform)
+}
+
+func normalizeOpenAICompatiblePlatform(platform string) string {
 	switch platform {
 	case PlatformGrok, PlatformKimi, PlatformZhipu, PlatformDeepSeek:
 		return platform
