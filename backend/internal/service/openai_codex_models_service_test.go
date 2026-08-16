@@ -27,6 +27,105 @@ type codexModelsHTTPUpstreamStub struct {
 	do func(req *http.Request, proxyURL string, accountID int64, accountConcurrency int) (*http.Response, error)
 }
 
+type codexModelsVisibilityAccountRepo struct {
+	AccountRepository
+	byGroup map[int64][]Account
+}
+
+func (r codexModelsVisibilityAccountRepo) ListSchedulableByGroupID(_ context.Context, groupID int64) ([]Account, error) {
+	accounts := r.byGroup[groupID]
+	return append([]Account(nil), accounts...), nil
+}
+
+func TestMergeGroupConfiguredCodexModelsInjectsCurrentGroupAliases(t *testing.T) {
+	t.Parallel()
+
+	const groupID int64 = 71
+	svc := &OpenAIGatewayService{accountRepo: codexModelsVisibilityAccountRepo{
+		byGroup: map[int64][]Account{
+			groupID: {
+				{
+					Platform: PlatformOpenAI,
+					Credentials: map[string]any{
+						"model_mapping": map[string]any{
+							"deepseek-4-pro": "deepseek-v4-pro",
+						},
+					},
+				},
+			},
+			72: {
+				{
+					Platform: PlatformOpenAI,
+					Credentials: map[string]any{
+						"model_mapping": map[string]any{"other-group-model": "upstream-model"},
+					},
+				},
+			},
+		},
+	}}
+	manifest := &CodexModelsManifest{
+		Body: []byte(`{"models":[{"slug":"gpt-5.6","display_name":"GPT-5.6","unknown":{"kept":true}}],"metadata":{"version":1}}`),
+	}
+
+	err := svc.MergeGroupConfiguredCodexModels(
+		context.Background(),
+		&Group{ID: groupID, Platform: PlatformOpenAI},
+		manifest,
+		"",
+	)
+	require.NoError(t, err)
+	require.JSONEq(t, `{
+		"models": [
+			{"slug":"gpt-5.6","display_name":"GPT-5.6","unknown":{"kept":true}},
+			{"slug":"deepseek-4-pro"}
+		],
+		"metadata":{"version":1}
+	}`, string(manifest.Body))
+	require.NotContains(t, string(manifest.Body), "other-group-model")
+	require.Equal(t, codexModelsManifestBodyETag(manifest.Body), manifest.ETag)
+}
+
+func TestMergeGroupConfiguredCodexModelsHonorsCustomListAndFinalETag(t *testing.T) {
+	t.Parallel()
+
+	const groupID int64 = 73
+	svc := &OpenAIGatewayService{accountRepo: codexModelsVisibilityAccountRepo{
+		byGroup: map[int64][]Account{
+			groupID: {
+				{
+					Platform: PlatformOpenAI,
+					Credentials: map[string]any{
+						"model_mapping": map[string]any{
+							"deepseek-4-pro": "deepseek-v4-pro",
+							"hidden-alias":   "hidden-upstream",
+						},
+					},
+				},
+			},
+		},
+	}}
+	group := &Group{
+		ID:       groupID,
+		Platform: PlatformOpenAI,
+		ModelsListConfig: GroupModelsListConfig{
+			Enabled: true,
+			Models:  []string{"deepseek-4-pro"},
+		},
+	}
+	upstreamBody := []byte(`{"models":[{"slug":"gpt-5.6","display_name":"GPT-5.6"}]}`)
+	manifest := &CodexModelsManifest{Body: upstreamBody}
+
+	require.NoError(t, svc.MergeGroupConfiguredCodexModels(context.Background(), group, manifest, ""))
+	require.JSONEq(t, `{"models":[{"slug":"deepseek-4-pro"}]}`, string(manifest.Body))
+
+	finalETag := manifest.ETag
+	second := &CodexModelsManifest{Body: upstreamBody}
+	require.NoError(t, svc.MergeGroupConfiguredCodexModels(context.Background(), group, second, finalETag))
+	require.True(t, second.NotModified)
+	require.Empty(t, second.Body)
+	require.Equal(t, finalETag, second.ETag)
+}
+
 type codexModelsBlockingBody struct {
 	ctx         context.Context
 	readStarted chan struct{}
