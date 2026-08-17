@@ -307,6 +307,33 @@ export default {
         gemini: 'Gemini',
         antigravity: 'Antigravity',
         grok: 'Grok',
+        kimi: 'Kimi',
+        zhipu: 'Zhipu GLM',
+        deepseek: 'DeepSeek',
+      },
+      cnProviders: {
+        accountMode: {
+          title: '账号类型',
+          payg: '按量付费',
+          paygDesc: '消耗账户余额，按 Token 计费。余额不足自动冷却，充值后恢复。',
+          coding: 'Coding Plan',
+          codingDesc: '订阅制编程套餐，按 5 小时 / 每周滚动用量窗口限流。',
+        },
+        apiProtocol: {
+          title: 'API 协议',
+          chatCompletions: 'Chat Completions',
+          chatCompletionsDesc: '标准 OpenAI 兼容端点，其他格式请求将被转换。',
+          anthropic: 'Anthropic',
+          anthropicDesc: '直通供应商原生 Anthropic 端点，零转换，适配 Claude Code。',
+          responses: 'Responses',
+          responsesDesc: '供应商原生 Responses 端点，适配 Codex。',
+        },
+        window5h: '5 小时窗口',
+        windowWeekly: '每周窗口',
+        probeTooltip: '请求供应商额度端点，查询 5 小时 / 每周滚动窗口用量',
+        balanceLow: '余额不足',
+        noBalanceEndpoint: '该平台暂无余额查询接口',
+        resetSoon: '即将重置',
       },
       types: {
         oauth: 'OAuth',
@@ -316,6 +343,7 @@ export default {
         codeAssist: 'Code Assist',
         antigravityOauth: 'Antigravity OAuth',
         grokOauth: 'Grok OAuth',
+        deepseekApikey: 'DeepSeek API Key',
         antigravityApikey: '通过 Base URL + API Key 连接',
         upstream: '对接上游',
         upstreamDesc: '通过 Base URL + API Key 连接上游'
@@ -582,6 +610,20 @@ export default {
       apiKeyRequired: 'API Key *',
       apiKeyPlaceholder: 'sk-ant-api03-...',
       apiKeyHint: '您的 Claude Console API Key',
+      deepseek: {
+        baseUrlHint: '保留默认值以使用 DeepSeek 官方 API',
+        apiKeyHint: '您的 DeepSeek API Key',
+        wsMode: 'Responses WebSocket 模式',
+        wsModeDesc:
+          'HTTP 桥接表示 Sub2API 接受客户端 Responses WebSocket，并将每个 turn 通过 HTTP /responses 转发给 DeepSeek；DeepSeek 上游不使用原生 WebSocket。该模式还需开启网关全局桥接。',
+        wsModeOff: '关闭（off）',
+        wsModeHttpBridge: 'HTTP 桥接（http_bridge）',
+        userIsolationMode: '用户隔离',
+        userIsolationModeDesc:
+          '认证用户模式会根据每次请求中已认证的 Sub2API 用户生成稳定的上游匿名身份；关闭后不注入身份。此处不能输入或查看原始及派生用户 ID。',
+        userIsolationAuthenticatedUser: '认证用户（authenticated_user）',
+        userIsolationOff: '关闭（off）',
+      },
       // OpenAI specific hints
       openai: {
         baseUrlHint: '留空使用官方 OpenAI API',

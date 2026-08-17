@@ -219,6 +219,21 @@ func NewAccountService(accountRepo AccountRepository, groupRepo GroupRepository)
 
 // Create 创建账号
 func (s *AccountService) Create(ctx context.Context, req CreateAccountRequest) (*Account, error) {
+	platform, err := normalizeAccountPlatform(req.Platform)
+	if err != nil {
+		return nil, err
+	}
+	req.Platform = platform
+	credentials, err := normalizeAccountCredentialsForPlatform(platform, req.Type, req.Credentials)
+	if err != nil {
+		return nil, err
+	}
+	req.Credentials = credentials
+	req.Extra, err = normalizeDeepSeekAccountExtra(platform, req.Extra, DeepSeekUserIsolationModeAuthenticatedUser)
+	if err != nil {
+		return nil, err
+	}
+
 	// 验证分组是否存在（如果指定了分组）
 	if len(req.GroupIDs) > 0 {
 		if err := s.validateGroupIDsExist(ctx, req.GroupIDs); err != nil {
@@ -325,7 +340,14 @@ func (s *AccountService) Update(ctx context.Context, id int64, req UpdateAccount
 	}
 
 	if req.Credentials != nil {
-		account.Credentials = SanitizeStoredCredentials(account.Platform, *req.Credentials)
+		account.Credentials = SanitizeStoredCredentials(
+			account.Platform,
+			MergePreservingSensitiveCreds(account.Credentials, *req.Credentials),
+		)
+	}
+	account.Credentials, err = normalizeAccountCredentialsForPlatform(account.Platform, account.Type, account.Credentials)
+	if err != nil {
+		return nil, err
 	}
 
 	if req.Extra != nil {
@@ -336,6 +358,10 @@ func (s *AccountService) Update(ctx context.Context, id int64, req UpdateAccount
 		delete(extra, OllamaCloudUsageSessionExtraKey)
 		delete(extra, OllamaCloudUsageAutoRefreshExtraKey)
 		delete(extra, OllamaCloudUsageSnapshotExtraKey)
+		extra, err = normalizeDeepSeekAccountExtra(account.Platform, extra, account.ResolveDeepSeekUserIsolationMode())
+		if err != nil {
+			return nil, err
+		}
 		account.Extra = extra
 	}
 
@@ -508,6 +534,9 @@ func (s *AccountService) TestCredentials(ctx context.Context, id int64) error {
 		return nil
 	case PlatformGrok:
 		// Grok OAuth credentials are validated via token exchange/refresh and request-path probes.
+		return nil
+	case PlatformKimi, PlatformZhipu, PlatformDeepSeek:
+		// 国产 OpenAI 兼容供应商：凭证为 API Key，实际可用性经余额/额度探测与转发路径验证。
 		return nil
 	default:
 		return fmt.Errorf("unsupported platform: %s", account.Platform)

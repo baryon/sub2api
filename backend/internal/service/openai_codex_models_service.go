@@ -44,6 +44,164 @@ type CodexModelsManifest struct {
 	NotModified  bool
 }
 
+// MergeGroupConfiguredCodexModels adds account model aliases that are visible
+// to the authenticated OpenAI group without discarding metadata from upstream
+// Codex model entries. A group's custom models list also filters the picker,
+// matching the standard /v1/models display policy.
+func (s *OpenAIGatewayService) MergeGroupConfiguredCodexModels(
+	ctx context.Context,
+	group *Group,
+	manifest *CodexModelsManifest,
+	ifNoneMatch string,
+) error {
+	if s == nil || s.accountRepo == nil || group == nil || manifest == nil || manifest.NotModified {
+		return nil
+	}
+	if group.Platform != PlatformOpenAI || len(manifest.Body) == 0 {
+		return nil
+	}
+
+	configuredModels, err := s.groupConfiguredCodexModelIDs(ctx, group.ID)
+	if err != nil {
+		return fmt.Errorf("load group configured Codex models: %w", err)
+	}
+	body, changed, err := mergeConfiguredCodexModelsManifest(
+		manifest.Body,
+		configuredModels,
+		group.ModelsListConfig.Models,
+		group.CustomModelsListEnabled(),
+	)
+	if err != nil {
+		return fmt.Errorf("merge group configured Codex models: %w", err)
+	}
+	if changed {
+		manifest.Body = body
+		manifest.ETag = codexModelsManifestBodyETag(body)
+	}
+	if codexModelsManifestETagMatches(ifNoneMatch, manifest.ETag) {
+		manifest.Body = nil
+		manifest.NotModified = true
+	}
+	return nil
+}
+
+func (s *OpenAIGatewayService) groupConfiguredCodexModelIDs(ctx context.Context, groupID int64) ([]string, error) {
+	accounts, err := s.accountRepo.ListSchedulableByGroupID(ctx, groupID)
+	if err != nil {
+		return nil, err
+	}
+
+	seen := make(map[string]struct{})
+	models := make([]string, 0)
+	for i := range accounts {
+		account := &accounts[i]
+		if account.Platform != PlatformOpenAI {
+			continue
+		}
+		for modelID := range account.GetModelMapping() {
+			modelID = strings.TrimSpace(modelID)
+			if modelID == "" || strings.Contains(modelID, "*") {
+				continue
+			}
+			if _, exists := seen[modelID]; exists {
+				continue
+			}
+			seen[modelID] = struct{}{}
+			models = append(models, modelID)
+		}
+	}
+	sort.Strings(models)
+	return models, nil
+}
+
+func mergeConfiguredCodexModelsManifest(
+	body []byte,
+	configuredModels []string,
+	selectedModels []string,
+	filterBySelection bool,
+) ([]byte, bool, error) {
+	if len(configuredModels) == 0 && !filterBySelection {
+		return body, false, nil
+	}
+
+	var envelope map[string]json.RawMessage
+	if err := json.Unmarshal(body, &envelope); err != nil {
+		return nil, false, err
+	}
+	var upstreamModels []json.RawMessage
+	if err := json.Unmarshal(envelope["models"], &upstreamModels); err != nil {
+		return nil, false, err
+	}
+
+	selected := make(map[string]struct{}, len(selectedModels))
+	for _, modelID := range selectedModels {
+		modelID = strings.TrimSpace(modelID)
+		if modelID != "" {
+			selected[modelID] = struct{}{}
+		}
+	}
+
+	seen := make(map[string]struct{}, len(upstreamModels)+len(configuredModels))
+	merged := make([]json.RawMessage, 0, len(upstreamModels)+len(configuredModels))
+	changed := false
+	for _, rawModel := range upstreamModels {
+		var descriptor struct {
+			Slug string `json:"slug"`
+		}
+		if err := json.Unmarshal(rawModel, &descriptor); err != nil || strings.TrimSpace(descriptor.Slug) == "" {
+			if filterBySelection {
+				changed = true
+				continue
+			}
+			merged = append(merged, rawModel)
+			continue
+		}
+		descriptor.Slug = strings.TrimSpace(descriptor.Slug)
+		if filterBySelection {
+			if _, allowed := selected[descriptor.Slug]; !allowed {
+				changed = true
+				continue
+			}
+		}
+		seen[descriptor.Slug] = struct{}{}
+		merged = append(merged, rawModel)
+	}
+
+	for _, modelID := range configuredModels {
+		if filterBySelection {
+			if _, allowed := selected[modelID]; !allowed {
+				continue
+			}
+		}
+		if _, exists := seen[modelID]; exists {
+			continue
+		}
+		rawModel, err := json.Marshal(struct {
+			Slug string `json:"slug"`
+		}{Slug: modelID})
+		if err != nil {
+			return nil, false, err
+		}
+		merged = append(merged, rawModel)
+		seen[modelID] = struct{}{}
+		changed = true
+	}
+	if !changed {
+		return body, false, nil
+	}
+
+	rawModels, err := json.Marshal(merged)
+	if err != nil {
+		return nil, false, err
+	}
+	envelope["models"] = rawModels
+	mergedBody, err := json.Marshal(envelope)
+	if err != nil {
+		return nil, false, err
+	}
+	return mergedBody, true, nil
+}
+
 type codexModelsManifestUpstreamError struct {
 	err        error
 	retryable  bool

@@ -23,6 +23,7 @@ func ProvideAdminHandlers(
 	geminiOAuthHandler *admin.GeminiOAuthHandler,
 	antigravityOAuthHandler *admin.AntigravityOAuthHandler,
 	grokOAuthHandler *admin.GrokOAuthHandler,
+	cnProviderHandler *admin.CNProviderHandler,
 	proxyHandler *admin.ProxyHandler,
 	redeemHandler *admin.RedeemHandler,
 	promoHandler *admin.PromoHandler,
@@ -63,6 +64,7 @@ func ProvideAdminHandlers(
 		GeminiOAuth:            geminiOAuthHandler,
 		AntigravityOAuth:       antigravityOAuthHandler,
 		GrokOAuth:              grokOAuthHandler,
+		CNProvider:             cnProviderHandler,
 		Proxy:                  proxyHandler,
 		Redeem:                 redeemHandler,
 		Promo:                  promoHandler,
@@ -123,9 +125,14 @@ func ProvideOpenAIGatewayHandler(
 	contentModerationService *service.ContentModerationService,
 	opsService *service.OpsService,
 	grokQuotaService *service.GrokQuotaService,
+	compositeResolver *service.CompositeRouteResolver,
 	cfg *config.Config,
 	coordinator *securityaudit.Coordinator,
 ) *OpenAIGatewayHandler {
+	gatewayService.SetCodexCompositeRouteResolver(compositeResolver)
+	if apiKeyService != nil {
+		apiKeyService.SetCodexWebSocketCapabilityResolver(gatewayService)
+	}
 	h := NewOpenAIGatewayHandler(gatewayService, concurrencyService, billingCacheService, apiKeyService,
 		usageRecordWorkerPool, errorPassthroughService, contentModerationService, opsService, cfg)
 	h.securityAuditCoordinator = coordinator
@@ -253,6 +260,7 @@ var ProviderSet = wire.NewSet(
 	admin.NewGeminiOAuthHandler,
 	admin.NewAntigravityOAuthHandler,
 	admin.NewGrokOAuthHandler,
+	admin.NewCNProviderHandler,
 	admin.NewProxyHandler,
 	admin.NewRedeemHandler,
 	admin.NewPromoHandler,

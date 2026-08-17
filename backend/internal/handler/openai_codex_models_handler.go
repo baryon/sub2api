@@ -56,7 +56,8 @@ func (h *OpenAIGatewayHandler) CodexModels(c *gin.Context) {
 		// 让 ops 错误日志携带实际选中的上游账号，便于定位失效账号（#4544）。
 		setOpsSelectedAccount(c, account.ID, account.Platform)
 
-		manifest, err := h.gatewayService.FetchCodexModelsManifest(c.Request.Context(), account, c.Query("client_version"), c.GetHeader("If-None-Match"))
+		ifNoneMatch := c.GetHeader("If-None-Match")
+		manifest, err := h.gatewayService.FetchCodexModelsManifest(c.Request.Context(), account, c.Query("client_version"), ifNoneMatch)
 		if err != nil {
 			if c.Request.Context().Err() != nil {
 				return
@@ -68,6 +69,10 @@ func (h *OpenAIGatewayHandler) CodexModels(c *gin.Context) {
 				continue
 			}
 			h.errorResponse(c, infraerrors.Code(err), "upstream_error", infraerrors.Message(err))
+			return
+		}
+		if err := h.gatewayService.MergeGroupConfiguredCodexModels(c.Request.Context(), apiKey.Group, manifest, ifNoneMatch); err != nil {
+			h.errorResponse(c, http.StatusInternalServerError, "api_error", "Failed to build Codex models manifest")
 			return
 		}
 		if c.Request.Context().Err() != nil {

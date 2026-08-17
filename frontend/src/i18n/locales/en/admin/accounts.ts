@@ -104,6 +104,33 @@ export default {
         gemini: 'Gemini',
         antigravity: 'Antigravity',
         grok: 'Grok',
+        kimi: 'Kimi',
+        zhipu: 'Zhipu GLM',
+        deepseek: 'DeepSeek',
+      },
+      cnProviders: {
+        accountMode: {
+          title: 'Account Type',
+          payg: 'Pay-as-you-go',
+          paygDesc: 'Consumes account balance, billed per token. Auto-cools down on low balance and recovers after top-up.',
+          coding: 'Coding Plan',
+          codingDesc: 'Subscription coding package, rate-limited by 5-hour / weekly rolling usage windows.',
+        },
+        apiProtocol: {
+          title: 'API Protocol',
+          chatCompletions: 'Chat Completions',
+          chatCompletionsDesc: 'Standard OpenAI-compatible endpoint; requests in other formats are converted.',
+          anthropic: 'Anthropic',
+          anthropicDesc: 'Native passthrough to the provider’s Anthropic endpoint — ideal for Claude Code.',
+          responses: 'Responses',
+          responsesDesc: 'Provider’s native Responses endpoint — ideal for Codex.',
+        },
+        window5h: '5-hour window',
+        windowWeekly: 'Weekly window',
+        probeTooltip: 'Query the provider quota endpoint for 5-hour / weekly rolling window usage',
+        balanceLow: 'Insufficient balance',
+        noBalanceEndpoint: 'This platform has no balance query endpoint',
+        resetSoon: 'reset soon',
       },
       types: {
         oauth: 'OAuth',
@@ -113,6 +140,7 @@ export default {
         codeAssist: 'Code Assist',
         antigravityOauth: 'Antigravity OAuth',
         grokOauth: 'Grok OAuth',
+        deepseekApikey: 'DeepSeek API Key',
         antigravityApikey: 'Connect via Base URL + API Key',
         upstream: 'Upstream',
         upstreamDesc: 'Connect via Base URL + API Key'
@@ -505,6 +533,20 @@ export default {
       apiKeyRequired: 'API Key *',
       apiKeyPlaceholder: 'sk-ant-api03-...',
       apiKeyHint: 'Your Claude Console API Key',
+      deepseek: {
+        baseUrlHint: 'Leave the default value for the official DeepSeek API',
+        apiKeyHint: 'Your DeepSeek API Key',
+        wsMode: 'Responses WebSocket mode',
+        wsModeDesc:
+          'HTTP bridge accepts client Responses WebSocket sessions at Sub2API and forwards each turn to DeepSeek over HTTP /responses. DeepSeek upstream does not use native WebSocket. The global gateway bridge must also be enabled.',
+        wsModeOff: 'Off (off)',
+        wsModeHttpBridge: 'HTTP bridge (http_bridge)',
+        userIsolationMode: 'User isolation',
+        userIsolationModeDesc:
+          'Authenticated user derives a stable anonymous upstream identity from each request\'s authenticated Sub2API user. Off disables identity injection. Raw and derived user IDs cannot be entered or viewed here.',
+        userIsolationAuthenticatedUser: 'Authenticated user (authenticated_user)',
+        userIsolationOff: 'Off (off)',
+      },
       // OpenAI specific hints
       openai: {
         baseUrlHint: 'Leave default for official OpenAI API',

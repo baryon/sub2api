@@ -109,11 +109,8 @@ const qwenModels = [
 
 // DeepSeek
 const deepseekModels = [
-  'deepseek-chat', 'deepseek-coder', 'deepseek-reasoner',
-  'deepseek-v3', 'deepseek-v3-0324',
-  'deepseek-r1', 'deepseek-r1-0528',
-  'deepseek-r1-distill-qwen-32b', 'deepseek-r1-distill-qwen-14b', 'deepseek-r1-distill-qwen-7b',
-  'deepseek-r1-distill-llama-70b', 'deepseek-r1-distill-llama-8b'
+  'deepseek-v4-flash',
+  'deepseek-v4-pro'
 ]
 
 // Mistral
@@ -182,7 +179,9 @@ const yiModels = [
 // Moonshot/Kimi
 const moonshotModels = [
   'moonshot-v1-8k', 'moonshot-v1-32k', 'moonshot-v1-128k',
-  'kimi-latest'
+  'kimi-latest',
+  'kimi-for-coding',
+  'kimi-k2'
 ]
 
 // 字节跳动 豆包
@@ -321,6 +320,11 @@ const grokPresetMappings = [
   { label: 'Imagine Video', from: 'grok-imagine-video-1.5', to: 'grok-imagine-video-1.5', color: 'bg-amber-100 text-amber-700 hover:bg-amber-200 dark:bg-amber-900/30 dark:text-amber-400' }
 ]
 
+const deepseekPresetMappings = [
+  { label: 'V4 Flash', from: 'deepseek-v4-flash', to: 'deepseek-v4-flash', color: 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200 dark:bg-indigo-900/30 dark:text-indigo-300' },
+  { label: 'V4 Pro', from: 'deepseek-v4-pro', to: 'deepseek-v4-pro', color: 'bg-blue-100 text-blue-700 hover:bg-blue-200 dark:bg-blue-900/30 dark:text-blue-300' }
+]
+
 // Antigravity 预设映射（支持通配符）
 const antigravityPresetMappings = [
   // Claude 通配符映射
@@ -428,7 +432,8 @@ export function getModelsByPlatform(platform: string): string[] {
     case 'grok': return xaiModels
     case 'cohere': return cohereModels
     case 'yi': return yiModels
-    case 'moonshot': return moonshotModels
+    case 'moonshot':
+    case 'kimi': return moonshotModels
     case 'doubao': return doubaoModels
     case 'minimax': return minimaxModels
     case 'baidu': return baiduModels
@@ -444,6 +449,7 @@ export function getPresetMappingsByPlatform(platform: string) {
   if (platform === 'openai') return openaiPresetMappings
   if (platform === 'gemini') return geminiPresetMappings
   if (platform === 'grok' || platform === 'xai') return grokPresetMappings
+  if (platform === 'deepseek') return deepseekPresetMappings
   if (platform === 'antigravity') return antigravityPresetMappings
   if (platform === 'bedrock') return bedrockPresetMappings
   return anthropicPresetMappings

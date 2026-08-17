@@ -208,6 +208,16 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Model is not supported by composite groups")
 		return
 	}
+	if openAICompatibleRequestPlatform(c.Request.Context(), apiKey) == service.PlatformDeepSeek {
+		if err := service.ValidateDeepSeekAuthenticatedUserContext(c.Request.Context()); err != nil {
+			h.errorResponse(c, http.StatusInternalServerError, "api_error", "User context not found")
+			return
+		}
+		if err := service.ValidateDeepSeekUserIdentityRequest(body, service.DeepSeekUserIdentityMessages); err != nil {
+			h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", err.Error())
+			return
+		}
+	}
 
 	if decision := h.checkSecurityAudit(c, reqLog, apiKey, subject, service.ContentModerationProtocolAnthropicMessages, reqModel, body); decision != nil && !decision.AllowNextStage {
 		h.anthropicSecurityAuditError(c, decision)
@@ -260,12 +270,6 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 	}
 	sessionHash := h.gatewayService.GenerateSessionHash(parsedReq)
 
-	// [DEBUG-STICKY] 打印会话 hash 生成结果
-	reqLog.Info("sticky.session_hash_generated",
-		zap.String("session_hash", sessionHash),
-		zap.String("metadata_user_id_raw", parsedReq.MetadataUserID),
-	)
-
 	// 获取平台：优先使用强制平台（/antigravity 路由），其次使用 composite 解析出的目标平台，否则使用分组平台
 	platform := ""
 	if forcePlatform, ok := middleware2.GetForcePlatformFromContext(c); ok {
@@ -275,6 +279,13 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 	} else if apiKey.Group != nil {
 		platform = apiKey.Group.Platform
 	}
+
+	// [DEBUG-STICKY] 打印会话 hash 生成结果
+	stickyFields := []zap.Field{zap.String("session_hash", sessionHash)}
+	if platform != service.PlatformDeepSeek {
+		stickyFields = append(stickyFields, zap.String("metadata_user_id_raw", parsedReq.MetadataUserID))
+	}
+	reqLog.Info("sticky.session_hash_generated", stickyFields...)
 	sessionKey := sessionHash
 	if platform == service.PlatformGemini && sessionHash != "" {
 		sessionKey = "gemini:" + sessionHash
@@ -835,10 +846,13 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 					return
 				}
 			}
-			// Bedrock CC 兼容：清理 body 专有字段 + 过滤 anthropic-beta header，适用于所有转发路径
-			if err := attemptParsedReq.ReplaceBody(h.gatewayService.ApplyBedrockCCCompat(c, attemptParsedReq.Body.Bytes(), attemptParsedReq.Model, account, apiKey.GroupID)); err != nil {
-				h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to parse request body")
-				return
+			// DeepSeek Messages is a native Anthropic wire and must not inherit the
+			// channel's Bedrock compatibility body/header rewrites.
+			if !account.IsDeepSeek() {
+				if err := attemptParsedReq.ReplaceBody(h.gatewayService.ApplyBedrockCCCompat(c, attemptParsedReq.Body.Bytes(), attemptParsedReq.Model, account, apiKey.GroupID)); err != nil {
+					h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to parse request body")
+					return
+				}
 			}
 			attemptBody := attemptParsedReq.Body.Bytes()
 
@@ -1133,11 +1147,68 @@ func (h *GatewayHandler) Models(c *gin.Context) {
 		writeGrokModelsList(c, xai.DefaultModelIDs())
 		return
 	}
+	if platform == service.PlatformDeepSeek || platform == service.PlatformKimi || platform == service.PlatformZhipu {
+		writeModelsList(c, platform, defaultModelIDsForPlatform(platform))
+		return
+	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"object": "list",
 		"data":   claude.DefaultModels,
 	})
+}
+
+// CodexModels returns the Codex model-picker manifest for non-OpenAI groups.
+// The list is derived only from schedulable accounts linked to the authenticated
+// key's group, then constrained by the group's optional custom model list.
+func (h *GatewayHandler) CodexModels(c *gin.Context) {
+	apiKey, ok := middleware2.GetAPIKeyFromContext(c)
+	if !ok || apiKey.Group == nil {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error": gin.H{
+				"type":    "invalid_request_error",
+				"message": "API key group is required",
+			},
+		})
+		return
+	}
+
+	groupID := apiKey.Group.ID
+	platform := apiKey.Group.Platform
+	if forcedPlatform, ok := middleware2.GetForcePlatformFromContext(c); ok && strings.TrimSpace(forcedPlatform) != "" {
+		platform = forcedPlatform
+	}
+
+	var modelIDs []string
+	if platform == service.PlatformComposite {
+		modelIDs = h.compositeAvailableModels(c.Request.Context(), &groupID)
+		if apiKey.Group.CustomModelsListEnabled() {
+			modelIDs = filterModelsByCustomList(modelIDs, nil, apiKey.Group.ModelsListConfig.Models)
+		}
+	} else {
+		modelIDs = h.gatewayService.GetAvailableModels(c.Request.Context(), &groupID, platform)
+		schedulablePlatforms := h.gatewayService.GetSchedulablePlatforms(c.Request.Context(), &groupID)
+		fallbackModels := []string(nil)
+		if _, available := schedulablePlatforms[platform]; available {
+			fallbackModels = defaultModelIDsForPlatform(platform)
+		}
+
+		if apiKey.Group.CustomModelsListEnabled() {
+			source := customModelsListSource(platform, modelIDs, fallbackModels)
+			modelIDs = filterModelsByCustomList(source, fallbackModels, apiKey.Group.ModelsListConfig.Models)
+		} else if len(modelIDs) == 0 {
+			modelIDs = fallbackModels
+		}
+	}
+
+	type codexModel struct {
+		Slug string `json:"slug"`
+	}
+	models := make([]codexModel, 0, len(modelIDs))
+	for _, modelID := range mergeModelIDs(modelIDs, nil) {
+		models = append(models, codexModel{Slug: modelID})
+	}
+	c.JSON(http.StatusOK, gin.H{"models": models})
 }
 
 func (h *GatewayHandler) compositeAvailableModels(ctx context.Context, groupID *int64) []string {
@@ -1147,7 +1218,16 @@ func (h *GatewayHandler) compositeAvailableModels(ctx context.Context, groupID *
 	seen := make(map[string]struct{})
 	models := make([]string, 0)
 	schedulablePlatforms := h.gatewayService.GetSchedulablePlatforms(ctx, groupID)
-	for _, platform := range []string{service.PlatformAnthropic, service.PlatformGemini, service.PlatformOpenAI, service.PlatformAntigravity, service.PlatformGrok} {
+	for _, platform := range []string{
+		service.PlatformAnthropic,
+		service.PlatformGemini,
+		service.PlatformOpenAI,
+		service.PlatformAntigravity,
+		service.PlatformGrok,
+		service.PlatformDeepSeek,
+		service.PlatformKimi,
+		service.PlatformZhipu,
+	} {
 		platformModels := h.gatewayService.GetAvailableModels(ctx, groupID, platform)
 		if len(platformModels) == 0 {
 			if _, ok := schedulablePlatforms[platform]; ok {
@@ -1369,10 +1449,25 @@ func defaultModelIDsForPlatform(platform string) []string {
 		return mergeModelIDs(ids, nil)
 	case service.PlatformGrok:
 		return xai.DefaultModelIDs()
+	case service.PlatformDeepSeek:
+		return service.DeepSeekDefaultModelIDs()
+	case service.PlatformKimi:
+		return service.KimiDefaultModelIDs()
+	case service.PlatformZhipu:
+		return service.ZhipuDefaultModelIDs()
 	case service.PlatformComposite:
 		ids := make([]string, 0)
 		seen := make(map[string]struct{})
-		for _, concretePlatform := range []string{service.PlatformAnthropic, service.PlatformGemini, service.PlatformOpenAI, service.PlatformAntigravity, service.PlatformGrok} {
+		for _, concretePlatform := range []string{
+			service.PlatformAnthropic,
+			service.PlatformGemini,
+			service.PlatformOpenAI,
+			service.PlatformAntigravity,
+			service.PlatformGrok,
+			service.PlatformDeepSeek,
+			service.PlatformKimi,
+			service.PlatformZhipu,
+		} {
 			for _, id := range defaultModelIDsForPlatform(concretePlatform) {
 				if _, ok := seen[id]; ok {
 					continue
@@ -1768,6 +1863,7 @@ func (h *GatewayHandler) handleConcurrencyError(c *gin.Context, err error, slotT
 func (h *GatewayHandler) handleFailoverExhausted(c *gin.Context, failoverErr *service.UpstreamFailoverError, platform string, streamStarted bool) {
 	statusCode := failoverErr.StatusCode
 	responseBody := failoverErr.ResponseBody
+	copyFailoverResponseHeaders(c, failoverErr.ResponseHeaders)
 	if service.IsOpenAISilentRefusalErrorBody(responseBody) {
 		service.SetOpsUpstreamError(c, statusCode, service.OpenAISilentRefusalClientMessage(), "")
 		h.handleStreamingAwareError(c, http.StatusBadGateway, "upstream_error", service.OpenAISilentRefusalClientMessage(), streamStarted)
@@ -1818,6 +1914,8 @@ func (h *GatewayHandler) mapUpstreamError(statusCode int) (int, string, string) 
 	switch statusCode {
 	case 401:
 		return http.StatusBadGateway, "upstream_error", "Upstream authentication failed, please contact administrator"
+	case 402:
+		return http.StatusPaymentRequired, "billing_error", "Upstream account has insufficient balance, please contact administrator"
 	case 403:
 		return http.StatusBadGateway, "upstream_error", "Upstream access forbidden, please contact administrator"
 	case 429:

@@ -94,6 +94,7 @@ type Config struct {
 	TokenRefresh            TokenRefreshConfig            `mapstructure:"token_refresh"`
 	RunMode                 string                        `mapstructure:"run_mode" yaml:"run_mode"`
 	Timezone                string                        `mapstructure:"timezone"` // e.g. "Asia/Shanghai", "UTC"
+	DeepSeek                DeepSeekConfig                `mapstructure:"deepseek"`
 	Gemini                  GeminiConfig                  `mapstructure:"gemini"`
 	Update                  UpdateConfig                  `mapstructure:"update"`
 	Idempotency             IdempotencyConfig             `mapstructure:"idempotency"`
@@ -111,6 +112,13 @@ type LogConfig struct {
 	Output          LogOutputConfig   `mapstructure:"output"`
 	Rotation        LogRotationConfig `mapstructure:"rotation"`
 	Sampling        LogSamplingConfig `mapstructure:"sampling"`
+}
+
+// DeepSeekConfig contains deployment-scoped provider settings. UserIDSecret
+// must remain stable across restarts and replicas to preserve upstream cache
+// isolation identities.
+type DeepSeekConfig struct {
+	UserIDSecret string `mapstructure:"user_id_secret"`
 }
 
 type LogOutputConfig struct {
@@ -1025,6 +1033,10 @@ type GatewayConfig struct {
 
 	// Grok: Grok/xAI gateway scheduling and free-tier soft-gate settings.
 	Grok GatewayGrokConfig `mapstructure:"grok"`
+
+	// CNProviders: 国产 OpenAI 兼容供应商（kimi/zhipu/deepseek）的余额检测配置。
+	// 仅作用于 payg（按量付费）账号：周期探测余额，低于阈值则临时停调。
+	CNProviders GatewayCNProvidersConfig `mapstructure:"cn_providers"`
 }
 
 // GatewayGrokConfig holds Grok-specific gateway scheduling knobs.
@@ -1055,6 +1067,18 @@ type GatewayGrokConfig struct {
 	// FreeQuotaStatsCacheSeconds is the soft-gate stats cache TTL. Hot path never
 	// waits on usage_logs; misses fail open and refresh asynchronously.
 	FreeQuotaStatsCacheSeconds int `mapstructure:"free_quota_stats_cache_seconds"`
+}
+
+// GatewayCNProvidersConfig 国产 OpenAI 兼容供应商（kimi/zhipu/deepseek）的余额检测配置。
+//
+// 仅作用于 payg（按量付费）账号（kimi/deepseek 有公开余额端点；zhipu 无，仅靠响应式 429/402）。
+//   - balance_check_enabled: 是否启用周期余额检测（默认 true）
+//   - balance_threshold: 余额低于此值（账户货币单位，默认 0.5）触发临时停调
+//   - balance_check_interval_minutes: 余额检测周期（分钟，默认 10）
+type GatewayCNProvidersConfig struct {
+	BalanceCheckEnabled         bool    `mapstructure:"balance_check_enabled"`
+	BalanceThreshold            float64 `mapstructure:"balance_threshold"`
+	BalanceCheckIntervalMinutes int     `mapstructure:"balance_check_interval_minutes"`
 }
 
 type GatewayLiveConfig struct {
@@ -1756,6 +1780,7 @@ func load(allowMissingJWTSecret bool) (*Config, error) {
 	}
 	cfg.Server.FrontendURL = strings.TrimSpace(cfg.Server.FrontendURL)
 	cfg.JWT.Secret = strings.TrimSpace(cfg.JWT.Secret)
+	cfg.DeepSeek.UserIDSecret = strings.TrimSpace(cfg.DeepSeek.UserIDSecret)
 	cfg.LinuxDo.ClientID = strings.TrimSpace(cfg.LinuxDo.ClientID)
 	cfg.LinuxDo.ClientSecret = strings.TrimSpace(cfg.LinuxDo.ClientSecret)
 	cfg.LinuxDo.AuthorizeURL = strings.TrimSpace(cfg.LinuxDo.AuthorizeURL)
@@ -1956,6 +1981,7 @@ func setDefaults() {
 	viper.SetDefault("security.url_allowlist.upstream_hosts", []string{
 		"api.openai.com",
 		"api.anthropic.com",
+		"api.deepseek.com",
 		"api.kimi.com",
 		"api.moonshot.ai",
 		"api.moonshot.cn",
@@ -2173,6 +2199,7 @@ func setDefaults() {
 
 	// JWT
 	viper.SetDefault("jwt.secret", "")
+	viper.SetDefault("deepseek.user_id_secret", "")
 	viper.SetDefault("jwt.expire_hour", 24)
 	viper.SetDefault("jwt.access_token_expire_minutes", 0) // 0 表示回退到 expire_hour
 	viper.SetDefault("jwt.refresh_token_expire_days", 30)  // 30天Refresh Token有效期
@@ -2355,6 +2382,10 @@ func setDefaults() {
 	viper.SetDefault("gateway.grok.free_quota_soft_gate_percent", 95)
 	viper.SetDefault("gateway.grok.free_quota_window_hours", 24)
 	viper.SetDefault("gateway.grok.free_quota_stats_cache_seconds", 60)
+	// 国产供应商余额检测（kimi/deepseek payg；zhipu 无余额端点，仅靠响应式 429/402）。
+	viper.SetDefault("gateway.cn_providers.balance_check_enabled", true)
+	viper.SetDefault("gateway.cn_providers.balance_threshold", 0.5)
+	viper.SetDefault("gateway.cn_providers.balance_check_interval_minutes", 10)
 	viper.SetDefault("gateway.image_concurrency.enabled", false)
 	viper.SetDefault("gateway.image_concurrency.max_concurrent_requests", 0)
 	viper.SetDefault("gateway.image_concurrency.overflow_mode", ImageConcurrencyOverflowModeReject)

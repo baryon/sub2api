@@ -160,6 +160,49 @@
             <PlatformIcon platform="grok" size="sm" />
             Grok
           </button>
+          <button
+            type="button"
+            data-testid="platform-deepseek"
+            @click="form.platform = 'deepseek'"
+            :class="[
+              'flex flex-1 items-center justify-center gap-2 rounded-md px-4 py-2.5 text-sm font-medium transition-all',
+              form.platform === 'deepseek'
+                ? 'bg-white text-indigo-600 shadow-sm dark:bg-dark-600 dark:text-indigo-400'
+                : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'
+            ]"
+          >
+            <PlatformIcon platform="deepseek" size="sm" />
+            DeepSeek
+          </button>
+        </div>
+        <!-- Additional OpenAI-compatible providers -->
+        <div class="mt-2 flex flex-wrap rounded-lg bg-gray-100 p-1 dark:bg-dark-700">
+          <button
+            type="button"
+            @click="selectCNPlatform('kimi')"
+            :class="[
+              'flex flex-1 items-center justify-center gap-2 rounded-md px-4 py-2.5 text-sm font-medium transition-all',
+              form.platform === 'kimi'
+                ? 'bg-white text-pink-600 shadow-sm dark:bg-dark-600 dark:text-pink-400'
+                : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'
+            ]"
+          >
+            <PlatformIcon platform="kimi" size="sm" />
+            Kimi
+          </button>
+          <button
+            type="button"
+            @click="selectCNPlatform('zhipu')"
+            :class="[
+              'flex flex-1 items-center justify-center gap-2 rounded-md px-4 py-2.5 text-sm font-medium transition-all',
+              form.platform === 'zhipu'
+                ? 'bg-white text-indigo-600 shadow-sm dark:bg-dark-600 dark:text-indigo-400'
+                : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'
+            ]"
+          >
+            <PlatformIcon platform="zhipu" size="sm" />
+            Zhipu GLM
+          </button>
         </div>
       </div>
 
@@ -406,6 +449,119 @@
             <div>
               <span class="block text-sm font-medium text-gray-900 dark:text-white">API Key</span>
               <span class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.types.responsesApi') }}</span>
+            </div>
+          </button>
+        </div>
+      </div>
+
+      <!-- DeepSeek currently supports API-key accounts only. -->
+      <div v-if="form.platform === 'deepseek'" data-testid="deepseek-account-type">
+        <label class="input-label">{{ t('admin.accounts.accountType') }}</label>
+        <div class="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-2" data-tour="account-form-type">
+          <div
+            class="flex items-center gap-3 rounded-lg border-2 border-indigo-500 bg-indigo-50 p-3 text-left dark:bg-indigo-900/20"
+          >
+            <div class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-indigo-500 text-white">
+              <Icon name="key" size="sm" />
+            </div>
+            <div>
+              <span class="block text-sm font-medium text-gray-900 dark:text-white">{{
+                t('admin.accounts.apiKey')
+              }}</span>
+              <span class="text-xs text-gray-500 dark:text-gray-400">{{
+                t('admin.accounts.types.deepseekApikey')
+              }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Account mode for Kimi and Zhipu -->
+      <div v-if="isCNPlatform">
+        <label class="input-label">{{ t('admin.accounts.cnProviders.accountMode.title') }}</label>
+        <div class="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-2" data-tour="account-form-mode">
+          <button
+            type="button"
+            @click="accountMode = 'payg'"
+            :class="[
+              'flex items-center gap-3 rounded-lg border-2 p-3 text-left transition-all',
+              accountMode === 'payg'
+                ? cnAccentActiveClass
+                : 'border-gray-200 hover:border-gray-400 dark:border-dark-600 dark:hover:border-gray-600'
+            ]"
+          >
+            <div
+              :class="[
+                'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg',
+                accountMode === 'payg'
+                  ? cnAccentIconClass
+                  : 'bg-gray-100 text-gray-500 dark:bg-dark-600 dark:text-gray-400'
+              ]"
+            >
+              <Icon name="creditCard" size="sm" />
+            </div>
+            <div>
+              <span class="block text-sm font-medium text-gray-900 dark:text-white">{{ t('admin.accounts.cnProviders.accountMode.payg') }}</span>
+              <span class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.cnProviders.accountMode.paygDesc') }}</span>
+            </div>
+          </button>
+          <button
+            type="button"
+            @click="accountMode = 'coding'"
+            :class="[
+              'flex items-center gap-3 rounded-lg border-2 p-3 text-left transition-all',
+              accountMode === 'coding'
+                ? cnAccentActiveClass
+                : 'border-gray-200 hover:border-gray-400 dark:border-dark-600 dark:hover:border-gray-600'
+            ]"
+          >
+            <div
+              :class="[
+                'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg',
+                accountMode === 'coding'
+                  ? cnAccentIconClass
+                  : 'bg-gray-100 text-gray-500 dark:bg-dark-600 dark:text-gray-400'
+              ]"
+            >
+              <Icon name="bolt" size="sm" />
+            </div>
+            <div>
+              <span class="block text-sm font-medium text-gray-900 dark:text-white">{{ t('admin.accounts.cnProviders.accountMode.coding') }}</span>
+              <span class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.cnProviders.accountMode.codingDesc') }}</span>
+            </div>
+          </button>
+        </div>
+      </div>
+
+      <!-- Native upstream protocol for Kimi and Zhipu -->
+      <div v-if="isCNPlatform" class="mt-4">
+        <label class="input-label">{{ t('admin.accounts.cnProviders.apiProtocol.title') }}</label>
+        <div class="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <button
+            v-for="opt in cnProtocolOptions"
+            :key="opt.value"
+            type="button"
+            @click="apiProtocol = opt.value"
+            :class="[
+              'flex items-center gap-3 rounded-lg border-2 p-3 text-left transition-all',
+              apiProtocol === opt.value
+                ? cnAccentActiveClass
+                : 'border-gray-200 hover:border-gray-400 dark:border-dark-600 dark:hover:border-gray-600'
+            ]"
+          >
+            <div
+              :class="[
+                'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg',
+                apiProtocol === opt.value
+                  ? cnAccentIconClass
+                  : 'bg-gray-100 text-gray-500 dark:bg-dark-600 dark:text-gray-400'
+              ]"
+            >
+              <Icon :name="opt.value === 'anthropic' ? 'sparkles' : 'chat'" size="sm" />
+            </div>
+            <div>
+              <span class="block text-sm font-medium text-gray-900 dark:text-white">{{ t(`admin.accounts.cnProviders.apiProtocol.${opt.labelKey}`) }}</span>
+              <span class="text-xs text-gray-500 dark:text-gray-400">{{ t(`admin.accounts.cnProviders.apiProtocol.${opt.labelKey}Desc`) }}</span>
             </div>
           </button>
         </div>
@@ -1120,21 +1276,22 @@
             v-model="apiKeyBaseUrl"
             type="text"
             class="input"
-            :placeholder="
-              form.platform === 'openai'
-                ? 'https://api.openai.com'
-                : form.platform === 'gemini'
-                  ? 'https://generativelanguage.googleapis.com'
-                  : form.platform === 'grok'
-                    ? 'https://api.x.ai/v1'
-                    : 'https://api.anthropic.com'
-            "
+            :placeholder="apiKeyBaseUrlPlaceholder"
           />
           <p v-if="baseUrlHint" class="input-hint">{{ baseUrlHint }}</p>
           <GrokBaseUrlPresets
             v-if="form.platform === 'grok'"
             class="mt-2"
             @select="apiKeyBaseUrl = $event"
+          />
+          <CnBaseUrlPresets
+            v-if="isCNPlatform"
+            class="mt-2"
+            :platform="cnPresetPlatform"
+            :mode="accountMode"
+            :protocol="apiProtocol"
+            :current-url="apiKeyBaseUrl"
+            @select="onCnPresetSelect"
           />
         </div>
         <div>
@@ -1144,21 +1301,14 @@
             type="password"
             required
             class="input font-mono"
-            :placeholder="
-              form.platform === 'openai'
-                ? 'sk-proj-...'
-                : form.platform === 'gemini'
-                  ? 'AIza...'
-                  : form.platform === 'grok'
-                    ? 'xai-...'
-                    : 'sk-ant-...'
-            "
+            :placeholder="apiKeyValuePlaceholder"
           />
           <p v-if="apiKeyHint" class="input-hint">{{ apiKeyHint }}</p>
         </div>
 
-        <!-- 上游倍率自动探测：全部 API-key 平台可用（所在区块已限定 apikey 类型） -->
+        <!-- 上游倍率自动探测：仅对后端支持的 API-key 平台开放 -->
         <div
+          v-if="isUpstreamBillingProbeIdentity(form.platform, form.type)"
           class="flex items-center justify-between gap-4 border-t border-gray-200 pt-4 dark:border-dark-600"
         >
           <div>
@@ -2847,6 +2997,49 @@
         </div>
       </div>
 
+      <div
+        v-if="form.platform === 'deepseek' && accountCategory === 'apikey'"
+        class="border-t border-gray-200 pt-4 dark:border-dark-600"
+      >
+        <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <label class="input-label mb-0">{{ t('admin.accounts.deepseek.wsMode') }}</label>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.accounts.deepseek.wsModeDesc') }}
+            </p>
+          </div>
+          <div class="w-full sm:w-56 sm:shrink-0">
+            <Select
+              :model-value="deepSeekResponsesWebSocketV2Mode"
+              :options="deepSeekWSModeOptions"
+              data-testid="create-deepseek-ws-mode-select"
+              @update:model-value="setDeepSeekWSMode"
+            />
+          </div>
+        </div>
+      </div>
+
+      <div
+        v-if="form.platform === 'deepseek' && accountCategory === 'apikey'"
+        class="border-t border-gray-200 pt-4 dark:border-dark-600"
+      >
+        <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <label class="input-label mb-0">{{ t('admin.accounts.deepseek.userIsolationMode') }}</label>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.accounts.deepseek.userIsolationModeDesc') }}
+            </p>
+          </div>
+          <div class="w-full sm:w-56 sm:shrink-0">
+            <Select
+              v-model="deepSeekUserIsolationMode"
+              :options="deepSeekUserIsolationModeOptions"
+              data-testid="create-deepseek-user-isolation-mode-select"
+            />
+          </div>
+        </div>
+      </div>
+
       <!-- Anthropic API Key 自动透传开关 -->
       <div
         v-if="form.platform === 'anthropic' && accountCategory === 'apikey'"
@@ -3609,17 +3802,22 @@ import ModelWhitelistSelector from '@/components/account/ModelWhitelistSelector.
 import QuotaLimitCard from '@/components/account/QuotaLimitCard.vue'
 import Toggle from '@/components/common/Toggle.vue'
 import GrokBaseUrlPresets from '@/components/account/GrokBaseUrlPresets.vue'
+import CnBaseUrlPresets from '@/components/account/CnBaseUrlPresets.vue'
 import HeaderOverrideEditor from '@/components/account/HeaderOverrideEditor.vue'
 import {
   applyAntigravityProjectID,
   applyHeaderOverride,
   applyInterceptWarmup,
+  defaultCNBaseUrl,
   isHeaderOverrideCapable,
   validateHeaderOverrideRows,
+  type CnAccountMode,
+  type CnApiProtocol,
   type HeaderOverrideRow
 } from '@/components/account/credentialsBuilder'
 import { formatDateTimeLocalInput, parseDateTimeLocalInput } from '@/utils/format'
 import { createStableObjectKeyResolver } from '@/utils/stableObjectKey'
+import { isUpstreamBillingProbeIdentity } from '@/utils/upstreamBillingProbe'
 import { VERTEX_LOCATION_OPTIONS } from '@/constants/account'
 import {
   OPENAI_WS_MODE_CTX_POOL,
@@ -3630,6 +3828,13 @@ import {
   resolveOpenAIWSModeConcurrencyHintKey,
   type OpenAIWSMode
 } from '@/utils/openaiWsMode'
+import {
+  DEEPSEEK_WS_MODE_HTTP_BRIDGE,
+  DEEPSEEK_WS_MODE_OFF,
+  normalizeDeepSeekWSMode,
+  resolveDeepSeekWSModeFromExtra,
+  type DeepSeekWSMode
+} from '@/utils/deepseekWsMode'
 import OAuthAuthorizationFlow from './OAuthAuthorizationFlow.vue'
 
 // Type for exposed OAuthAuthorizationFlow component
@@ -3659,10 +3864,19 @@ const oauthStepTitle = computed(() => {
   return t('admin.accounts.oauth.title')
 })
 
+const getDefaultApiKeyBaseUrl = (platform: AccountPlatform): string => {
+  if (platform === 'openai') return 'https://api.openai.com'
+  if (platform === 'gemini') return 'https://generativelanguage.googleapis.com'
+  if (platform === 'grok') return 'https://api.x.ai/v1'
+  if (platform === 'deepseek') return 'https://api.deepseek.com'
+  return 'https://api.anthropic.com'
+}
+
 // Platform-specific hints for API Key type
 const baseUrlHint = computed(() => {
   if (form.platform === 'openai') return t('admin.accounts.openai.baseUrlHint')
   if (form.platform === 'gemini') return t('admin.accounts.gemini.baseUrlHint')
+  if (form.platform === 'deepseek') return t('admin.accounts.deepseek.baseUrlHint')
   if (form.platform === 'grok') return ''
   return t('admin.accounts.baseUrlHint')
 })
@@ -3670,8 +3884,25 @@ const baseUrlHint = computed(() => {
 const apiKeyHint = computed(() => {
   if (form.platform === 'openai') return t('admin.accounts.openai.apiKeyHint')
   if (form.platform === 'gemini') return t('admin.accounts.gemini.apiKeyHint')
+  if (form.platform === 'deepseek') return t('admin.accounts.deepseek.apiKeyHint')
   if (form.platform === 'grok') return ''
   return t('admin.accounts.apiKeyHint')
+})
+
+const apiKeyBaseUrlPlaceholder = computed(() => {
+  if (isCNPlatform.value) {
+    return defaultCNBaseUrl(form.platform, accountMode.value, apiProtocol.value) || 'https://api.example.com'
+  }
+  return getDefaultApiKeyBaseUrl(form.platform)
+})
+
+const apiKeyValuePlaceholder = computed(() => {
+  if (form.platform === 'openai') return 'sk-proj-...'
+  if (form.platform === 'gemini') return 'AIza...'
+  if (form.platform === 'grok') return 'xai-...'
+  if (form.platform === 'kimi' || form.platform === 'deepseek') return 'sk-...'
+  if (form.platform === 'zhipu') return '<api-key>.<secret>'
+  return 'sk-ant-...'
 })
 
 interface Props {
@@ -3687,6 +3918,7 @@ const emit = defineEmits<{
 }>()
 
 const appStore = useAppStore()
+void appStore.fetchPublicSettings?.()?.catch(() => {})
 
 // OAuth composables
 const oauth = useAccountOAuth() // For Anthropic OAuth
@@ -3752,6 +3984,63 @@ const addMethod = ref<AddMethod>('oauth') // For oauth-based: 'oauth' or 'setup-
 const apiKeyBaseUrl = ref('https://api.anthropic.com')
 const apiKeyValue = ref('')
 const upstreamBillingAutoProbeEnabled = ref(true)
+
+// Kimi and Zhipu account mode, native protocol, and endpoint presets.
+const accountMode = ref<CnAccountMode>('payg')
+const apiProtocol = ref<CnApiProtocol>('chat_completions')
+const isCNPlatform = computed(() => form.platform === 'kimi' || form.platform === 'zhipu')
+const cnPresetPlatform = computed<'kimi' | 'zhipu'>(() => {
+  if (form.platform === 'kimi' || form.platform === 'zhipu') {
+    return form.platform
+  }
+  return 'kimi'
+})
+const cnProtocolOptions: Array<{ value: CnApiProtocol; labelKey: string }> = [
+  { value: 'chat_completions', labelKey: 'chatCompletions' },
+  { value: 'anthropic', labelKey: 'anthropic' }
+]
+const cnAccentActiveClass = computed(() => {
+  switch (form.platform) {
+    case 'kimi':
+      return 'border-pink-500 bg-pink-50 dark:bg-pink-900/20'
+    case 'zhipu':
+      return 'border-indigo-500 bg-indigo-50 dark:bg-indigo-900/20'
+    default:
+      return 'border-primary-500 bg-primary-50 dark:bg-primary-900/20'
+  }
+})
+const cnAccentIconClass = computed(() => {
+  switch (form.platform) {
+    case 'kimi':
+      return 'bg-pink-500 text-white'
+    case 'zhipu':
+      return 'bg-indigo-500 text-white'
+    default:
+      return 'bg-primary-500 text-white'
+  }
+})
+function selectCNPlatform(platform: 'kimi' | 'zhipu') {
+  form.platform = platform
+  form.type = 'apikey'
+  accountCategory.value = 'apikey'
+  apiProtocol.value = 'chat_completions'
+  apiKeyBaseUrl.value = defaultCNBaseUrl(platform, accountMode.value, apiProtocol.value)
+}
+// 账号类型 / 协议变更时同步默认 base url。
+watch(accountMode, (mode) => {
+  if (!isCNPlatform.value) return
+  apiKeyBaseUrl.value = defaultCNBaseUrl(form.platform, mode, apiProtocol.value)
+})
+watch(apiProtocol, (protocol) => {
+  if (!isCNPlatform.value) return
+  apiKeyBaseUrl.value = defaultCNBaseUrl(form.platform, accountMode.value, protocol)
+})
+// 点击预设端点：同时回填 base url、账号类型与协议。
+function onCnPresetSelect(preset: { mode: CnAccountMode; protocol: CnApiProtocol; url: string }) {
+  accountMode.value = preset.mode
+  apiProtocol.value = preset.protocol
+  apiKeyBaseUrl.value = preset.url
+}
 
 const syncPreviewCredentials = computed(() => {
   if (!apiKeyValue.value) return undefined
@@ -3852,6 +4141,10 @@ const openAIResponsesMode = ref<OpenAIResponsesMode>('auto')
 const openAIEndpointCapabilities = ref<OpenAIEndpointCapability[]>(['chat_completions', 'embeddings'])
 const openaiOAuthResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
 const openaiAPIKeyResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
+type DeepSeekUserIsolationMode = 'authenticated_user' | 'off'
+const deepSeekUserIsolationMode = ref<DeepSeekUserIsolationMode>('authenticated_user')
+const deepSeekResponsesWebSocketV2Mode = ref<DeepSeekWSMode>(DEEPSEEK_WS_MODE_OFF)
+const deepSeekWSModeTouched = ref(false)
 const codexCLIOnlyEnabled = ref(false)
 const codexCLIOnlyAppServerEnabled = ref(false)
 type CodexFingerprintMode = 'off' | 'device' | 'session' | 'full'
@@ -4053,6 +4346,36 @@ const openAIWSModeOptions = computed(() => [
   { value: OPENAI_WS_MODE_HTTP_BRIDGE, label: t('admin.accounts.openai.wsModeHttpBridge') }
 ])
 
+const deepSeekUserIsolationModeOptions = computed(() => [
+  {
+    value: 'authenticated_user' as DeepSeekUserIsolationMode,
+    label: t('admin.accounts.deepseek.userIsolationAuthenticatedUser')
+  },
+  {
+    value: 'off' as DeepSeekUserIsolationMode,
+    label: t('admin.accounts.deepseek.userIsolationOff')
+  }
+])
+const deepSeekWSModeOptions = computed(() => [
+  {
+    value: DEEPSEEK_WS_MODE_OFF,
+    label: t('admin.accounts.deepseek.wsModeOff')
+  },
+  {
+    value: DEEPSEEK_WS_MODE_HTTP_BRIDGE,
+    label: t('admin.accounts.deepseek.wsModeHttpBridge')
+  }
+])
+const deepSeekWSBridgeGloballyEnabled = computed(() =>
+  appStore.cachedPublicSettings?.deepseek_responses_websocket_http_bridge_enabled === true
+)
+const setDeepSeekWSMode = (value: unknown) => {
+  const mode = normalizeDeepSeekWSMode(value)
+  if (!mode) return
+  deepSeekWSModeTouched.value = true
+  deepSeekResponsesWebSocketV2Mode.value = mode
+}
+
 const openaiResponsesWebSocketV2Mode = computed({
   get: () => {
     if (form.platform === 'openai' && accountCategory.value === 'apikey') {
@@ -4246,16 +4569,18 @@ watch(
 // Reset platform-specific settings when platform changes
 watch(
   () => form.platform,
-  (newPlatform) => {
+  (newPlatform, oldPlatform) => {
     // Reset base URL based on platform
     apiKeyBaseUrl.value =
-      (newPlatform === 'openai')
-        ? 'https://api.openai.com'
-        : newPlatform === 'gemini'
-          ? 'https://generativelanguage.googleapis.com'
-          : newPlatform === 'grok'
-            ? 'https://api.x.ai/v1'
-            : 'https://api.anthropic.com'
+      newPlatform === 'kimi' || newPlatform === 'zhipu'
+        ? defaultCNBaseUrl(newPlatform, accountMode.value, apiProtocol.value)
+        : getDefaultApiKeyBaseUrl(newPlatform)
+    if (!isUpstreamBillingProbeIdentity(newPlatform, 'apikey')) {
+      accountCategory.value = 'apikey'
+      upstreamBillingAutoProbeEnabled.value = false
+    } else if (oldPlatform && !isUpstreamBillingProbeIdentity(oldPlatform, 'apikey')) {
+      upstreamBillingAutoProbeEnabled.value = true
+    }
     // Clear model-related settings
     allowedModels.value = []
     modelMappings.value = []
@@ -4313,6 +4638,12 @@ watch(
       codexCLIOnlyEnabled.value = false
       codexCLIOnlyAppServerEnabled.value = false
     }
+    deepSeekUserIsolationMode.value = 'authenticated_user'
+    deepSeekWSModeTouched.value = false
+    deepSeekResponsesWebSocketV2Mode.value = resolveDeepSeekWSModeFromExtra(
+      undefined,
+      newPlatform === 'deepseek' && deepSeekWSBridgeGloballyEnabled.value
+    )
     if (newPlatform !== 'anthropic') {
       anthropicPassthroughEnabled.value = false
       anthropicAPIKeyAuthScheme.value = 'x_api_key'
@@ -4333,6 +4664,11 @@ watch(
     grokOAuth.resetState()
   }
 )
+
+watch(deepSeekWSBridgeGloballyEnabled, (enabled) => {
+  if (form.platform !== 'deepseek' || deepSeekWSModeTouched.value) return
+  deepSeekResponsesWebSocketV2Mode.value = resolveDeepSeekWSModeFromExtra(undefined, enabled)
+})
 
 // Gemini AI Studio OAuth availability (requires operator-configured OAuth client)
 watch(
@@ -4696,6 +5032,8 @@ const resetForm = () => {
   form.expires_at = null
   accountCategory.value = 'oauth-based'
   addMethod.value = 'oauth'
+  accountMode.value = 'payg'
+  apiProtocol.value = 'chat_completions'
   apiKeyBaseUrl.value = 'https://api.anthropic.com'
   apiKeyValue.value = ''
   upstreamBillingAutoProbeEnabled.value = true
@@ -4739,6 +5077,12 @@ const resetForm = () => {
   openAIEndpointCapabilities.value = ['chat_completions', 'embeddings']
   openaiOAuthResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
   openaiAPIKeyResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
+  deepSeekUserIsolationMode.value = 'authenticated_user'
+  deepSeekResponsesWebSocketV2Mode.value = resolveDeepSeekWSModeFromExtra(
+    undefined,
+    deepSeekWSBridgeGloballyEnabled.value
+  )
+  deepSeekWSModeTouched.value = false
   codexCLIOnlyEnabled.value = false
   codexCLIOnlyAppServerEnabled.value = false
   codexFingerprintMode.value = 'off'
@@ -4900,6 +5244,18 @@ const buildAnthropicExtra = (base?: Record<string, unknown>): Record<string, unk
   }
 
   return Object.keys(extra).length > 0 ? extra : undefined
+}
+
+const buildDeepSeekExtra = (base?: Record<string, unknown>): Record<string, unknown> | undefined => {
+  if (form.platform !== 'deepseek' || accountCategory.value !== 'apikey') {
+    return base
+  }
+
+  return {
+    ...(base || {}),
+    deepseek_user_isolation_mode: deepSeekUserIsolationMode.value,
+    deepseek_responses_websockets_v2_mode: deepSeekResponsesWebSocketV2Mode.value
+  }
 }
 
 // Helper function to create account with mixed channel warning handling
@@ -5140,14 +5496,7 @@ const handleSubmit = async () => {
   }
 
   // Determine default base URL based on platform
-  const defaultBaseUrl =
-    form.platform === 'openai'
-      ? 'https://api.openai.com'
-      : form.platform === 'gemini'
-        ? 'https://generativelanguage.googleapis.com'
-        : form.platform === 'grok'
-          ? 'https://api.x.ai/v1'
-          : 'https://api.anthropic.com'
+  const defaultBaseUrl = getDefaultApiKeyBaseUrl(form.platform)
 
   // Build credentials with optional model mapping
   const credentials: Record<string, unknown> = {
@@ -5156,6 +5505,18 @@ const handleSubmit = async () => {
   }
   if (form.platform === 'gemini') {
     credentials.tier_id = geminiTierAIStudio.value
+  }
+
+  // Kimi/Zhipu use account_mode for quota probes and api_protocol for native routing.
+  if (form.platform === 'kimi' || form.platform === 'zhipu') {
+    credentials.account_mode = accountMode.value
+    credentials.api_protocol = apiProtocol.value
+    const resolvedCNBase = (
+      apiKeyBaseUrl.value.trim() || defaultCNBaseUrl(form.platform, accountMode.value, apiProtocol.value)
+    ).trim()
+    if (resolvedCNBase) {
+      credentials.base_url = resolvedCNBase
+    }
   }
 
   // Add model mapping if configured（OpenAI 开启自动透传时不应用）
@@ -5207,13 +5568,14 @@ const handleSubmit = async () => {
   }
 
   form.credentials = credentials
-  const extra = buildAnthropicExtra(buildOpenAIExtra())
+  const extra = buildDeepSeekExtra(buildAnthropicExtra(buildOpenAIExtra()))
 
   await doCreateAccount({
     ...form,
     group_ids: form.group_ids,
     extra,
-    upstream_billing_probe_enabled: upstreamBillingAutoProbeEnabled.value,
+    upstream_billing_probe_enabled:
+      isUpstreamBillingProbeIdentity(form.platform, form.type) && upstreamBillingAutoProbeEnabled.value,
     auto_pause_on_expired: autoPauseOnExpired.value
   })
 }
@@ -5342,9 +5704,9 @@ const createAccountAndFinish = async (
     rate_multiplier: form.rate_multiplier,
     group_ids: form.group_ids,
     expires_at: form.expires_at,
-    // 上游倍率探测对全部 API-key 平台开放（antigravity upstream 走本 helper）；
-    // 非 apikey 类型（bedrock/oauth）不传，后端不动作。
-    upstream_billing_probe_enabled: type === 'apikey' ? upstreamBillingAutoProbeEnabled.value : undefined,
+    upstream_billing_probe_enabled: type === 'apikey'
+      ? isUpstreamBillingProbeIdentity(platform, type) && upstreamBillingAutoProbeEnabled.value
+      : undefined,
     auto_pause_on_expired: autoPauseOnExpired.value
   })
 }
