@@ -306,30 +306,27 @@ PostgreSQL と Redis のコンテナを含む Docker Compose でデプロイし�
 - Docker 20.10+
 - Docker Compose v2+
 
-#### クイックスタート（ワンクリックデプロイ）
+#### クイックスタート（サーバー上でイメージをビルド）
 
-自動デプロイスクリプトを使用して簡単にセットアップできます:
+サーバーで本リポジトリをクローンし、シークレットを生成したあと、ソースからアプリケーションイメージをビルドします。Compose は `weishaw/sub2api` を pull **しません**。
 
 ```bash
-# デプロイ用ディレクトリを作成
-mkdir -p sub2api-deploy && cd sub2api-deploy
-
-# デプロイ準備スクリプトをダウンロードして実行
-curl -sSL https://raw.githubusercontent.com/Wei-Shaw/sub2api/main/deploy/docker-deploy.sh | bash
-
-# サービスを起動
-docker compose up -d
-
-# ログを表示
-docker compose logs -f sub2api
+git clone <this-repository> sub2api
+cd sub2api
+./deploy/docker-deploy.sh
+cd deploy
+docker compose -f docker-compose.local.yml up -d --build
 ```
 
 **スクリプトの動作内容:**
-- `docker-compose.local.yml`（`docker-compose.yml` として保存）と `.env.example` をダウンロード
-- セキュアな認証情報（JWT_SECRET、TOTP_ENCRYPTION_KEY、POSTGRES_PASSWORD）を自動生成
-- 自動生成されたシークレットで `.env` ファイルを作成
+- `deploy/.env` にセキュアな認証情報（JWT_SECRET、TOTP_ENCRYPTION_KEY、POSTGRES_PASSWORD）を生成
 - データディレクトリを作成（バックアップ・移行が容易なローカルディレクトリを使用）
 - 生成された認証情報を参照用に表示
+
+起動後のログ:
+```bash
+docker compose -f docker-compose.local.yml logs -f sub2api
+```
 
 #### 手動デプロイ
 
@@ -384,12 +381,12 @@ openssl rand -hex 32
 # 4. データディレクトリを作成（ローカルバージョンの場合）
 mkdir -p data postgres_data redis_data
 
-# 5. すべてのサービスを起動
-# オプション A: ローカルディレクトリバージョン（推奨 - 移行が容易）
-docker compose -f docker-compose.local.yml up -d
+# 5. ソースからアプリイメージをビルドして起動
+# オプション A: ローカルディレクトリ（データ移行向け・推奨）
+docker compose -f docker-compose.local.yml up -d --build
 
-# オプション B: 名前付きボリュームバージョン（シンプルなセットアップ）
-docker compose up -d
+# オプション B: 名前付きボリューム
+docker compose up -d --build
 
 # 6. ステータスを確認
 docker compose -f docker-compose.local.yml ps
@@ -405,7 +402,7 @@ docker compose -f docker-compose.local.yml logs -f sub2api
 | **docker-compose.local.yml** | ローカルディレクトリ | ✅ 容易（ディレクトリ全体を tar） | 本番環境、頻繁なバックアップ |
 | **docker-compose.yml** | 名前付きボリューム | ⚠️ docker コマンドが必要 | シンプルなセットアップ |
 
-**推奨:** データ管理が容易な `docker-compose.local.yml`（スクリプトによるデプロイ）を使用してください。
+**推奨:** 完全な git checkout 上で `docker-compose.local.yml` を使い、アプリイメージをソースからビルドしてください。
 
 #### アクセス
 
@@ -419,28 +416,29 @@ docker compose -f docker-compose.local.yml logs sub2api | grep "admin password"
 #### アップグレード
 
 ```bash
-# 最新イメージをプルしてコンテナを再作成
-docker compose -f docker-compose.local.yml pull
-docker compose -f docker-compose.local.yml up -d
+# ソースを取得し、サーバー上でイメージを再ビルドしてアプリコンテナを再作成
+git pull
+docker compose -f docker-compose.local.yml up -d --build
 ```
 
 #### 簡単な移行（ローカルディレクトリバージョン）
 
-`docker-compose.local.yml` を使用している場合、新しいサーバーへの移行が簡単です:
+`docker-compose.local.yml` ではデータと `.env` がローカルディレクトリにあります。新しいホストでは git checkout からアプリイメージを再ビルドします:
 
 ```bash
 # 移行元サーバーにて
+cd /path/to/sub2api/deploy
 docker compose -f docker-compose.local.yml down
-cd ..
-tar czf sub2api-complete.tar.gz sub2api-deploy/
+tar czf sub2api-data.tar.gz data postgres_data redis_data .env
 
 # 新しいサーバーに転送
-scp sub2api-complete.tar.gz user@new-server:/path/
+scp sub2api-data.tar.gz user@new-server:/path/
 
-# 移行先サーバーにて
-tar xzf sub2api-complete.tar.gz
-cd sub2api-deploy/
-docker compose -f docker-compose.local.yml up -d
+# 移行先サーバーにて: 本リポジトリをクローンし、データを復元して再ビルド
+git clone <this-repository> sub2api
+cd sub2api/deploy
+tar xzf /path/sub2api-data.tar.gz
+docker compose -f docker-compose.local.yml up -d --build
 ```
 
 #### よく使うコマンド

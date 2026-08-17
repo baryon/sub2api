@@ -307,30 +307,27 @@ curl -sSL https://raw.githubusercontent.com/Wei-Shaw/sub2api/main/deploy/install
 - Docker 20.10+
 - Docker Compose v2+
 
-#### 快速开始（一键部署）
+#### 快速开始（服务器编译镜像）
 
-使用自动化部署脚本快速搭建：
+在服务器上克隆本仓库，生成密钥后从源码构建应用镜像。Compose **不会**拉取 `weishaw/sub2api`。
 
 ```bash
-# 创建部署目录
-mkdir -p sub2api-deploy && cd sub2api-deploy
-
-# 下载并运行部署准备脚本
-curl -sSL https://raw.githubusercontent.com/Wei-Shaw/sub2api/main/deploy/docker-deploy.sh | bash
-
-# 启动服务
-docker compose up -d
-
-# 查看日志
-docker compose logs -f sub2api
+git clone <本仓库> sub2api
+cd sub2api
+./deploy/docker-deploy.sh
+cd deploy
+docker compose -f docker-compose.local.yml up -d --build
 ```
 
 **脚本功能：**
-- 下载 `docker-compose.local.yml`（本地保存为 `docker-compose.yml`）和 `.env.example`
-- 自动生成安全凭证（JWT_SECRET、TOTP_ENCRYPTION_KEY、POSTGRES_PASSWORD）
-- 创建 `.env` 文件并填充自动生成的密钥
+- 在 `deploy/.env` 中生成安全凭证（JWT_SECRET、TOTP_ENCRYPTION_KEY、POSTGRES_PASSWORD）
 - 创建数据目录（使用本地目录，便于备份和迁移）
 - 显示生成的凭证供你记录
+
+启动后查看日志：
+```bash
+docker compose -f docker-compose.local.yml logs -f sub2api
+```
 
 #### 手动部署
 
@@ -385,12 +382,12 @@ openssl rand -hex 32
 # 4. 创建数据目录（本地版）
 mkdir -p data postgres_data redis_data
 
-# 5. 启动所有服务
-# 选项 A：本地目录版（推荐 - 易于迁移）
-docker compose -f docker-compose.local.yml up -d
+# 5. 从源码构建应用镜像并启动
+# 选项 A：本地目录版（推荐 - 易于迁移数据）
+docker compose -f docker-compose.local.yml up -d --build
 
-# 选项 B：命名卷版（简单设置）
-docker compose up -d
+# 选项 B：命名卷版
+docker compose up -d --build
 
 # 6. 查看状态
 docker compose -f docker-compose.local.yml ps
@@ -406,7 +403,7 @@ docker compose -f docker-compose.local.yml logs -f sub2api
 | **docker-compose.local.yml** | 本地目录 | ✅ 简单（打包整个目录） | 生产环境、频繁备份 |
 | **docker-compose.yml** | 命名卷 | ⚠️ 需要 docker 命令 | 简单设置 |
 
-**推荐：** 使用 `docker-compose.local.yml`（脚本部署）以便更轻松地管理数据。
+**推荐：** 使用 `docker-compose.local.yml`，在完整 git 仓库中从源码构建应用镜像。
 
 #### 启用“数据管理”功能（datamanagementd）
 
@@ -432,28 +429,29 @@ docker compose -f docker-compose.local.yml logs sub2api | grep "admin password"
 #### 升级
 
 ```bash
-# 拉取最新镜像并重建容器
-docker compose -f docker-compose.local.yml pull
-docker compose -f docker-compose.local.yml up -d
+# 拉取源码，在服务器上重新编译镜像并重建应用容器
+git pull
+docker compose -f docker-compose.local.yml up -d --build
 ```
 
 #### 轻松迁移（本地目录版）
 
-使用 `docker-compose.local.yml` 时，可以轻松迁移到新服务器：
+使用 `docker-compose.local.yml` 时，数据和 `.env` 在本地目录；应用镜像在新机器上从 git 仓库重新编译：
 
 ```bash
 # 源服务器
+cd /path/to/sub2api/deploy
 docker compose -f docker-compose.local.yml down
-cd ..
-tar czf sub2api-complete.tar.gz sub2api-deploy/
+tar czf sub2api-data.tar.gz data postgres_data redis_data .env
 
 # 传输到新服务器
-scp sub2api-complete.tar.gz user@new-server:/path/
+scp sub2api-data.tar.gz user@new-server:/path/
 
-# 新服务器
-tar xzf sub2api-complete.tar.gz
-cd sub2api-deploy/
-docker compose -f docker-compose.local.yml up -d
+# 新服务器：克隆本仓库，恢复数据目录后重新 build
+git clone <本仓库> sub2api
+cd sub2api/deploy
+tar xzf /path/sub2api-data.tar.gz
+docker compose -f docker-compose.local.yml up -d --build
 ```
 
 #### 常用命令

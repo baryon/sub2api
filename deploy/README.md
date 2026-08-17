@@ -14,9 +14,9 @@ This directory contains files for deploying Sub2API on Linux servers and Apple-s
 
 | File | Description |
 |------|-------------|
-| `docker-compose.yml` | Docker Compose configuration (named volumes) |
-| `docker-compose.local.yml` | Docker Compose configuration (local directories, easy migration) |
-| `docker-deploy.sh` | **One-click Docker deployment script (recommended)** |
+| `docker-compose.yml` | Docker Compose (named volumes; builds app image from source) |
+| `docker-compose.local.yml` | Docker Compose (local directories; builds app image from source) |
+| `docker-deploy.sh` | Prepares `deploy/.env` and data dirs in a git checkout |
 | `apple-container.sh` | Native Apple `container` lifecycle script |
 | `APPLE_CONTAINER.md` | Apple `container` deployment and operations guide |
 | `.env.example` | Container environment variables template |
@@ -50,32 +50,24 @@ See [APPLE_CONTAINER.md](./APPLE_CONTAINER.md) for configuration, upgrades, pers
 
 ## Docker Deployment (Recommended)
 
-### Method 1: One-Click Deployment (Recommended)
+### Method 1: Prepare env, then build from source (Recommended)
 
-Use the automated preparation script for the easiest setup:
+Clone this repository onto the server, then generate secrets. The app image is compiled locally from the repo `Dockerfile`; compose will not pull `weishaw/sub2api`.
 
 ```bash
-# Download and run the preparation script
-curl -sSL https://raw.githubusercontent.com/Wei-Shaw/sub2api/main/deploy/docker-deploy.sh | bash
-
-# Or download first, then run
-curl -sSL https://raw.githubusercontent.com/Wei-Shaw/sub2api/main/deploy/docker-deploy.sh -o docker-deploy.sh
-chmod +x docker-deploy.sh
-./docker-deploy.sh
+git clone <this-repository> sub2api
+cd sub2api
+./deploy/docker-deploy.sh
+cd deploy
+docker compose -f docker-compose.local.yml up -d --build
 ```
 
 **What the script does:**
-- Downloads `docker-compose.local.yml` and `.env.example`
-- Automatically generates secure secrets (JWT_SECRET, TOTP_ENCRYPTION_KEY, POSTGRES_PASSWORD)
-- Creates `.env` file with generated secrets
-- Creates necessary data directories (data/, postgres_data/, redis_data/)
+- Generates secure secrets (JWT_SECRET, TOTP_ENCRYPTION_KEY, POSTGRES_PASSWORD) into `deploy/.env`
+- Creates data directories (`data/`, `postgres_data/`, `redis_data/`)
 - **Displays generated credentials** (POSTGRES_PASSWORD, JWT_SECRET, etc.)
 
-**After running the script:**
 ```bash
-# Start services
-docker compose -f docker-compose.local.yml up -d
-
 # View logs
 docker compose -f docker-compose.local.yml logs -f sub2api
 
@@ -109,8 +101,8 @@ echo "TOTP_ENCRYPTION_KEY=${TOTP_ENCRYPTION_KEY}" >> .env
 # Create data directories
 mkdir -p data postgres_data redis_data
 
-# Start all services using local directory version
-docker compose -f docker-compose.local.yml up -d
+# Build the app image from source and start all services
+docker compose -f docker-compose.local.yml up -d --build
 
 # View logs (check for auto-generated admin password)
 docker compose -f docker-compose.local.yml logs -f sub2api
@@ -126,7 +118,7 @@ docker compose -f docker-compose.local.yml logs -f sub2api
 | **docker-compose.local.yml** | Local directories (./data, ./postgres_data, ./redis_data) | ✅ Easy (tar entire directory) | Production, need frequent backups/migration |
 | **docker-compose.yml** | Named volumes (/var/lib/docker/volumes/) | ⚠️ Requires docker commands | Simple setup, don't need migration |
 
-**Recommendation:** Use `docker-compose.local.yml` (deployed by `docker-deploy.sh`) for easier data management and migration.
+**Recommendation:** Use `docker-compose.local.yml` with a full git checkout so the app image can be built from source.
 
 ### How Auto-Setup Works
 
@@ -183,8 +175,8 @@ SELECT
 For **local directory version** (docker-compose.local.yml):
 
 ```bash
-# Start services
-docker compose -f docker-compose.local.yml up -d
+# Build and start services
+docker compose -f docker-compose.local.yml up -d --build
 
 # Stop services
 docker compose -f docker-compose.local.yml down
@@ -192,12 +184,12 @@ docker compose -f docker-compose.local.yml down
 # View logs
 docker compose -f docker-compose.local.yml logs -f sub2api
 
-# Restart Sub2API only
+# Restart Sub2API only (does not rebuild)
 docker compose -f docker-compose.local.yml restart sub2api
 
-# Update to latest version
-docker compose -f docker-compose.local.yml pull
-docker compose -f docker-compose.local.yml up -d
+# Upgrade: fetch source, rebuild the app image, recreate the app container
+git pull
+docker compose -f docker-compose.local.yml up -d --build
 
 # Remove all data (caution!)
 docker compose -f docker-compose.local.yml down
@@ -207,8 +199,8 @@ rm -rf data/ postgres_data/ redis_data/
 For **named volumes version** (docker-compose.yml):
 
 ```bash
-# Start services
-docker compose up -d
+# Build and start services
+docker compose up -d --build
 
 # Stop services
 docker compose down
@@ -216,12 +208,12 @@ docker compose down
 # View logs
 docker compose logs -f sub2api
 
-# Restart Sub2API only
+# Restart Sub2API only (does not rebuild)
 docker compose restart sub2api
 
-# Update to latest version
-docker compose pull
-docker compose up -d
+# Upgrade: fetch source, rebuild the app image, recreate the app container
+git pull
+docker compose up -d --build
 
 # Remove all data (caution!)
 docker compose down -v
@@ -250,25 +242,23 @@ See `.env.example` for all available options.
 
 ### Easy Migration (Local Directory Version)
 
-When using `docker-compose.local.yml`, all data is stored in local directories, making migration simple:
+When using `docker-compose.local.yml`, application and database data live in local directories. The app image is rebuilt from a git checkout on the new host.
 
 ```bash
-# On source server: Stop services and create archive
-cd /path/to/deployment
+# On source server: Stop services and archive data + env
+cd /path/to/sub2api/deploy
 docker compose -f docker-compose.local.yml down
-cd ..
-tar czf sub2api-complete.tar.gz deployment/
+tar czf sub2api-data.tar.gz data postgres_data redis_data .env
 
 # Transfer to new server
-scp sub2api-complete.tar.gz user@new-server:/path/to/destination/
+scp sub2api-data.tar.gz user@new-server:/path/to/destination/
 
-# On new server: Extract and start
-tar xzf sub2api-complete.tar.gz
-cd deployment/
-docker compose -f docker-compose.local.yml up -d
+# On new server: clone this repo, restore data under deploy/, rebuild
+git clone <this-repository> sub2api
+cd sub2api/deploy
+tar xzf /path/to/destination/sub2api-data.tar.gz
+docker compose -f docker-compose.local.yml up -d --build
 ```
-
-Your entire deployment (configuration + data) is migrated!
 
 ---
 

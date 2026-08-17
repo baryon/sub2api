@@ -1,18 +1,27 @@
 # =============================================================================
 # Sub2API Docker Compose - Standalone Configuration
 # =============================================================================
+# Builds the application image from this repository (Dockerfile at repo root).
 # This configuration runs only the Sub2API application.
 # PostgreSQL and Redis must be provided externally.
 #
 # Usage:
 #   1. Copy .env.example to .env and configure database/redis connection
-#   2. docker-compose -f docker-compose.standalone.yml up -d
+#   2. docker compose -f docker-compose.standalone.yml up -d --build
 #   3. Access: http://localhost:8080
 # =============================================================================
 
 services:
   sub2api:
-    image: weishaw/sub2api:latest
+    image: ${SUB2API_IMAGE:-sub2api:local}
+    pull_policy: never
+    build:
+      context: ..
+      dockerfile: Dockerfile
+      args:
+        NPM_CONFIG_REGISTRY: ${NPM_CONFIG_REGISTRY:-https://registry.npmmirror.com}
+        GOPROXY: ${GOPROXY:-https://goproxy.cn,direct}
+        GOSUMDB: ${GOSUMDB:-sum.golang.google.cn}
     container_name: sub2api
     restart: unless-stopped
     security_opt:

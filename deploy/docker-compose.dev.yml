@@ -10,11 +10,15 @@
 
 services:
   sub2api:
+    image: sub2api:dev
+    pull_policy: never
     build:
       context: ..
       dockerfile: Dockerfile
       args:
         NPM_CONFIG_REGISTRY: ${NPM_CONFIG_REGISTRY:-https://registry.npmmirror.com}
+        GOPROXY: ${GOPROXY:-https://goproxy.cn,direct}
+        GOSUMDB: ${GOSUMDB:-sum.golang.google.cn}
     container_name: sub2api-dev
     restart: unless-stopped
     security_opt:

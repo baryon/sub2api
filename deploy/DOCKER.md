@@ -1,8 +1,19 @@
 # Sub2API Docker Image
 
-Sub2API is an AI API Gateway Platform for distributing and managing AI product subscription API quotas.
+This fork does **not** publish `weishaw/sub2api`. Build the application image from the repository `Dockerfile` on the server (see `deploy/docker-compose.local.yml`).
 
-## Quick Start
+Postgres and Redis still use public images (`postgres:18-alpine`, `redis:8-alpine`).
+
+Example:
+
+```bash
+cd deploy
+docker compose -f docker-compose.local.yml up -d --build
+```
+
+The Hub-oriented snippets below are retained only as a reference for the upstream project.
+
+## Quick Start (upstream Hub image, not this fork)
 
 ```bash
 docker run -d \

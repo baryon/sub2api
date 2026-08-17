@@ -305,30 +305,27 @@ Deploy with Docker Compose, including PostgreSQL and Redis containers.
 - Docker 20.10+
 - Docker Compose v2+
 
-#### Quick Start (One-Click Deployment)
+#### Quick Start (build image on the server)
 
-Use the automated deployment script for easy setup:
+Clone this repository onto the server, generate secrets, then compile the application image from source. Compose will **not** pull `weishaw/sub2api`.
 
 ```bash
-# Create deployment directory
-mkdir -p sub2api-deploy && cd sub2api-deploy
-
-# Download and run deployment preparation script
-curl -sSL https://raw.githubusercontent.com/Wei-Shaw/sub2api/main/deploy/docker-deploy.sh | bash
-
-# Start services
-docker compose up -d
-
-# View logs
-docker compose logs -f sub2api
+git clone <this-repository> sub2api
+cd sub2api
+./deploy/docker-deploy.sh
+cd deploy
+docker compose -f docker-compose.local.yml up -d --build
 ```
 
 **What the script does:**
-- Downloads `docker-compose.local.yml` (saved as `docker-compose.yml`) and `.env.example`
-- Generates secure credentials (JWT_SECRET, TOTP_ENCRYPTION_KEY, POSTGRES_PASSWORD)
-- Creates `.env` file with auto-generated secrets
-- Creates data directories (uses local directories for easy backup/migration)
+- Generates secure credentials (JWT_SECRET, TOTP_ENCRYPTION_KEY, POSTGRES_PASSWORD) into `deploy/.env`
+- Creates data directories (local directories for backup/migration)
 - Displays generated credentials for your reference
+
+Then follow logs:
+```bash
+docker compose -f docker-compose.local.yml logs -f sub2api
+```
 
 #### Manual Deployment
 
@@ -383,12 +380,12 @@ openssl rand -hex 32
 # 4. Create data directories (for local version)
 mkdir -p data postgres_data redis_data
 
-# 5. Start all services
-# Option A: Local directory version (recommended - easy migration)
-docker compose -f docker-compose.local.yml up -d
+# 5. Build the app image from source and start
+# Option A: local directories (recommended for data migration)
+docker compose -f docker-compose.local.yml up -d --build
 
-# Option B: Named volumes version (simple setup)
-docker compose up -d
+# Option B: named volumes
+docker compose up -d --build
 
 # 6. Check status
 docker compose -f docker-compose.local.yml ps
@@ -404,7 +401,7 @@ docker compose -f docker-compose.local.yml logs -f sub2api
 | **docker-compose.local.yml** | Local directories | ✅ Easy (tar entire directory) | Production, frequent backups |
 | **docker-compose.yml** | Named volumes | ⚠️ Requires docker commands | Simple setup |
 
-**Recommendation:** Use `docker-compose.local.yml` (deployed by script) for easier data management.
+**Recommendation:** Use `docker-compose.local.yml` from a full git checkout so the app image is built from source.
 
 #### Access
 
@@ -418,28 +415,29 @@ docker compose -f docker-compose.local.yml logs sub2api | grep "admin password"
 #### Upgrade
 
 ```bash
-# Pull latest image and recreate container
-docker compose -f docker-compose.local.yml pull
-docker compose -f docker-compose.local.yml up -d
+# Fetch source, rebuild the image on the server, recreate the app container
+git pull
+docker compose -f docker-compose.local.yml up -d --build
 ```
 
 #### Easy Migration (Local Directory Version)
 
-When using `docker-compose.local.yml`, migrate to a new server easily:
+When using `docker-compose.local.yml`, data and `.env` live in local directories; rebuild the app image from a git checkout on the new host:
 
 ```bash
 # On source server
+cd /path/to/sub2api/deploy
 docker compose -f docker-compose.local.yml down
-cd ..
-tar czf sub2api-complete.tar.gz sub2api-deploy/
+tar czf sub2api-data.tar.gz data postgres_data redis_data .env
 
 # Transfer to new server
-scp sub2api-complete.tar.gz user@new-server:/path/
+scp sub2api-data.tar.gz user@new-server:/path/
 
-# On new server
-tar xzf sub2api-complete.tar.gz
-cd sub2api-deploy/
-docker compose -f docker-compose.local.yml up -d
+# On new server: clone this repo, restore data, rebuild
+git clone <this-repository> sub2api
+cd sub2api/deploy
+tar xzf /path/sub2api-data.tar.gz
+docker compose -f docker-compose.local.yml up -d --build
 ```
 
 #### Useful Commands
