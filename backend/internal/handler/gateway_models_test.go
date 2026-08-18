@@ -42,7 +42,15 @@ type gatewayReasoningEffortOptionForTest struct {
 }
 
 type codexModelForTest struct {
-	Slug string `json:"slug"`
+	Slug                  string `json:"slug"`
+	DisplayName           string `json:"display_name"`
+	Visibility            string `json:"visibility"`
+	SupportedInAPI        bool   `json:"supported_in_api"`
+	ContextWindow         int64  `json:"context_window"`
+	DefaultReasoningLevel string `json:"default_reasoning_level"`
+	ModelMessages         struct {
+		InstructionsTemplate string `json:"instructions_template"`
+	} `json:"model_messages"`
 }
 
 type codexModelsResponseForTest struct {
@@ -148,6 +156,12 @@ func TestGatewayCodexModels_ListsAdminConfiguredDeepSeekModel(t *testing.T) {
 	var got codexModelsResponseForTest
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
 	require.Equal(t, []string{"deepseek-4-pro"}, codexModelSlugsForTest(got.Models))
+	require.Equal(t, "list", got.Models[0].Visibility)
+	require.True(t, got.Models[0].SupportedInAPI)
+	require.Equal(t, int64(1_000_000), got.Models[0].ContextWindow)
+	require.Equal(t, "high", got.Models[0].DefaultReasoningLevel)
+	require.Equal(t, "DeepSeek V4 Pro", got.Models[0].DisplayName)
+	require.NotEmpty(t, got.Models[0].ModelMessages.InstructionsTemplate)
 }
 
 func TestGatewayCodexModels_UsesOnlyCurrentGroupsSchedulableModels(t *testing.T) {
@@ -840,6 +854,71 @@ func TestGatewayModels_OpenAICustomModelsListKeepsOpenAIResponseShapeForDefaultF
 	require.NotZero(t, got.Data[0].Created)
 	require.Equal(t, "openai", got.Data[0].OwnedBy)
 	require.Empty(t, got.Data[0].CreatedAt)
+}
+
+func TestListClientVisibleModelIDsUsesGroupAccountMapping(t *testing.T) {
+	groupID := int64(61)
+	h := newGatewayModelsHandlerForTest(
+		&gatewayModelsAccountRepoStub{
+			byGroup: map[int64][]service.Account{
+				groupID: {
+					{
+						ID:       1,
+						Platform: service.PlatformDeepSeek,
+						Credentials: map[string]any{
+							"model_mapping": map[string]any{
+								"deepseek-4-pro": "deepseek-v4-pro",
+							},
+						},
+					},
+				},
+			},
+		},
+	)
+
+	got := listClientVisibleModelIDs(context.Background(), h.gatewayService, &service.Group{
+		ID:       groupID,
+		Platform: service.PlatformDeepSeek,
+	}, "")
+	require.Equal(t, []string{"deepseek-4-pro"}, got)
+}
+
+func TestListClientVisibleModelIDsFallsBackToPlatformDefaults(t *testing.T) {
+	groupID := int64(62)
+	h := newGatewayModelsHandlerForTest(
+		&gatewayModelsAccountRepoStub{
+			byGroup: map[int64][]service.Account{
+				groupID: {{ID: 1, Platform: service.PlatformDeepSeek}},
+			},
+		},
+	)
+
+	got := listClientVisibleModelIDs(context.Background(), h.gatewayService, &service.Group{
+		ID:       groupID,
+		Platform: service.PlatformDeepSeek,
+	}, "")
+	require.Equal(t, []string{"deepseek-v4-flash", "deepseek-v4-pro"}, got)
+}
+
+func TestListClientVisibleModelIDsAppliesCustomList(t *testing.T) {
+	groupID := int64(63)
+	h := newGatewayModelsHandlerForTest(
+		&gatewayModelsAccountRepoStub{
+			byGroup: map[int64][]service.Account{
+				groupID: {{ID: 1, Platform: service.PlatformDeepSeek}},
+			},
+		},
+	)
+
+	got := listClientVisibleModelIDs(context.Background(), h.gatewayService, &service.Group{
+		ID:       groupID,
+		Platform: service.PlatformDeepSeek,
+		ModelsListConfig: service.GroupModelsListConfig{
+			Enabled: true,
+			Models:  []string{"deepseek-v4-pro"},
+		},
+	}, "")
+	require.Equal(t, []string{"deepseek-v4-pro"}, got)
 }
 
 func modelIDsForTest(models []gatewayModelItemForTest) []string {

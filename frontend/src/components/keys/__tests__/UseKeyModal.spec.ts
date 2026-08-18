@@ -707,4 +707,43 @@ describe('UseKeyModal', () => {
     expect(fable.options.thinking).toEqual({ type: 'adaptive' })
     expect(fable.options.thinking).not.toHaveProperty('budgetTokens')
   })
+
+  it('lists group models and uses them in the Codex snippet', async () => {
+    const wrapper = mount(UseKeyModal, {
+      props: {
+        show: true,
+        apiKey: 'sk-deepseek-test',
+        baseUrl: 'https://example.com/v1',
+        platform: 'deepseek',
+        models: ['deepseek-4-pro', 'deepseek-v4-flash']
+      },
+      global: {
+        stubs: {
+          BaseDialog: {
+            template: '<div><slot /><slot name="footer" /></div>'
+          },
+          Icon: {
+            template: '<span />'
+          }
+        }
+      }
+    })
+
+    const guide = wrapper.get('[data-testid="model-switch-guide"]')
+    expect(guide.text()).toContain('deepseek-4-pro')
+    expect(guide.text()).toContain('deepseek-v4-flash')
+    expect(guide.text()).toContain('keys.useKeyModal.modelSwitch.codex')
+    expect(guide.text()).toContain('keys.useKeyModal.modelSwitch.claude')
+
+    const codexTab = wrapper.findAll('button').find((button) =>
+      button.text().includes('keys.useKeyModal.cliTabs.codexCli')
+    )
+    expect(codexTab).toBeDefined()
+    await codexTab!.trigger('click')
+    await nextTick()
+
+    const configToml = wrapper.findAll('pre code').map((code) => code.text()).join('\n')
+    expect(configToml).toContain('model = "deepseek-4-pro"')
+    expect(configToml).toContain('/model deepseek-4-pro')
+  })
 })

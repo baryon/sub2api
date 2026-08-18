@@ -207,6 +207,13 @@ export default {
         subtitle: 'opencode.json',
         hint: 'Config path: ~/.config/opencode/opencode.json (or opencode.jsonc), create if not exists. Use default providers (openai/anthropic/google) or custom provider_id. API Key can be configured directly or via /connect command. This is an example, adjust models and options as needed.',
       },
+      modelSwitch: {
+        title: 'Switch models',
+        description: 'These IDs are what this group currently exposes. Copy one, then switch in the client.',
+        codex: 'Codex: run /model {model}, or set model and review_model in config.toml to one of the IDs above.',
+        claude:
+          'Claude Code: run /model {model}, or set ANTHROPIC_MODEL / ANTHROPIC_DEFAULT_OPUS_MODEL / ANTHROPIC_DEFAULT_SONNET_MODEL / ANTHROPIC_DEFAULT_HAIKU_MODEL.',
+      },
     },
     customKeyLabel: 'Custom Key',
     customKeyPlaceholder: 'Enter your custom key (min 16 chars)',

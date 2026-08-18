@@ -7,10 +7,12 @@ import KeysView from '../KeysView.vue'
 
 const {
   listKeys,
+  createKey,
   getPublicSettings,
   getDashboardApiKeysUsage,
   getAvailableGroups,
   getUserGroupRates,
+  getClientModels,
   showError,
   showSuccess,
   copyToClipboard,
@@ -18,10 +20,12 @@ const {
   nextStep,
 } = vi.hoisted(() => ({
   listKeys: vi.fn(),
+  createKey: vi.fn(),
   getPublicSettings: vi.fn(),
   getDashboardApiKeysUsage: vi.fn(),
   getAvailableGroups: vi.fn(),
   getUserGroupRates: vi.fn(),
+  getClientModels: vi.fn(),
   showError: vi.fn(),
   showSuccess: vi.fn(),
   copyToClipboard: vi.fn(),
@@ -59,7 +63,7 @@ const messages: Record<string, string> = {
 vi.mock('@/api', () => ({
   keysAPI: {
     list: listKeys,
-    create: vi.fn(),
+    create: createKey,
     update: vi.fn(),
     delete: vi.fn(),
     toggleStatus: vi.fn(),
@@ -73,6 +77,7 @@ vi.mock('@/api', () => ({
   userGroupsAPI: {
     getAvailable: getAvailableGroups,
     getUserGroupRates,
+    getClientModels,
   },
 }))
 
@@ -267,6 +272,8 @@ describe('user KeysView column settings', () => {
     getDashboardApiKeysUsage.mockReset()
     getAvailableGroups.mockReset()
     getUserGroupRates.mockReset()
+    getClientModels.mockReset()
+    createKey.mockReset()
     showError.mockReset()
     showSuccess.mockReset()
     copyToClipboard.mockReset()
@@ -284,6 +291,7 @@ describe('user KeysView column settings', () => {
     getDashboardApiKeysUsage.mockResolvedValue({ stats: {} })
     getAvailableGroups.mockResolvedValue([])
     getUserGroupRates.mockResolvedValue({})
+    getClientModels.mockResolvedValue([])
     isCurrentStep.mockReturnValue(false)
   })
 
@@ -397,6 +405,7 @@ describe('user KeysView column settings', () => {
   })
 
   it('passes the server-computed group WebSocket capability to the key guide', async () => {
+    getClientModels.mockResolvedValue(['deepseek-v4-pro'])
     listKeys.mockResolvedValueOnce({
       items: [{
         ...createApiKey(),
@@ -416,11 +425,13 @@ describe('user KeysView column settings', () => {
     const wrapper = await mountView()
 
     await getButtonByText(wrapper, 'Use Key').trigger('click')
-    await nextTick()
+    await flushPromises()
 
     const modal = wrapper.findComponent({ name: 'UseKeyModal' })
     expect(modal.props('platform')).toBe('deepseek')
     expect(modal.props('supportsWebsockets')).toBe(true)
+    expect(getClientModels).toHaveBeenCalledWith(7)
+    expect(modal.props('models')).toEqual(['deepseek-v4-pro'])
   })
 
   it('marks current concurrency as sortable', async () => {
@@ -466,5 +477,69 @@ describe('user KeysView column settings', () => {
       },
       expect.objectContaining({ signal: expect.any(AbortSignal) })
     )
+  })
+
+  it('opens the use-key guide after creating a key', async () => {
+    const group = {
+      id: 42,
+      name: 'DeepSeek',
+      platform: 'deepseek',
+      description: null,
+      allow_messages_dispatch: false,
+      codex_supports_websockets: false,
+    }
+    getAvailableGroups.mockResolvedValue([group])
+    getClientModels.mockResolvedValue(['deepseek-v4-flash', 'deepseek-v4-pro'])
+    createKey.mockResolvedValue({
+      ...createApiKey(),
+      id: 9,
+      name: 'new-key',
+      group_id: 42,
+      key: 'sk-created',
+    })
+
+    const wrapper = mount(KeysView, {
+      global: {
+        stubs: {
+          AppLayout: AppLayoutStub,
+          TablePageLayout: TablePageLayoutStub,
+          DataTable: DataTableStub,
+          Pagination: PaginationStub,
+          BaseDialog: {
+            props: ['show'],
+            template: '<div v-if="show"><slot /><slot name="footer" /></div>',
+          },
+          ConfirmDialog: true,
+          EmptyState: true,
+          Select: SelectStub,
+          SearchInput: SearchInputStub,
+          Icon: IconStub,
+          UseKeyModal: true,
+          EndpointPopover: true,
+          GroupBadge: true,
+          GroupOptionItem: true,
+          Teleport: true,
+        },
+      },
+    })
+    await flushPromises()
+
+    await getButtonByText(wrapper, 'Create API Key').trigger('click')
+    await nextTick()
+    await wrapper.get('[data-tour="key-form-name"]').setValue('new-key')
+
+    const groupSelect = wrapper.get('#key-form').findComponent({ name: 'Select' })
+    await groupSelect.vm.$emit('update:modelValue', 42)
+    await nextTick()
+    await wrapper.get('#key-form').trigger('submit')
+    await flushPromises()
+
+    expect(createKey).toHaveBeenCalled()
+    const modal = wrapper.findComponent({ name: 'UseKeyModal' })
+    expect(modal.props('show')).toBe(true)
+    expect(modal.props('apiKey')).toBe('sk-created')
+    expect(modal.props('platform')).toBe('deepseek')
+    expect(getClientModels).toHaveBeenCalledWith(42)
+    expect(modal.props('models')).toEqual(['deepseek-v4-flash', 'deepseek-v4-pro'])
   })
 })

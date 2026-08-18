@@ -1099,7 +1099,7 @@ func (h *GatewayHandler) Models(c *gin.Context) {
 	}
 
 	if platform == service.PlatformComposite {
-		availableModels := h.compositeAvailableModels(c.Request.Context(), groupID)
+		availableModels := listCompositeAvailableModels(c.Request.Context(), h.gatewayService, groupID)
 		if apiKey != nil && apiKey.Group != nil && apiKey.Group.CustomModelsListEnabled() {
 			availableModels = filterModelsByCustomList(availableModels, defaultModelIDsForPlatform(service.PlatformComposite), apiKey.Group.ModelsListConfig.Models)
 			writeCustomModelsList(c, service.PlatformComposite, availableModels)
@@ -1173,80 +1173,45 @@ func (h *GatewayHandler) CodexModels(c *gin.Context) {
 		return
 	}
 
-	groupID := apiKey.Group.ID
+	forcedPlatform := ""
+	if value, ok := middleware2.GetForcePlatformFromContext(c); ok {
+		forcedPlatform = strings.TrimSpace(value)
+	}
 	platform := apiKey.Group.Platform
-	if forcedPlatform, ok := middleware2.GetForcePlatformFromContext(c); ok && strings.TrimSpace(forcedPlatform) != "" {
+	if forcedPlatform != "" {
 		platform = forcedPlatform
 	}
-
-	var modelIDs []string
-	if platform == service.PlatformComposite {
-		modelIDs = h.compositeAvailableModels(c.Request.Context(), &groupID)
-		if apiKey.Group.CustomModelsListEnabled() {
-			modelIDs = filterModelsByCustomList(modelIDs, nil, apiKey.Group.ModelsListConfig.Models)
+	modelIDs := listClientVisibleModelIDs(c.Request.Context(), h.gatewayService, apiKey.Group, forcedPlatform)
+	if platform == service.PlatformDeepSeek {
+		manifest, err := service.BuildDeepSeekCodexModelsManifest(modelIDs)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"error": gin.H{
+					"type":    "api_error",
+					"message": "Failed to build DeepSeek Codex models manifest",
+				},
+			})
+			return
 		}
-	} else {
-		modelIDs = h.gatewayService.GetAvailableModels(c.Request.Context(), &groupID, platform)
-		schedulablePlatforms := h.gatewayService.GetSchedulablePlatforms(c.Request.Context(), &groupID)
-		fallbackModels := []string(nil)
-		if _, available := schedulablePlatforms[platform]; available {
-			fallbackModels = defaultModelIDsForPlatform(platform)
-		}
-
-		if apiKey.Group.CustomModelsListEnabled() {
-			source := customModelsListSource(platform, modelIDs, fallbackModels)
-			modelIDs = filterModelsByCustomList(source, fallbackModels, apiKey.Group.ModelsListConfig.Models)
-		} else if len(modelIDs) == 0 {
-			modelIDs = fallbackModels
-		}
+		c.Data(http.StatusOK, "application/json", manifest)
+		return
 	}
 
 	type codexModel struct {
 		Slug string `json:"slug"`
 	}
 	models := make([]codexModel, 0, len(modelIDs))
-	for _, modelID := range mergeModelIDs(modelIDs, nil) {
+	for _, modelID := range modelIDs {
 		models = append(models, codexModel{Slug: modelID})
 	}
 	c.JSON(http.StatusOK, gin.H{"models": models})
 }
 
 func (h *GatewayHandler) compositeAvailableModels(ctx context.Context, groupID *int64) []string {
-	if h == nil || h.gatewayService == nil {
+	if h == nil {
 		return nil
 	}
-	seen := make(map[string]struct{})
-	models := make([]string, 0)
-	schedulablePlatforms := h.gatewayService.GetSchedulablePlatforms(ctx, groupID)
-	for _, platform := range []string{
-		service.PlatformAnthropic,
-		service.PlatformGemini,
-		service.PlatformOpenAI,
-		service.PlatformAntigravity,
-		service.PlatformGrok,
-		service.PlatformDeepSeek,
-		service.PlatformKimi,
-		service.PlatformZhipu,
-	} {
-		platformModels := h.gatewayService.GetAvailableModels(ctx, groupID, platform)
-		if len(platformModels) == 0 {
-			if _, ok := schedulablePlatforms[platform]; ok {
-				platformModels = defaultModelIDsForPlatform(platform)
-			}
-		}
-		for _, model := range platformModels {
-			model = strings.TrimSpace(model)
-			if model == "" {
-				continue
-			}
-			if _, ok := seen[model]; ok {
-				continue
-			}
-			seen[model] = struct{}{}
-			models = append(models, model)
-		}
-	}
-	return models
+	return listCompositeAvailableModels(ctx, h.gatewayService, groupID)
 }
 
 func writeModelsList(c *gin.Context, platform string, modelIDs []string) {

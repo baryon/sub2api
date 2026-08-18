@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -35,6 +36,63 @@ type codexModelsVisibilityAccountRepo struct {
 func (r codexModelsVisibilityAccountRepo) ListSchedulableByGroupID(_ context.Context, groupID int64) ([]Account, error) {
 	accounts := r.byGroup[groupID]
 	return append([]Account(nil), accounts...), nil
+}
+
+func decodeCodexManifestModels(t *testing.T, body []byte) []map[string]any {
+	t.Helper()
+
+	var envelope struct {
+		Models []map[string]any `json:"models"`
+	}
+	require.NoError(t, json.Unmarshal(body, &envelope))
+	return envelope.Models
+}
+
+func requireCompleteConfiguredCodexModel(t *testing.T, model map[string]any, slug string) {
+	t.Helper()
+
+	require.Equal(t, slug, model["slug"])
+	require.NotEmpty(t, model["display_name"])
+	require.NotEmpty(t, model["description"])
+	require.Equal(t, "shell_command", model["shell_type"])
+	require.Equal(t, "list", model["visibility"])
+	require.Equal(t, true, model["supported_in_api"])
+	require.NotNil(t, model["priority"])
+	require.Contains(t, model, "availability_nux")
+	require.Contains(t, model, "upgrade")
+	require.Contains(t, model, "default_verbosity")
+	require.Contains(t, model, "apply_patch_tool_type")
+	require.Contains(t, model, "truncation_policy")
+	require.Contains(t, model, "supports_parallel_tool_calls")
+	require.Contains(t, model, "experimental_supported_tools")
+	modelMessages, ok := model["model_messages"].(map[string]any)
+	require.True(t, ok)
+	require.NotEmpty(t, modelMessages["instructions_template"])
+}
+
+func TestNewConfiguredCodexModelDescriptorUsesProviderMetadataAndSafeFallback(t *testing.T) {
+	t.Parallel()
+
+	deepSeek := newConfiguredCodexModelDescriptor("deepseek-v4-pro")
+	require.Equal(t, "DeepSeek V4 Pro", deepSeek.DisplayName)
+	require.Equal(t, int64(1_000_000), deepSeek.ContextWindow)
+	require.Equal(t, int64(1_000_000), deepSeek.MaxContextWindow)
+	require.NotNil(t, deepSeek.DefaultReasoningLevel)
+	require.Equal(t, "high", *deepSeek.DefaultReasoningLevel)
+	require.Equal(t, []configuredCodexReasoningLevel{
+		{Effort: "low", Description: "Fast responses with lighter reasoning"},
+		{Effort: "high", Description: "Greater reasoning depth for coding and agent tasks"},
+		{Effort: "max", Description: "Maximum reasoning depth for complex tasks"},
+	}, deepSeek.SupportedReasoningLevels)
+	require.True(t, deepSeek.SupportsParallelToolCalls)
+
+	custom := newConfiguredCodexModelDescriptor("company-coding-model")
+	require.Equal(t, "company-coding-model", custom.DisplayName)
+	require.Equal(t, int64(272_000), custom.ContextWindow)
+	require.Nil(t, custom.DefaultReasoningLevel)
+	require.Empty(t, custom.SupportedReasoningLevels)
+	require.False(t, custom.SupportsParallelToolCalls)
+	require.NotEmpty(t, custom.ModelMessages.InstructionsTemplate)
 }
 
 func TestMergeGroupConfiguredCodexModelsInjectsCurrentGroupAliases(t *testing.T) {
@@ -74,13 +132,15 @@ func TestMergeGroupConfiguredCodexModelsInjectsCurrentGroupAliases(t *testing.T)
 		"",
 	)
 	require.NoError(t, err)
-	require.JSONEq(t, `{
-		"models": [
-			{"slug":"gpt-5.6","display_name":"GPT-5.6","unknown":{"kept":true}},
-			{"slug":"deepseek-4-pro"}
-		],
-		"metadata":{"version":1}
-	}`, string(manifest.Body))
+	models := decodeCodexManifestModels(t, manifest.Body)
+	require.Len(t, models, 2)
+	require.Equal(t, "gpt-5.6", models[0]["slug"])
+	require.Equal(t, map[string]any{"kept": true}, models[0]["unknown"])
+	requireCompleteConfiguredCodexModel(t, models[1], "deepseek-4-pro")
+	require.EqualValues(t, 1_000_000, models[1]["context_window"])
+	require.EqualValues(t, 1_000_000, models[1]["max_context_window"])
+	require.Equal(t, "high", models[1]["default_reasoning_level"])
+	require.Len(t, models[1]["supported_reasoning_levels"], 3)
 	require.NotContains(t, string(manifest.Body), "other-group-model")
 	require.Equal(t, codexModelsManifestBodyETag(manifest.Body), manifest.ETag)
 }
@@ -116,7 +176,9 @@ func TestMergeGroupConfiguredCodexModelsHonorsCustomListAndFinalETag(t *testing.
 	manifest := &CodexModelsManifest{Body: upstreamBody}
 
 	require.NoError(t, svc.MergeGroupConfiguredCodexModels(context.Background(), group, manifest, ""))
-	require.JSONEq(t, `{"models":[{"slug":"deepseek-4-pro"}]}`, string(manifest.Body))
+	models := decodeCodexManifestModels(t, manifest.Body)
+	require.Len(t, models, 1)
+	requireCompleteConfiguredCodexModel(t, models[0], "deepseek-4-pro")
 
 	finalETag := manifest.ETag
 	second := &CodexModelsManifest{Body: upstreamBody}
@@ -505,7 +567,7 @@ func TestFetchCodexModelsManifestMissingToken(t *testing.T) {
 }
 
 func TestFetchCodexModelsManifestAPIKeyCustomUpstream(t *testing.T) {
-	manifestBody := `{"models":[{"slug":"gpt-5.6"}]}`
+	manifestBody := `{"models":[{"slug":"deepseek-v4-pro"}]}`
 	var gotRequest *http.Request
 	var gotProxyURL string
 	var gotAccountID int64
@@ -562,12 +624,13 @@ func TestFetchCodexModelsManifestAPIKeyCustomUpstream(t *testing.T) {
 	if gotProxyURL != "" || gotAccountID != 2 || gotConcurrency != 3 {
 		t.Errorf("upstream routing metadata: proxy=%q account_id=%d concurrency=%d", gotProxyURL, gotAccountID, gotConcurrency)
 	}
-	if string(manifest.Body) != manifestBody {
-		t.Errorf("body not passed through verbatim: got %q", manifest.Body)
-	}
-	if manifest.ETag != `W/"api-key-manifest"` {
-		t.Errorf("etag not passed through: got %q", manifest.ETag)
-	}
+	models := decodeCodexManifestModels(t, manifest.Body)
+	require.Len(t, models, 1)
+	requireCompleteConfiguredCodexModel(t, models[0], "deepseek-v4-pro")
+	require.Equal(t, "DeepSeek V4 Pro", models[0]["display_name"])
+	require.EqualValues(t, 1_000_000, models[0]["context_window"])
+	require.Equal(t, codexModelsManifestBodyETag(manifest.Body), manifest.ETag)
+	require.Equal(t, `W/"api-key-manifest"`, manifest.upstreamETag)
 }
 
 func TestFetchCodexModelsManifestAPIKeyConvertsStandardOpenAIModelList(t *testing.T) {
@@ -592,9 +655,7 @@ func TestFetchCodexModelsManifestAPIKeyConvertsStandardOpenAIModelList(t *testin
 	if err != nil {
 		t.Fatalf("FetchCodexModelsManifest returned error: %v", err)
 	}
-	if got, want := string(manifest.Body), `{"models":[{"slug":"gpt-5.6"},{"slug":"gpt-5.6-codex"}]}`; got != want {
-		t.Errorf("converted body: got %q, want %q", got, want)
-	}
+	require.JSONEq(t, `{"models":[{"slug":"gpt-5.6"},{"slug":"gpt-5.6-codex"}]}`, string(manifest.Body))
 	require.Equal(t, codexModelsManifestBodyETag(manifest.Body), manifest.ETag)
 	require.Equal(t, `W/"openai-list"`, manifest.upstreamETag)
 }
@@ -670,17 +731,27 @@ func TestFetchCodexModelsManifestOAuthPreservesResponsesLite(t *testing.T) {
 	require.Equal(t, manifestBody, string(manifest.Body))
 }
 
-func TestConvertOpenAIModelListToCodexManifest(t *testing.T) {
+func TestConvertOpenAIModelListToCompleteCodexManifest(t *testing.T) {
+	t.Parallel()
+
+	body := []byte(`{"object":"list","data":[{"id":"deepseek-v4-flash"},{"id":"deepseek-v4-pro"}]}`)
+	models := decodeCodexManifestModels(t, convertOpenAIModelListToCodexManifest(body))
+
+	require.Len(t, models, 2)
+	requireCompleteConfiguredCodexModel(t, models[0], "deepseek-v4-flash")
+	requireCompleteConfiguredCodexModel(t, models[1], "deepseek-v4-pro")
+	require.Equal(t, "DeepSeek V4 Flash", models[0]["display_name"])
+	require.Equal(t, "DeepSeek V4 Pro", models[1]["display_name"])
+	require.EqualValues(t, 1_000_000, models[0]["context_window"])
+	require.EqualValues(t, 1_000_000, models[1]["context_window"])
+}
+
+func TestConvertOpenAIModelListToCodexManifestLeavesUnsupportedBodiesUnchanged(t *testing.T) {
 	tests := []struct {
 		name string
 		body string
 		want string
 	}{
-		{
-			name: "standard list",
-			body: `{"object":"list","data":[{"id":"m-1"},{"id":"m-2"}]}`,
-			want: `{"models":[{"slug":"m-1"},{"slug":"m-2"}]}`,
-		},
 		{
 			name: "codex manifest unchanged",
 			body: `{"models":[{"slug":"m-1"}]}`,

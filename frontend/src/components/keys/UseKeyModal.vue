@@ -28,6 +28,39 @@
           {{ platformDescription }}
         </p>
 
+        <div
+          v-if="showModelSwitchGuide"
+          data-testid="model-switch-guide"
+          class="rounded-lg border border-gray-200 p-3 dark:border-dark-700"
+        >
+          <p class="text-sm font-medium text-gray-900 dark:text-white">
+            {{ t('keys.useKeyModal.modelSwitch.title') }}
+          </p>
+          <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+            {{ t('keys.useKeyModal.modelSwitch.description') }}
+          </p>
+          <div v-if="resolvedModels.length" class="mt-2 flex max-h-24 flex-wrap gap-1.5 overflow-y-auto">
+            <button
+              v-for="modelID in resolvedModels"
+              :key="modelID"
+              type="button"
+              class="rounded-md bg-gray-100 px-2 py-1 font-mono text-xs text-gray-800 transition-colors hover:bg-gray-200 dark:bg-dark-700 dark:text-gray-200 dark:hover:bg-dark-600"
+              :class="copiedModelID === modelID ? 'ring-1 ring-primary-400' : ''"
+              @click="copyModelID(modelID)"
+            >
+              {{ modelID }}
+            </button>
+          </div>
+          <ul class="mt-2 space-y-1 text-xs leading-5 text-gray-600 dark:text-gray-300">
+            <li v-if="showCodexSwitchHint">
+              {{ t('keys.useKeyModal.modelSwitch.codex', { model: defaultCodexModel || '<model-id>' }) }}
+            </li>
+            <li v-if="showClaudeSwitchHint">
+              {{ t('keys.useKeyModal.modelSwitch.claude', { model: defaultClaudeModel || '<model-id>' }) }}
+            </li>
+          </ul>
+        </div>
+
         <!-- Client Tabs -->
         <div v-if="clientTabs.length" class="overflow-x-auto border-b border-gray-200 dark:border-dark-700">
           <nav class="-mb-px flex min-w-max gap-4 sm:gap-6" aria-label="Client">
@@ -202,6 +235,14 @@ import BaseDialog from '@/components/common/BaseDialog.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { useClipboard } from '@/composables/useClipboard'
 import type { GroupPlatform } from '@/types'
+import {
+  claudeAliasesFromModels,
+  pickDefaultCodexModel,
+  resolveClientSetupModels,
+  showsClaudeModelSwitch,
+  showsCodexModelSwitch,
+  type ClaudeModelAliases
+} from '@/utils/clientSetupModels'
 
 interface Props {
   show: boolean
@@ -210,6 +251,7 @@ interface Props {
   platform: GroupPlatform | null
   allowMessagesDispatch?: boolean
   supportsWebsockets?: boolean
+  models?: string[]
 }
 
 interface Emits {
@@ -236,12 +278,25 @@ const { t } = useI18n()
 const { copyToClipboard: clipboardCopy } = useClipboard()
 
 const copiedIndex = ref<number | null>(null)
+const copiedModelID = ref<string | null>(null)
 const activeTab = ref<string>('unix')
 const activeClientTab = ref<string>('claude')
 type CodexAuthMode = 'legacy' | 'api-key'
 const codexAuthMode = ref<CodexAuthMode>('legacy')
 const DEEPSEEK_FLASH_MODEL = 'deepseek-v4-flash'
 const DEEPSEEK_PRO_MODEL = 'deepseek-v4-pro'
+
+const resolvedModels = computed(() => resolveClientSetupModels(props.platform, props.models))
+const defaultCodexModel = computed(() => pickDefaultCodexModel(resolvedModels.value, props.platform))
+const claudeAliases = computed(() => claudeAliasesFromModels(resolvedModels.value, props.platform))
+const defaultClaudeModel = computed(() => claudeAliases.value?.default || defaultCodexModel.value)
+const showCodexSwitchHint = computed(() => showsCodexModelSwitch(props.platform))
+const showClaudeSwitchHint = computed(() =>
+  showsClaudeModelSwitch(props.platform, props.allowMessagesDispatch === true)
+)
+const showModelSwitchGuide = computed(() =>
+  Boolean(props.platform) && (showCodexSwitchHint.value || showClaudeSwitchHint.value)
+)
 
 // Reset tabs when platform changes
 const defaultClientTab = computed(() => {
@@ -270,6 +325,7 @@ watch(() => props.platform, () => {
 watch(() => props.show, (show) => {
   if (show) {
     codexAuthMode.value = 'legacy'
+    copiedModelID.value = null
   }
 })
 
@@ -552,7 +608,7 @@ const currentFiles = computed((): FileConfig[] => {
   switch (props.platform) {
     case 'openai':
       if (activeClientTab.value === 'claude') {
-        return generateAnthropicFiles(baseUrl, apiKey)
+        return generateClaudeClientFiles(baseUrl, apiKey)
       }
       if (activeClientTab.value === 'codex-ws') {
         return generateOpenAIWsFiles(baseUrl, apiKey)
@@ -564,10 +620,10 @@ const currentFiles = computed((): FileConfig[] => {
       if (activeClientTab.value === 'gemini') {
         return [generateGeminiCliContent(`${baseUrl}/antigravity`, apiKey)]
       }
-      return generateAnthropicFiles(`${baseUrl}/antigravity`, apiKey)
+      return generateClaudeClientFiles(`${baseUrl}/antigravity`, apiKey)
     case 'grok':
       if (activeClientTab.value === 'claude') {
-        return generateGrokClaudeFiles(baseRoot, apiKey)
+        return generateClaudeClientFiles(baseRoot, apiKey)
       }
       if (activeClientTab.value === 'codex') {
         return generateGrokCodexFiles(apiBase, apiKey)
@@ -577,11 +633,19 @@ const currentFiles = computed((): FileConfig[] => {
       if (activeClientTab.value === 'codex') {
         return generateDeepSeekCodexFiles(apiBase, apiKey, props.supportsWebsockets === true)
       }
-      return generateDeepSeekClaudeFiles(baseRoot, apiKey)
+      return generateClaudeClientFiles(baseRoot, apiKey)
     default:
-      return generateAnthropicFiles(baseUrl, apiKey)
+      return generateClaudeClientFiles(baseUrl, apiKey)
   }
 })
+
+function generateClaudeClientFiles(baseUrl: string, apiKey: string): FileConfig[] {
+  const aliases = claudeAliases.value
+  if (!aliases) {
+    return generateAnthropicFiles(baseUrl, apiKey)
+  }
+  return generateMappedClaudeFiles(baseUrl, apiKey, aliases)
+}
 
 function generateAnthropicFiles(baseUrl: string, apiKey: string): FileConfig[] {
   let path: string
@@ -636,15 +700,6 @@ $env:CLAUDE_CODE_ATTRIBUTION_HEADER=0`
       hint: t('keys.useKeyModal.claudeSettingsHint')
     }
   ]
-}
-
-interface ClaudeModelAliases {
-  default: string
-  opus: string
-  sonnet: string
-  haiku: string
-  fable: string
-  subagent: string
 }
 
 function generateMappedClaudeFiles(
@@ -708,28 +763,6 @@ function generateMappedClaudeFiles(
   ]
 }
 
-function generateGrokClaudeFiles(baseUrl: string, apiKey: string): FileConfig[] {
-  return generateMappedClaudeFiles(baseUrl, apiKey, {
-    default: 'grok-4.5',
-    opus: 'grok-4.5',
-    sonnet: 'grok-4.5',
-    haiku: 'grok-4.5',
-    fable: 'grok-4.5',
-    subagent: 'grok-4.5'
-  })
-}
-
-function generateDeepSeekClaudeFiles(baseUrl: string, apiKey: string): FileConfig[] {
-  return generateMappedClaudeFiles(baseUrl, apiKey, {
-    default: DEEPSEEK_PRO_MODEL,
-    opus: DEEPSEEK_PRO_MODEL,
-    sonnet: DEEPSEEK_PRO_MODEL,
-    haiku: DEEPSEEK_FLASH_MODEL,
-    fable: DEEPSEEK_FLASH_MODEL,
-    subagent: DEEPSEEK_FLASH_MODEL
-  })
-}
-
 function generateGeminiCliContent(baseUrl: string, apiKey: string): FileConfig {
   const model = 'gemini-2.0-flash'
   const modelComment = t('keys.useKeyModal.gemini.modelComment')
@@ -778,11 +811,12 @@ ${keyword('$env:')}${variable('GEMINI_MODEL')}${operator('=')}${string(`"${model
 function generateOpenAIFiles(baseUrl: string, apiKey: string): FileConfig[] {
   const isWindows = activeTab.value === 'windows'
   const configDir = isWindows ? '%userprofile%\\.codex' : '~/.codex'
+  const model = defaultCodexModel.value || 'gpt-5.5'
 
   // config.toml content
   const configContent = `model_provider = "OpenAI"
-model = "gpt-5.5"
-review_model = "gpt-5.5"
+model = "${model}"
+review_model = "${model}"
 model_reasoning_effort = "xhigh"
 disable_response_storage = true
 network_access = "enabled"
@@ -995,14 +1029,18 @@ function generateGrokCodexFiles(baseUrl: string, apiKey: string): FileConfig[] {
       envContent = `export SUB2API_API_KEY="${apiKey}"`
   }
 
+  const model = defaultCodexModel.value || 'grok-4.5'
+  const switchList = resolvedModels.value.length
+    ? resolvedModels.value.join(' | ')
+    : 'grok-4.5 | grok-4.3 | grok-build-0.1 | grok-4.20-multi-agent-0309'
   const configContent = `# Codex CLI → Sub2API Grok group
 # Docs: Codex config reference (model_providers.*, wire_api = "responses")
 #
 # Text models only. Image/video: grok-imagine-image / grok-imagine-video on media endpoints.
-# Switch model: grok-4.5 | grok-4.3 | grok-build-0.1 | grok-4.20-multi-agent-0309 (text / web_search)
+# Switch model: ${switchList} (text / web_search)
 
 model_provider = "sub2api"
-model = "grok-4.5"
+model = "${model}"
 # Optional:
 # review_model = "grok-4.5"
 # model_reasoning_effort = "medium"
@@ -1053,10 +1091,12 @@ function generateDeepSeekCodexFiles(
   const websocketFeature = supportsWebsockets
     ? `\n[features]\nresponses_websockets_v2 = true`
     : ''
+  const model = defaultCodexModel.value || DEEPSEEK_PRO_MODEL
   const configContent = `# Codex CLI -> Sub2API DeepSeek group
+# Switch in Codex CLI: /model ${model}
 model_provider = "sub2api"
-model = "${DEEPSEEK_PRO_MODEL}"
-review_model = "${DEEPSEEK_PRO_MODEL}"
+model = "${model}"
+review_model = "${model}"
 disable_response_storage = true
 
 [model_providers.sub2api]
@@ -1085,11 +1125,12 @@ supports_websockets = ${supportsWebsockets}${websocketFeature}`
 function generateOpenAIWsFiles(baseUrl: string, apiKey: string): FileConfig[] {
   const isWindows = activeTab.value === 'windows'
   const configDir = isWindows ? '%userprofile%\\.codex' : '~/.codex'
+  const model = defaultCodexModel.value || 'gpt-5.5'
 
   // config.toml content with WebSocket v2
   const configContent = `model_provider = "OpenAI"
-model = "gpt-5.5"
-review_model = "gpt-5.5"
+model = "${model}"
+review_model = "${model}"
 model_reasoning_effort = "xhigh"
 disable_response_storage = true
 network_access = "enabled"
@@ -1684,6 +1725,18 @@ const copyContent = async (content: string, index: number) => {
     copiedIndex.value = index
     setTimeout(() => {
       copiedIndex.value = null
+    }, 2000)
+  }
+}
+
+const copyModelID = async (modelID: string) => {
+  const success = await clipboardCopy(modelID, t('keys.copied'))
+  if (success) {
+    copiedModelID.value = modelID
+    setTimeout(() => {
+      if (copiedModelID.value === modelID) {
+        copiedModelID.value = null
+      }
     }, 2000)
   }
 }

@@ -27,9 +27,15 @@ export async function getUserGroupRates(): Promise<Record<number, number>> {
   return data || {}
 }
 
+export async function getClientModels(groupId: number): Promise<string[]> {
+  const { data } = await apiClient.get<{ models?: string[] }>(`/groups/${groupId}/models`)
+  return Array.isArray(data?.models) ? data.models.filter((model) => model.trim() !== '') : []
+}
+
 export const userGroupsAPI = {
   getAvailable,
-  getUserGroupRates
+  getUserGroupRates,
+  getClientModels
 }
 
 export default userGroupsAPI

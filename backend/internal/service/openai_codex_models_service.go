@@ -114,6 +114,139 @@ func (s *OpenAIGatewayService) groupConfiguredCodexModelIDs(ctx context.Context,
 	return models, nil
 }
 
+const (
+	configuredCodexModelPriority       = 50
+	configuredCodexFallbackContext     = 272_000
+	configuredCodexDeepSeekV4Context   = 1_000_000
+	configuredCodexToolOutputMaxTokens = 10_000
+)
+
+type configuredCodexReasoningLevel struct {
+	Effort      string `json:"effort"`
+	Description string `json:"description"`
+}
+
+type configuredCodexTruncationPolicy struct {
+	Mode  string `json:"mode"`
+	Limit int64  `json:"limit"`
+}
+
+type configuredCodexModelMessages struct {
+	InstructionsTemplate string `json:"instructions_template"`
+}
+
+// configuredCodexModelDescriptor is the minimum complete ModelInfo contract
+// understood by current Codex clients. Several nullable fields are intentionally
+// emitted: unlike ordinary OpenAI /v1/models entries, the Codex manifest parser
+// requires them to be present.
+type configuredCodexModelDescriptor struct {
+	Slug                              string                          `json:"slug"`
+	DisplayName                       string                          `json:"display_name"`
+	Description                       string                          `json:"description"`
+	DefaultReasoningLevel             *string                         `json:"default_reasoning_level,omitempty"`
+	SupportedReasoningLevels          []configuredCodexReasoningLevel `json:"supported_reasoning_levels"`
+	ShellType                         string                          `json:"shell_type"`
+	Visibility                        string                          `json:"visibility"`
+	SupportedInAPI                    bool                            `json:"supported_in_api"`
+	Priority                          int                             `json:"priority"`
+	AvailabilityNUX                   any                             `json:"availability_nux"`
+	Upgrade                           any                             `json:"upgrade"`
+	ModelMessages                     configuredCodexModelMessages    `json:"model_messages"`
+	IncludeAppsUsageInstructions      bool                            `json:"include_apps_usage_instructions"`
+	SupportsReasoningSummaryParameter bool                            `json:"supports_reasoning_summary_parameter"`
+	DefaultReasoningSummary           string                          `json:"default_reasoning_summary"`
+	SupportVerbosity                  bool                            `json:"support_verbosity"`
+	DefaultVerbosity                  *string                         `json:"default_verbosity"`
+	ApplyPatchToolType                *string                         `json:"apply_patch_tool_type"`
+	WebSearchToolType                 string                          `json:"web_search_tool_type"`
+	TruncationPolicy                  configuredCodexTruncationPolicy `json:"truncation_policy"`
+	SupportsParallelToolCalls         bool                            `json:"supports_parallel_tool_calls"`
+	ContextWindow                     int64                           `json:"context_window"`
+	MaxContextWindow                  int64                           `json:"max_context_window"`
+	EffectiveContextWindowPercent     int64                           `json:"effective_context_window_percent"`
+	ExperimentalSupportedTools        []string                        `json:"experimental_supported_tools"`
+	InputModalities                   []string                        `json:"input_modalities"`
+	SupportsSearchTool                bool                            `json:"supports_search_tool"`
+	UseResponsesLite                  bool                            `json:"use_responses_lite"`
+}
+
+func newConfiguredCodexModelDescriptor(modelID string) configuredCodexModelDescriptor {
+	modelID = strings.TrimSpace(modelID)
+	descriptor := configuredCodexModelDescriptor{
+		Slug:                          modelID,
+		DisplayName:                   modelID,
+		Description:                   "Custom model routed through Sub2API.",
+		SupportedReasoningLevels:      []configuredCodexReasoningLevel{},
+		ShellType:                     "shell_command",
+		Visibility:                    "list",
+		SupportedInAPI:                true,
+		Priority:                      configuredCodexModelPriority,
+		ModelMessages:                 configuredCodexModelMessages{InstructionsTemplate: openai.CodexBaseInstructionsForModel(modelID)},
+		DefaultReasoningSummary:       "none",
+		WebSearchToolType:             "text",
+		TruncationPolicy:              configuredCodexTruncationPolicy{Mode: "tokens", Limit: configuredCodexToolOutputMaxTokens},
+		ContextWindow:                 configuredCodexFallbackContext,
+		MaxContextWindow:              configuredCodexFallbackContext,
+		EffectiveContextWindowPercent: 95,
+		ExperimentalSupportedTools:    []string{},
+		InputModalities:               []string{"text"},
+	}
+
+	if isDeepSeekCodexModel(modelID) {
+		defaultReasoningLevel := "high"
+		descriptor.DisplayName = deepSeekCodexDisplayName(modelID)
+		descriptor.Description = "DeepSeek coding and reasoning model routed through Sub2API."
+		descriptor.DefaultReasoningLevel = &defaultReasoningLevel
+		descriptor.SupportedReasoningLevels = []configuredCodexReasoningLevel{
+			{Effort: "low", Description: "Fast responses with lighter reasoning"},
+			{Effort: "high", Description: "Greater reasoning depth for coding and agent tasks"},
+			{Effort: "max", Description: "Maximum reasoning depth for complex tasks"},
+		}
+		descriptor.SupportsParallelToolCalls = true
+		descriptor.ContextWindow = configuredCodexDeepSeekV4Context
+		descriptor.MaxContextWindow = configuredCodexDeepSeekV4Context
+	}
+
+	return descriptor
+}
+
+func deepSeekCodexDisplayName(modelID string) string {
+	switch strings.ToLower(strings.TrimSpace(modelID)) {
+	case "deepseek-v4-pro", "deepseek-4-pro":
+		return "DeepSeek V4 Pro"
+	case "deepseek-v4-flash", "deepseek-4-flash":
+		return "DeepSeek V4 Flash"
+	default:
+		return modelID
+	}
+}
+
+func isDeepSeekCodexModel(modelID string) bool {
+	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(modelID)), "deepseek-")
+}
+
+// BuildDeepSeekCodexModelsManifest builds a standalone Codex model catalog for
+// a DeepSeek group. The response is also suitable for saving as
+// model_catalog_json in clients that do not refresh custom-provider catalogs.
+func BuildDeepSeekCodexModelsManifest(modelIDs []string) ([]byte, error) {
+	seen := make(map[string]struct{}, len(modelIDs))
+	models := make([]configuredCodexModelDescriptor, 0, len(modelIDs))
+	for _, modelID := range modelIDs {
+		modelID = strings.TrimSpace(modelID)
+		if modelID == "" {
+			continue
+		}
+		if _, exists := seen[modelID]; exists {
+			continue
+		}
+		seen[modelID] = struct{}{}
+		models = append(models, newConfiguredCodexModelDescriptor(modelID))
+	}
+	return json.Marshal(struct {
+		Models []configuredCodexModelDescriptor `json:"models"`
+	}{Models: models})
+}
+
 func mergeConfiguredCodexModelsManifest(
 	body []byte,
 	configuredModels []string,
@@ -176,9 +309,7 @@ func mergeConfiguredCodexModelsManifest(
 		if _, exists := seen[modelID]; exists {
 			continue
 		}
-		rawModel, err := json.Marshal(struct {
-			Slug string `json:"slug"`
-		}{Slug: modelID})
+		rawModel, err := json.Marshal(newConfiguredCodexModelDescriptor(modelID))
 		if err != nil {
 			return nil, false, err
 		}
@@ -678,6 +809,18 @@ func (s *OpenAIGatewayService) fetchCodexModelsManifestUpstream(ctx context.Cont
 		}
 	}
 	if request.useAPIKeyUpstream {
+		body, err = completeAPIKeyCodexModelsManifestMetadata(body)
+		if err != nil {
+			return nil, &codexModelsManifestUpstreamError{
+				err: infraerrors.Newf(
+					http.StatusBadGateway,
+					"OPENAI_CODEX_MODELS_UPSTREAM_INVALID_MANIFEST",
+					"codex models manifest upstream metadata could not be completed: %v",
+					err,
+				),
+				retryable: true,
+			}
+		}
 		body, err = adjustAPIKeyCodexModelsManifest(body)
 		if err != nil {
 			return nil, &codexModelsManifestUpstreamError{
@@ -770,9 +913,10 @@ func adjustAPIKeyCodexModelsManifest(body []byte) ([]byte, error) {
 
 // convertOpenAIModelListToCodexManifest rewrites a standard OpenAI
 // GET /v1/models response ({"object":"list","data":[{"id":...},...]}) into the
-// Codex manifest envelope ({"models":[{"slug":...},...]}) so custom API key
-// upstreams that only implement the standard endpoint can serve Codex model
-// discovery. Bodies that already carry a top-level models field, are not the
+// Codex manifest envelope. DeepSeek entries receive the complete ModelInfo
+// metadata required for reliable Codex operation; other providers retain the
+// legacy slug-only conversion until their context and capability contracts are
+// known. Bodies that already carry a top-level models field, are not the
 // standard list shape, or yield no usable model IDs are returned unchanged so
 // envelope validation reports the original payload.
 func convertOpenAIModelListToCodexManifest(body []byte) []byte {
@@ -793,25 +937,107 @@ func convertOpenAIModelListToCodexManifest(body []byte) []byte {
 	if err := json.Unmarshal(data, &entries); err != nil {
 		return body
 	}
-	type codexModelEntry struct {
-		Slug string `json:"slug"`
-	}
-	models := make([]codexModelEntry, 0, len(entries))
+	models := make([]json.RawMessage, 0, len(entries))
 	for _, entry := range entries {
 		id := strings.TrimSpace(entry.ID)
 		if id == "" {
 			continue
 		}
-		models = append(models, codexModelEntry{Slug: id})
+		var encoded []byte
+		var err error
+		if isDeepSeekCodexModel(id) {
+			encoded, err = json.Marshal(newConfiguredCodexModelDescriptor(id))
+		} else {
+			encoded, err = json.Marshal(struct {
+				Slug string `json:"slug"`
+			}{Slug: id})
+		}
+		if err != nil {
+			return body
+		}
+		models = append(models, encoded)
 	}
 	if len(models) == 0 {
 		return body
 	}
-	converted, err := json.Marshal(map[string][]codexModelEntry{"models": models})
+	converted, err := json.Marshal(map[string][]json.RawMessage{"models": models})
 	if err != nil {
 		return body
 	}
 	return converted
+}
+
+// completeAPIKeyCodexModelsManifestMetadata fills fields omitted by standard
+// OpenAI-compatible /models endpoints. Existing provider metadata always wins;
+// only absent or null values are synthesized.
+func completeAPIKeyCodexModelsManifestMetadata(body []byte) ([]byte, error) {
+	var envelope map[string]json.RawMessage
+	if err := json.Unmarshal(body, &envelope); err != nil {
+		return nil, fmt.Errorf("decode JSON object: %w", err)
+	}
+	var models []json.RawMessage
+	if err := json.Unmarshal(envelope["models"], &models); err != nil {
+		return nil, fmt.Errorf("decode top-level models array: %w", err)
+	}
+
+	changed := false
+	for i, rawModel := range models {
+		var model map[string]json.RawMessage
+		if err := json.Unmarshal(rawModel, &model); err != nil || model == nil {
+			continue
+		}
+		var slug string
+		if err := json.Unmarshal(model["slug"], &slug); err != nil {
+			continue
+		}
+		slug = strings.TrimSpace(slug)
+		if slug == "" || !isDeepSeekCodexModel(slug) {
+			continue
+		}
+
+		defaultBody, err := json.Marshal(newConfiguredCodexModelDescriptor(slug))
+		if err != nil {
+			return nil, fmt.Errorf("encode default model %q: %w", slug, err)
+		}
+		var defaults map[string]json.RawMessage
+		if err := json.Unmarshal(defaultBody, &defaults); err != nil {
+			return nil, fmt.Errorf("decode default model %q: %w", slug, err)
+		}
+
+		modelChanged := false
+		for key, defaultValue := range defaults {
+			currentValue, exists := model[key]
+			if exists && (!bytes.Equal(bytes.TrimSpace(currentValue), []byte("null")) ||
+				bytes.Equal(bytes.TrimSpace(defaultValue), []byte("null"))) {
+				continue
+			}
+			model[key] = defaultValue
+			modelChanged = true
+		}
+		if !modelChanged {
+			continue
+		}
+		encoded, err := json.Marshal(model)
+		if err != nil {
+			return nil, fmt.Errorf("encode completed model %q: %w", slug, err)
+		}
+		models[i] = encoded
+		changed = true
+	}
+	if !changed {
+		return body, nil
+	}
+
+	encodedModels, err := json.Marshal(models)
+	if err != nil {
+		return nil, fmt.Errorf("encode top-level models array: %w", err)
+	}
+	envelope["models"] = encodedModels
+	completed, err := json.Marshal(envelope)
+	if err != nil {
+		return nil, fmt.Errorf("encode JSON object: %w", err)
+	}
+	return completed, nil
 }
 
 func validateCodexModelsManifestEnvelope(body []byte) error {

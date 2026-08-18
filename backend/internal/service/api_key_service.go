@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"html"
 	"math"
@@ -468,6 +469,30 @@ func (s *APIKeyService) canUserBindGroup(ctx context.Context, user *User, group 
 	}
 	// 标准类型分组：使用原有逻辑
 	return user.CanBindGroup(group.ID, group.IsExclusive)
+}
+
+// GetBindableGroupForUser returns the group when the user is allowed to bind it
+// to an API key. Unknown groups and unauthorized groups both surface as
+// ErrGroupNotAllowed so callers cannot probe group IDs.
+func (s *APIKeyService) GetBindableGroupForUser(ctx context.Context, userID, groupID int64) (*Group, error) {
+	if s == nil {
+		return nil, ErrGroupNotAllowed
+	}
+	user, err := s.userRepo.GetByID(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("get user: %w", err)
+	}
+	group, err := s.groupRepo.GetByID(ctx, groupID)
+	if err != nil {
+		if errors.Is(err, ErrGroupNotFound) {
+			return nil, ErrGroupNotAllowed
+		}
+		return nil, fmt.Errorf("get group: %w", err)
+	}
+	if !s.canUserBindGroup(ctx, user, group) {
+		return nil, ErrGroupNotAllowed
+	}
+	return group, nil
 }
 
 // Create 创建API Key

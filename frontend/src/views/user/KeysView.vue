@@ -996,6 +996,7 @@
       :platform="selectedKey?.group?.platform || null"
       :allow-messages-dispatch="selectedKey?.group?.allow_messages_dispatch || false"
       :supports-websockets="selectedKey?.group?.codex_supports_websockets === true"
+      :models="useKeyModels"
       @close="closeUseKeyModal"
     />
 
@@ -1301,6 +1302,8 @@ const showDeleteDialog = ref(false)
 const showResetQuotaDialog = ref(false)
 const showResetRateLimitDialog = ref(false)
 const showUseKeyModal = ref(false)
+const useKeyModels = ref<string[]>([])
+let useKeyModelsRequest = 0
 const showCcsClientSelect = ref(false)
 const showColumnDropdown = ref(false)
 const pendingCcsRow = ref<ApiKey | null>(null)
@@ -1530,14 +1533,44 @@ const loadPublicSettings = async () => {
   }
 }
 
+const attachAvailableGroup = (key: ApiKey): ApiKey => {
+  if (key.group || key.group_id == null) {
+    return key
+  }
+  const group = groups.value.find((item) => item.id === key.group_id)
+  return group ? { ...key, group } : key
+}
+
+const loadUseKeyModels = async (groupId: number | null | undefined) => {
+  const requestId = ++useKeyModelsRequest
+  useKeyModels.value = []
+  if (!groupId) {
+    return
+  }
+  try {
+    const models = await userGroupsAPI.getClientModels(groupId)
+    if (requestId === useKeyModelsRequest) {
+      useKeyModels.value = models
+    }
+  } catch (error) {
+    if (requestId === useKeyModelsRequest) {
+      useKeyModels.value = []
+    }
+    console.error('Failed to load group models:', error)
+  }
+}
+
 const openUseKeyModal = (key: ApiKey) => {
-  selectedKey.value = key
+  selectedKey.value = attachAvailableGroup(key)
   showUseKeyModal.value = true
+  void loadUseKeyModels(key.group_id ?? key.group?.id)
 }
 
 const closeUseKeyModal = () => {
+  useKeyModelsRequest += 1
   showUseKeyModal.value = false
   selectedKey.value = null
+  useKeyModels.value = []
 }
 
 const handlePageChange = (page: number) => {
@@ -1737,7 +1770,7 @@ const handleSubmit = async () => {
       appStore.showSuccess(t('keys.keyUpdatedSuccess'))
     } else {
       const customKey = formData.value.use_custom_key ? formData.value.custom_key : undefined
-      await keysAPI.create(
+      const created = await keysAPI.create(
         formData.value.name,
         formData.value.group_id,
         customKey,
@@ -1752,6 +1785,10 @@ const handleSubmit = async () => {
       if (onboardingStore.isCurrentStep('[data-tour="key-form-submit"]')) {
         onboardingStore.nextStep(500)
       }
+      closeModals()
+      openUseKeyModal(created)
+      loadApiKeys()
+      return
     }
     closeModals()
     loadApiKeys()

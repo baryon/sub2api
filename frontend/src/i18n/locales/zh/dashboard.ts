@@ -208,6 +208,13 @@ export default {
         title: 'OpenCode 配置示例',
         subtitle: 'opencode.json',
         hint: '配置文件路径：~/.config/opencode/opencode.json（或 opencode.jsonc），不存在需手动创建。可使用默认 provider（openai/anthropic/google）或自定义 provider_id。API Key 支持直接配置或通过客户端 /connect 命令配置。示例仅供参考，模型与选项可按需调整。'
+      },
+      modelSwitch: {
+        title: '切换模型',
+        description: '下面是当前分组会暴露的模型 ID。复制后在客户端里切换即可。',
+        codex: 'Codex：在 CLI 执行 /model {model}，或把 config.toml 里的 model / review_model 改成上面的 ID。',
+        claude:
+          'Claude Code：执行 /model {model}，或设置 ANTHROPIC_MODEL / ANTHROPIC_DEFAULT_OPUS_MODEL / ANTHROPIC_DEFAULT_SONNET_MODEL / ANTHROPIC_DEFAULT_HAIKU_MODEL。'
       }
     },
     customKeyLabel: '自定义密钥',
