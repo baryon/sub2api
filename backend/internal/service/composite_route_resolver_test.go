@@ -69,6 +69,67 @@ func TestCompositeRouteResolverExplicitExactRouteRewritesModel(t *testing.T) {
 	require.Equal(t, int64(10), decision.Route.ID)
 }
 
+func TestCompositeRouteResolverUsesAccountModelOwnershipForUnprefixedModel(t *testing.T) {
+	resolver := NewCompositeRouteResolver(nil)
+	resolver.SetModelOwnershipResolver(func(_ context.Context, groupID int64, model string) (CompositeModelOwnership, error) {
+		require.Equal(t, int64(7), groupID)
+		require.Equal(t, "reasoning-alias", model)
+		return CompositeModelOwnership{
+			TargetPlatform: PlatformDeepSeek,
+			Matched:        true,
+		}, nil
+	})
+
+	decision, err := resolver.Resolve(context.Background(), 7, "reasoning-alias", CompositeRouteEndpointChatCompletions)
+
+	require.NoError(t, err)
+	require.True(t, decision.Matched)
+	require.Equal(t, CompositeRouteSourceAccount, decision.Source)
+	require.Equal(t, PlatformDeepSeek, decision.TargetPlatform)
+	require.Equal(t, "reasoning-alias", decision.UpstreamModel)
+}
+
+func TestCompositeRouteResolverExplicitRouteBeatsAccountOwnership(t *testing.T) {
+	resolver := NewCompositeRouteResolver(compositeRouteRepoStub{
+		routes: []CompositeModelRoute{{
+			ID:             10,
+			GroupID:        7,
+			PublicModel:    "reasoning-alias",
+			MatchType:      CompositeRouteMatchExact,
+			TargetPlatform: PlatformOpenAI,
+			UpstreamModel:  "gpt-5",
+			Endpoint:       CompositeRouteEndpointAny,
+			Priority:       100,
+			Enabled:        true,
+		}},
+	})
+	resolver.SetModelOwnershipResolver(func(context.Context, int64, string) (CompositeModelOwnership, error) {
+		return CompositeModelOwnership{TargetPlatform: PlatformDeepSeek, Matched: true}, nil
+	})
+
+	decision, err := resolver.Resolve(context.Background(), 7, "reasoning-alias", CompositeRouteEndpointChatCompletions)
+
+	require.NoError(t, err)
+	require.True(t, decision.Matched)
+	require.Equal(t, CompositeRouteSourceExplicit, decision.Source)
+	require.Equal(t, PlatformOpenAI, decision.TargetPlatform)
+	require.Equal(t, "gpt-5", decision.UpstreamModel)
+}
+
+func TestCompositeRouteResolverDoesNotGuessAmbiguousAccountOwnership(t *testing.T) {
+	resolver := NewCompositeRouteResolver(nil)
+	resolver.SetModelOwnershipResolver(func(context.Context, int64, string) (CompositeModelOwnership, error) {
+		return CompositeModelOwnership{Ambiguous: true}, nil
+	})
+
+	decision, err := resolver.Resolve(context.Background(), 7, "shared-alias", CompositeRouteEndpointChatCompletions)
+
+	require.NoError(t, err)
+	require.False(t, decision.Matched)
+	require.Empty(t, decision.TargetPlatform)
+	require.Equal(t, "model is exposed by multiple provider platforms", decision.Reason)
+}
+
 func TestCompositeRouteResolverDeepSeekAnyCoversSupportedProtocols(t *testing.T) {
 	resolver := NewCompositeRouteResolver(compositeRouteRepoStub{
 		routes: []CompositeModelRoute{

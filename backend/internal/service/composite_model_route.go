@@ -23,7 +23,21 @@ const (
 
 	CompositeRouteSourceExplicit = "route"
 	CompositeRouteSourceDetector = "detector"
+	CompositeRouteSourceAccount  = "account_model"
 )
+
+// CompositeModelOwnership describes the concrete provider that owns a public
+// model exposed by an account in a composite group.
+type CompositeModelOwnership struct {
+	TargetPlatform string
+	Matched        bool
+	Ambiguous      bool
+}
+
+// CompositeModelOwnershipResolver is backed by the gateway's account model
+// catalog. It lets request middleware and scheduling share one provider
+// decision without duplicating account lookup rules.
+type CompositeModelOwnershipResolver func(context.Context, int64, string) (CompositeModelOwnership, error)
 
 var (
 	ErrCompositeRouteNotFound = infraerrors.NotFound("COMPOSITE_ROUTE_NOT_FOUND", "composite route not found")

@@ -8,7 +8,8 @@ import (
 )
 
 type CompositeRouteResolver struct {
-	repo CompositeModelRouteRepository
+	repo                   CompositeModelRouteRepository
+	modelOwnershipResolver CompositeModelOwnershipResolver
 }
 
 type compositeModelRouteBatchLister interface {
@@ -17,6 +18,14 @@ type compositeModelRouteBatchLister interface {
 
 func NewCompositeRouteResolver(repo CompositeModelRouteRepository) *CompositeRouteResolver {
 	return &CompositeRouteResolver{repo: repo}
+}
+
+// SetModelOwnershipResolver connects the resolver to the server-side account
+// model catalog. Explicit composite routes remain authoritative.
+func (r *CompositeRouteResolver) SetModelOwnershipResolver(resolver CompositeModelOwnershipResolver) {
+	if r != nil {
+		r.modelOwnershipResolver = resolver
+	}
 }
 
 func (r *CompositeRouteResolver) ListActiveRoutes(ctx context.Context, groupID int64) ([]CompositeModelRoute, error) {
@@ -108,6 +117,43 @@ func (r *CompositeRouteResolver) Resolve(ctx context.Context, groupID int64, mod
 		decision.Route = unsupportedRoute
 		decision.Reason = "endpoint is not supported by target platform"
 		return decision, nil
+	}
+
+	if r != nil && r.modelOwnershipResolver != nil {
+		ownership, err := r.modelOwnershipResolver(ctx, groupID, model)
+		if err != nil {
+			// Keep the existing detector fallback for model IDs whose provider is
+			// unambiguous from the name. Unknown aliases still fail closed below.
+			if _, detectable := DetectModelPlatform(model); !detectable {
+				return decision, fmt.Errorf("resolve account model ownership: %w", err)
+			}
+		}
+		if err == nil && ownership.Ambiguous {
+			decision.Reason = "model is exposed by multiple provider platforms"
+			return decision, nil
+		}
+		if err == nil && ownership.Matched {
+			platform := strings.TrimSpace(ownership.TargetPlatform)
+			if platform == "" {
+				decision.Reason = "account model ownership has no target platform"
+				return decision, nil
+			}
+			if !CompositeRouteEndpointSupported(platform, endpoint) {
+				decision.Source = CompositeRouteSourceAccount
+				decision.TargetPlatform = platform
+				decision.Reason = "endpoint is not supported by target platform"
+				return decision, nil
+			}
+			return CompositeRouteDecision{
+				Matched:        true,
+				Source:         CompositeRouteSourceAccount,
+				GroupID:        groupID,
+				PublicModel:    model,
+				TargetPlatform: platform,
+				UpstreamModel:  model,
+				Endpoint:       endpoint,
+			}, nil
+		}
 	}
 
 	if platform, ok := DetectModelPlatform(model); ok {

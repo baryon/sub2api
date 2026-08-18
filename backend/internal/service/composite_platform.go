@@ -185,7 +185,7 @@ func (s *GatewayService) resolveCompositeRouteDecision(ctx context.Context, grou
 	}
 	platform, platformResolved := ResolvedTargetPlatformFromContext(ctx)
 	source, sourceResolved := CompositeRouteSourceFromContext(ctx)
-	if platformResolved && sourceResolved && source == CompositeRouteSourceExplicit {
+	if platformResolved && sourceResolved && (source == CompositeRouteSourceExplicit || source == CompositeRouteSourceAccount) {
 		upstreamModel := requestedModel
 		if resolvedModel, modelOK := ResolvedUpstreamModelFromContext(ctx); modelOK {
 			upstreamModel = resolvedModel
