@@ -202,6 +202,25 @@ export default {
         codexNoteWindows:
           'Set $env:SUB2API_API_KEY and save config.toml under %USERPROFILE%\\.codex. WebSocket turns, when enabled, are bridged by Sub2API to DeepSeek HTTP /responses.',
       },
+      codexModelCatalog: {
+        title: 'Codex model catalog',
+        description:
+          'Fetch the complete model catalog for the group behind this API key. The JSON does not contain the API key; save it so Codex can show these models in /model.',
+        notFetched: 'Not fetched',
+        loading: 'Fetching',
+        ready: 'Ready',
+        errorStatus: 'Failed',
+        idleDescription: 'Fetch the Codex model catalog for the current group.',
+        loadingDescription: 'Requesting the catalog with the current API key.',
+        errorDescription: 'The catalog could not be fetched. You can retry the request.',
+        errorDetail: 'Could not fetch the model catalog. Check the API key and Base URL, then retry.',
+        modelsCount: 'Fetched {count} models. Download it and save it to the path above.',
+        fetch: 'Fetch catalog',
+        retry: 'Retry',
+        preview: 'Preview JSON',
+        hidePreview: 'Hide preview',
+        download: 'Download JSON'
+      },
       opencode: {
         title: 'OpenCode Example',
         subtitle: 'opencode.json',

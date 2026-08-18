@@ -1,5 +1,5 @@
-import { describe, expect, it, vi } from 'vitest'
-import { mount } from '@vue/test-utils'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { flushPromises, mount } from '@vue/test-utils'
 import { nextTick } from 'vue'
 
 const { copyToClipboardMock } = vi.hoisted(() => ({
@@ -19,6 +19,10 @@ vi.mock('@/composables/useClipboard', () => ({
 }))
 
 import UseKeyModal from '../UseKeyModal.vue'
+
+afterEach(() => {
+  vi.unstubAllGlobals()
+})
 
 describe('UseKeyModal', () => {
   it('renders Grok Build and OpenCode setup for Grok groups', async () => {
@@ -745,5 +749,88 @@ describe('UseKeyModal', () => {
     const configToml = wrapper.findAll('pre code').map((code) => code.text()).join('\n')
     expect(configToml).toContain('model = "deepseek-4-pro"')
     expect(configToml).toContain('/model deepseek-4-pro')
+  })
+
+  it.each([
+    { platform: 'openai' as const, apiKey: 'sk-openai-test', model: 'gpt-5.6-luna' },
+    { platform: 'deepseek' as const, apiKey: 'sk-deepseek-test', model: 'deepseek-v4-pro' }
+  ])('fetches and exposes the $platform Codex model catalog', async ({ platform, apiKey, model }) => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        models: [
+          { slug: model, display_name: model },
+          { slug: `${model}-secondary`, display_name: `${model} secondary` }
+        ]
+      })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const wrapper = mount(UseKeyModal, {
+      props: {
+        show: true,
+        apiKey,
+        baseUrl: 'https://example.com/v1',
+        platform
+      },
+      global: {
+        stubs: {
+          BaseDialog: {
+            template: '<div><slot /><slot name="footer" /></div>'
+          },
+          Icon: {
+            template: '<span />'
+          }
+        }
+      }
+    })
+
+    if (platform === 'deepseek') {
+      const codexTab = wrapper.findAll('button').find((button) =>
+        button.text().includes('keys.useKeyModal.cliTabs.codexCli')
+      )
+      expect(codexTab).toBeDefined()
+      await codexTab!.trigger('click')
+    }
+
+    const fetchCatalogButton = wrapper.get('[data-testid="codex-model-catalog-fetch"]')
+    await fetchCatalogButton.trigger('click')
+    await flushPromises()
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://example.com/v1/models?client_version=0.147.0',
+      expect.objectContaining({
+        headers: expect.objectContaining({ Authorization: `Bearer ${apiKey}` })
+      })
+    )
+    expect(wrapper.get('[data-testid="codex-model-catalog"]').text()).toContain('keys.useKeyModal.codexModelCatalog.ready')
+    expect(wrapper.get('[data-testid="codex-model-catalog"]').text()).toContain('keys.useKeyModal.codexModelCatalog.download')
+
+    const configToml = wrapper.findAll('pre code')
+      .map((code) => code.text())
+      .find((content) => content.includes('model_catalog_json'))
+    expect(configToml).toContain('model_catalog_json = "~/.codex/codex-models.json"')
+
+    const previewButton = wrapper.findAll('button').find((button) =>
+      button.text().includes('keys.useKeyModal.codexModelCatalog.preview')
+    )
+    expect(previewButton).toBeDefined()
+    await previewButton!.trigger('click')
+    await nextTick()
+    expect(wrapper.find('[data-testid="codex-model-catalog"] pre').text()).toContain(model)
+
+    const createObjectURL = vi.fn().mockReturnValue('blob:codex-models')
+    const revokeObjectURL = vi.fn()
+    vi.stubGlobal('URL', { createObjectURL, revokeObjectURL })
+    const anchorClick = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+    const downloadButton = wrapper.findAll('button').find((button) =>
+      button.text().includes('keys.useKeyModal.codexModelCatalog.download')
+    )
+    expect(downloadButton).toBeDefined()
+    await downloadButton!.trigger('click')
+    expect(createObjectURL).toHaveBeenCalledWith(expect.any(Blob))
+    expect(anchorClick).toHaveBeenCalled()
+    anchorClick.mockRestore()
   })
 })

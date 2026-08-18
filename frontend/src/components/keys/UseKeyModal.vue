@@ -182,28 +182,140 @@
               <!-- Code Header -->
               <div class="flex items-center justify-between px-4 py-2 bg-gray-800 dark:bg-dark-800 border-b border-gray-700 dark:border-dark-700">
                 <span class="min-w-0 truncate text-xs text-gray-400 font-mono">{{ file.path }}</span>
-                <button
-                  type="button"
-                  @click="copyContent(file.content, index)"
-                  class="flex flex-shrink-0 items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-lg transition-colors"
-                  :class="copiedIndex === index
-                    ? 'bg-green-500/20 text-green-400'
-                    : 'bg-gray-700 hover:bg-gray-600 text-gray-300 hover:text-white'"
-                >
-                  <svg v-if="copiedIndex === index" class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
-                  </svg>
-                  <svg v-else class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M15.666 3.888A2.25 2.25 0 0013.5 2.25h-3c-1.03 0-1.9.693-2.166 1.638m7.332 0c.055.194.084.4.084.612v0a.75.75 0 01-.75.75H9a.75.75 0 01-.75-.75v0c0-.212.03-.418.084-.612m7.332 0c.646.049 1.288.11 1.927.184 1.1.128 1.907 1.077 1.907 2.185V19.5a2.25 2.25 0 01-2.25 2.25H6.75A2.25 2.25 0 014.5 19.5V6.257c0-1.108.806-2.057 1.907-2.185a48.208 48.208 0 011.927-.184" />
-                  </svg>
-                  {{ copiedIndex === index ? t('keys.useKeyModal.copied') : t('keys.useKeyModal.copy') }}
-                </button>
+                <div class="flex flex-shrink-0 items-center gap-1.5">
+                  <button
+                    type="button"
+                    @click="copyContent(file.content, index)"
+                    class="flex min-h-8 items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium transition-colors"
+                    :class="copiedIndex === index
+                      ? 'bg-green-500/20 text-green-400'
+                      : 'bg-gray-700 text-gray-300 hover:bg-gray-600 hover:text-white'"
+                    :aria-label="copiedIndex === index ? t('keys.useKeyModal.copied') : t('keys.useKeyModal.copy')"
+                  >
+                    <Icon :name="copiedIndex === index ? 'check' : 'copy'" size="sm" />
+                    <span>{{ copiedIndex === index ? t('keys.useKeyModal.copied') : t('keys.useKeyModal.copy') }}</span>
+                  </button>
+                </div>
               </div>
               <!-- Code Content -->
               <pre class="p-4 text-sm font-mono text-gray-100 overflow-x-auto"><code v-if="file.highlighted" v-html="file.highlighted"></code><code v-else v-text="file.content"></code></pre>
             </div>
           </div>
         </div>
+
+        <!-- Codex model catalog -->
+        <section
+          v-if="showCodexModelCatalog"
+          data-testid="codex-model-catalog"
+          class="overflow-hidden rounded-xl border border-primary-200 bg-primary-50/60 dark:border-primary-900/70 dark:bg-primary-950/20"
+        >
+          <div class="flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-start sm:justify-between">
+            <div class="flex min-w-0 items-start gap-3">
+              <div class="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-primary-100 text-primary-700 dark:bg-primary-900/60 dark:text-primary-300">
+                <Icon name="document" size="md" />
+              </div>
+              <div class="min-w-0">
+                <h3 class="text-sm font-semibold text-gray-900 dark:text-white">
+                  {{ t('keys.useKeyModal.codexModelCatalog.title') }}
+                </h3>
+                <p class="mt-1 max-w-2xl text-xs leading-5 text-gray-600 dark:text-gray-300">
+                  {{ t('keys.useKeyModal.codexModelCatalog.description') }}
+                </p>
+              </div>
+            </div>
+            <span
+              class="inline-flex w-fit flex-shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium"
+              :class="codexModelManifestState === 'ready'
+                ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300'
+                : codexModelManifestState === 'error'
+                  ? 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300'
+                  : 'bg-gray-100 text-gray-600 dark:bg-dark-700 dark:text-gray-300'"
+              aria-live="polite"
+            >
+              <Icon
+                :name="codexModelManifestState === 'ready' ? 'checkCircle' : codexModelManifestState === 'error' ? 'exclamationCircle' : 'refresh'"
+                size="xs"
+                :class="codexModelManifestState === 'loading' ? 'animate-spin' : ''"
+              />
+              <span v-if="codexModelManifestState === 'ready'">{{ t('keys.useKeyModal.codexModelCatalog.ready') }}</span>
+              <span v-else-if="codexModelManifestState === 'error'">{{ t('keys.useKeyModal.codexModelCatalog.errorStatus') }}</span>
+              <span v-else-if="codexModelManifestState === 'loading'">{{ t('keys.useKeyModal.codexModelCatalog.loading') }}</span>
+              <span v-else>{{ t('keys.useKeyModal.codexModelCatalog.notFetched') }}</span>
+            </span>
+          </div>
+
+          <div class="flex flex-col gap-3 border-t border-primary-200/80 px-4 py-3 dark:border-primary-900/60 sm:flex-row sm:items-center sm:justify-between">
+            <div class="min-w-0">
+              <p class="truncate font-mono text-xs font-medium text-primary-900 dark:text-primary-200">
+                {{ codexModelCatalogPath }}
+              </p>
+              <p class="mt-1 text-xs text-gray-600 dark:text-gray-400">
+                <span v-if="codexModelManifestState === 'ready'">
+                  {{ t('keys.useKeyModal.codexModelCatalog.modelsCount', { count: codexModelManifestModelCount }) }}
+                </span>
+                <span v-else-if="codexModelManifestState === 'loading'">
+                  {{ t('keys.useKeyModal.codexModelCatalog.loadingDescription') }}
+                </span>
+                <span v-else-if="codexModelManifestState === 'error'">
+                  {{ t('keys.useKeyModal.codexModelCatalog.errorDescription') }}
+                </span>
+                <span v-else>
+                  {{ t('keys.useKeyModal.codexModelCatalog.idleDescription') }}
+                </span>
+              </p>
+            </div>
+
+            <div class="flex flex-wrap items-center gap-2">
+              <button
+                v-if="codexModelManifestState === 'ready'"
+                type="button"
+                class="btn btn-secondary min-h-9 px-3 text-xs"
+                @click="showCodexModelPreview = !showCodexModelPreview"
+              >
+                <Icon :name="showCodexModelPreview ? 'eyeOff' : 'eye'" size="sm" class="mr-1.5" />
+                {{ showCodexModelPreview ? t('keys.useKeyModal.codexModelCatalog.hidePreview') : t('keys.useKeyModal.codexModelCatalog.preview') }}
+              </button>
+              <button
+                v-if="codexModelManifestState === 'ready'"
+                type="button"
+                class="btn btn-secondary min-h-9 px-3 text-xs"
+                @click="copyCodexModelManifest"
+              >
+                <Icon :name="copiedCodexModelManifest ? 'check' : 'copy'" size="sm" class="mr-1.5" />
+                {{ copiedCodexModelManifest ? t('keys.useKeyModal.copied') : t('keys.useKeyModal.copy') }}
+              </button>
+              <button
+                v-if="codexModelManifestState === 'ready'"
+                type="button"
+                class="btn btn-primary min-h-9 px-3 text-xs"
+                @click="downloadCodexModelManifest"
+              >
+                <Icon name="download" size="sm" class="mr-1.5" />
+                {{ t('keys.useKeyModal.codexModelCatalog.download') }}
+              </button>
+              <button
+                v-else
+                type="button"
+                data-testid="codex-model-catalog-fetch"
+                class="btn btn-primary min-h-9 px-3 text-xs"
+                :disabled="codexModelManifestState === 'loading' || !apiKey"
+                @click="loadCodexModelManifest"
+              >
+                <Icon name="refresh" size="sm" class="mr-1.5" :class="codexModelManifestState === 'loading' ? 'animate-spin' : ''" />
+                {{ codexModelManifestState === 'error' ? t('keys.useKeyModal.codexModelCatalog.retry') : t('keys.useKeyModal.codexModelCatalog.fetch') }}
+              </button>
+            </div>
+          </div>
+
+          <div v-if="codexModelManifestState === 'ready' && showCodexModelPreview" class="border-t border-primary-200/80 bg-gray-950 dark:border-primary-900/60">
+            <pre class="max-h-72 overflow-auto p-4 text-xs leading-5 text-gray-100"><code v-text="codexModelManifestContent"></code></pre>
+          </div>
+
+          <div v-if="codexModelManifestState === 'error'" class="flex items-start gap-2 border-t border-red-200/80 bg-red-50/70 px-4 py-3 text-xs leading-5 text-red-700 dark:border-red-900/60 dark:bg-red-950/20 dark:text-red-300">
+            <Icon name="exclamationCircle" size="sm" class="mt-0.5 flex-shrink-0" />
+            <p>{{ t('keys.useKeyModal.codexModelCatalog.errorDetail') }}</p>
+          </div>
+        </section>
 
         <!-- Usage Note -->
         <div v-if="showPlatformNote" class="flex items-start gap-3 p-3 rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800">
@@ -234,6 +346,7 @@ import { useI18n } from 'vue-i18n'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { useClipboard } from '@/composables/useClipboard'
+import { fetchCodexModelsManifest } from '@/api/codex'
 import type { GroupPlatform } from '@/types'
 import {
   claudeAliasesFromModels,
@@ -279,10 +392,18 @@ const { copyToClipboard: clipboardCopy } = useClipboard()
 
 const copiedIndex = ref<number | null>(null)
 const copiedModelID = ref<string | null>(null)
+const copiedCodexModelManifest = ref(false)
 const activeTab = ref<string>('unix')
 const activeClientTab = ref<string>('claude')
 type CodexAuthMode = 'legacy' | 'api-key'
 const codexAuthMode = ref<CodexAuthMode>('legacy')
+type CodexModelManifestState = 'idle' | 'loading' | 'ready' | 'error'
+const codexModelManifestState = ref<CodexModelManifestState>('idle')
+const codexModelManifestContent = ref('')
+const codexModelManifestModelCount = ref(0)
+const showCodexModelPreview = ref(false)
+let codexModelManifestController: AbortController | null = null
+let codexModelManifestRequestID = 0
 const DEEPSEEK_FLASH_MODEL = 'deepseek-v4-flash'
 const DEEPSEEK_PRO_MODEL = 'deepseek-v4-pro'
 
@@ -297,6 +418,23 @@ const showClaudeSwitchHint = computed(() =>
 const showModelSwitchGuide = computed(() =>
   Boolean(props.platform) && (showCodexSwitchHint.value || showClaudeSwitchHint.value)
 )
+
+const showCodexModelCatalog = computed(() =>
+  props.show &&
+  ((props.platform === 'openai' && (activeClientTab.value === 'codex' || activeClientTab.value === 'codex-ws')) ||
+    (props.platform === 'deepseek' && activeClientTab.value === 'codex'))
+)
+
+const codexModelCatalogPath = computed(() => {
+  const isWindowsPath = activeTab.value === 'windows'
+  const configDir = isWindowsPath ? '%userprofile%\\.codex' : '~/.codex'
+  return joinConfigPath(configDir, 'codex-models.json', isWindowsPath)
+})
+
+const codexManifestContext = computed(() => {
+  if (!showCodexModelCatalog.value) return ''
+  return `${props.platform}|${props.baseUrl}|${props.apiKey}`
+})
 
 // Reset tabs when platform changes
 const defaultClientTab = computed(() => {
@@ -326,7 +464,15 @@ watch(() => props.show, (show) => {
   if (show) {
     codexAuthMode.value = 'legacy'
     copiedModelID.value = null
+    copiedCodexModelManifest.value = false
+  } else {
+    resetCodexModelManifest()
   }
+})
+
+watch(codexManifestContext, (context, previousContext) => {
+  if (context === previousContext) return
+  resetCodexModelManifest()
 })
 
 // Reset shell tab when client changes
@@ -545,6 +691,81 @@ const platformNote = computed(() => {
 })
 
 const showPlatformNote = computed(() => activeClientTab.value !== 'opencode')
+
+function resetCodexModelManifest() {
+  codexModelManifestController?.abort()
+  codexModelManifestController = null
+  codexModelManifestRequestID += 1
+  codexModelManifestState.value = 'idle'
+  codexModelManifestContent.value = ''
+  codexModelManifestModelCount.value = 0
+  showCodexModelPreview.value = false
+  copiedCodexModelManifest.value = false
+}
+
+async function loadCodexModelManifest() {
+  if (!showCodexModelCatalog.value || !props.apiKey) return
+
+  codexModelManifestController?.abort()
+  const controller = new AbortController()
+  const requestID = ++codexModelManifestRequestID
+  codexModelManifestController = controller
+  codexModelManifestState.value = 'loading'
+  codexModelManifestContent.value = ''
+  codexModelManifestModelCount.value = 0
+  showCodexModelPreview.value = false
+
+  try {
+    const result = await fetchCodexModelsManifest(props.baseUrl, props.apiKey, controller.signal)
+    if (requestID !== codexModelManifestRequestID) return
+    codexModelManifestContent.value = result.content
+    codexModelManifestModelCount.value = result.modelCount
+    codexModelManifestState.value = 'ready'
+  } catch (error) {
+    const errorName = error && typeof error === 'object' && 'name' in error
+      ? String((error as { name?: unknown }).name || '')
+      : ''
+    if (requestID !== codexModelManifestRequestID || errorName === 'AbortError') return
+    codexModelManifestState.value = 'error'
+  } finally {
+    if (requestID === codexModelManifestRequestID) {
+      codexModelManifestController = null
+    }
+  }
+}
+
+function downloadFile(content: string, filename: string) {
+  const blob = new Blob([content], { type: 'application/json;charset=utf-8' })
+  const url = window.URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = filename
+  link.style.display = 'none'
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  window.setTimeout(() => {
+    if (typeof window.URL.revokeObjectURL === 'function') {
+      window.URL.revokeObjectURL(url)
+    }
+  }, 0)
+}
+
+async function copyCodexModelManifest() {
+  if (!codexModelManifestContent.value) return
+  const success = await clipboardCopy(codexModelManifestContent.value, t('keys.copied'))
+  if (success) {
+    copiedCodexModelManifest.value = true
+    window.setTimeout(() => {
+      copiedCodexModelManifest.value = false
+    }, 2000)
+  }
+}
+
+function downloadCodexModelManifest() {
+  if (!codexModelManifestContent.value) return
+  downloadFile(codexModelManifestContent.value, 'codex-models.json')
+}
 
 const escapeHtml = (value: string) => value
   .replace(/&/g, '&amp;')
@@ -819,6 +1040,7 @@ model = "${model}"
 review_model = "${model}"
 model_reasoning_effort = "xhigh"
 disable_response_storage = true
+model_catalog_json = "${escapeTomlBasicString(codexModelCatalogPath.value)}"
 network_access = "enabled"
 windows_wsl_setup_acknowledged = true
 
@@ -861,6 +1083,10 @@ http_headers = { "x-openai-actor-authorization" = "local-image-extension" }`
 function joinConfigPath(dir: string, file: string, windows: boolean): string {
   if (!windows) return `${dir}/${file}`
   return `${dir}\\${file}`
+}
+
+function escapeTomlBasicString(value: string): string {
+  return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
 }
 
 function generateGrokFiles(baseUrl: string, apiKey: string): FileConfig[] {
@@ -1098,6 +1324,7 @@ model_provider = "sub2api"
 model = "${model}"
 review_model = "${model}"
 disable_response_storage = true
+model_catalog_json = "${escapeTomlBasicString(codexModelCatalogPath.value)}"
 
 [model_providers.sub2api]
 # Keep this exact name so Codex enables remote_compaction_v2.
@@ -1133,6 +1360,7 @@ model = "${model}"
 review_model = "${model}"
 model_reasoning_effort = "xhigh"
 disable_response_storage = true
+model_catalog_json = "${escapeTomlBasicString(codexModelCatalogPath.value)}"
 network_access = "enabled"
 windows_wsl_setup_acknowledged = true
 

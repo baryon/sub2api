@@ -204,6 +204,24 @@ export default {
         codexNoteWindows:
           '设置 $env:SUB2API_API_KEY，将 config.toml 保存到 %USERPROFILE%\\.codex。启用 WebSocket 时，由 Sub2API 桥接到 DeepSeek HTTP /responses。'
       },
+      codexModelCatalog: {
+        title: 'Codex 模型目录',
+        description: '从当前 API 密钥对应的分组获取完整模型目录。JSON 文件不包含 API 密钥，保存后 Codex 的 /model 列表即可显示这些模型。',
+        notFetched: '未获取',
+        loading: '获取中',
+        ready: '已获取',
+        errorStatus: '获取失败',
+        idleDescription: '点击获取当前分组的 Codex 模型目录。',
+        loadingDescription: '正在通过当前 API 密钥请求模型目录。',
+        errorDescription: '模型目录没有获取成功，可以重试。',
+        errorDetail: '获取模型目录失败，请检查 API 密钥和 Base URL 是否有效，然后重试。',
+        modelsCount: '已获取 {count} 个模型。下载后保存到上面的路径。',
+        fetch: '获取模型目录',
+        retry: '重新获取',
+        preview: '预览 JSON',
+        hidePreview: '收起预览',
+        download: '下载 JSON'
+      },
       opencode: {
         title: 'OpenCode 配置示例',
         subtitle: 'opencode.json',
