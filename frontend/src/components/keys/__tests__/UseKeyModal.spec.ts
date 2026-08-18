@@ -406,6 +406,7 @@ describe('UseKeyModal', () => {
     expect(configToml).toBeDefined()
     expect(configToml).toContain('model = "gpt-5.5"')
     expect(configToml).toContain('review_model = "gpt-5.5"')
+    expect(configToml).toContain('model_catalog_json = "~/.codex/codex-models.json"')
     expect(configToml).not.toContain('model = "gpt-5.4"')
     expect(configToml).not.toContain('model_context_window')
     expect(configToml).not.toContain('model_auto_compact_token_limit')
@@ -712,7 +713,7 @@ describe('UseKeyModal', () => {
     expect(fable.options.thinking).not.toHaveProperty('budgetTokens')
   })
 
-  it('lists group models and uses them in the Codex snippet', async () => {
+  it('uses group models in Codex config without the legacy model switch guide', async () => {
     const wrapper = mount(UseKeyModal, {
       props: {
         show: true,
@@ -733,11 +734,7 @@ describe('UseKeyModal', () => {
       }
     })
 
-    const guide = wrapper.get('[data-testid="model-switch-guide"]')
-    expect(guide.text()).toContain('deepseek-4-pro')
-    expect(guide.text()).toContain('deepseek-v4-flash')
-    expect(guide.text()).toContain('keys.useKeyModal.modelSwitch.codex')
-    expect(guide.text()).toContain('keys.useKeyModal.modelSwitch.claude')
+    expect(wrapper.find('[data-testid="model-switch-guide"]').exists()).toBe(false)
 
     const codexTab = wrapper.findAll('button').find((button) =>
       button.text().includes('keys.useKeyModal.cliTabs.codexCli')
@@ -748,7 +745,7 @@ describe('UseKeyModal', () => {
 
     const configToml = wrapper.findAll('pre code').map((code) => code.text()).join('\n')
     expect(configToml).toContain('model = "deepseek-4-pro"')
-    expect(configToml).toContain('/model deepseek-4-pro')
+    expect(configToml).toContain('model_catalog_json = "~/.codex/codex-models.json"')
   })
 
   it.each([

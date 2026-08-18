@@ -28,39 +28,6 @@
           {{ platformDescription }}
         </p>
 
-        <div
-          v-if="showModelSwitchGuide"
-          data-testid="model-switch-guide"
-          class="rounded-lg border border-gray-200 p-3 dark:border-dark-700"
-        >
-          <p class="text-sm font-medium text-gray-900 dark:text-white">
-            {{ t('keys.useKeyModal.modelSwitch.title') }}
-          </p>
-          <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-            {{ t('keys.useKeyModal.modelSwitch.description') }}
-          </p>
-          <div v-if="resolvedModels.length" class="mt-2 flex max-h-24 flex-wrap gap-1.5 overflow-y-auto">
-            <button
-              v-for="modelID in resolvedModels"
-              :key="modelID"
-              type="button"
-              class="rounded-md bg-gray-100 px-2 py-1 font-mono text-xs text-gray-800 transition-colors hover:bg-gray-200 dark:bg-dark-700 dark:text-gray-200 dark:hover:bg-dark-600"
-              :class="copiedModelID === modelID ? 'ring-1 ring-primary-400' : ''"
-              @click="copyModelID(modelID)"
-            >
-              {{ modelID }}
-            </button>
-          </div>
-          <ul class="mt-2 space-y-1 text-xs leading-5 text-gray-600 dark:text-gray-300">
-            <li v-if="showCodexSwitchHint">
-              {{ t('keys.useKeyModal.modelSwitch.codex', { model: defaultCodexModel || '<model-id>' }) }}
-            </li>
-            <li v-if="showClaudeSwitchHint">
-              {{ t('keys.useKeyModal.modelSwitch.claude', { model: defaultClaudeModel || '<model-id>' }) }}
-            </li>
-          </ul>
-        </div>
-
         <!-- Client Tabs -->
         <div v-if="clientTabs.length" class="overflow-x-auto border-b border-gray-200 dark:border-dark-700">
           <nav class="-mb-px flex min-w-max gap-4 sm:gap-6" aria-label="Client">
@@ -352,8 +319,6 @@ import {
   claudeAliasesFromModels,
   pickDefaultCodexModel,
   resolveClientSetupModels,
-  showsClaudeModelSwitch,
-  showsCodexModelSwitch,
   type ClaudeModelAliases
 } from '@/utils/clientSetupModels'
 
@@ -391,7 +356,6 @@ const { t } = useI18n()
 const { copyToClipboard: clipboardCopy } = useClipboard()
 
 const copiedIndex = ref<number | null>(null)
-const copiedModelID = ref<string | null>(null)
 const copiedCodexModelManifest = ref(false)
 const activeTab = ref<string>('unix')
 const activeClientTab = ref<string>('claude')
@@ -410,14 +374,6 @@ const DEEPSEEK_PRO_MODEL = 'deepseek-v4-pro'
 const resolvedModels = computed(() => resolveClientSetupModels(props.platform, props.models))
 const defaultCodexModel = computed(() => pickDefaultCodexModel(resolvedModels.value, props.platform))
 const claudeAliases = computed(() => claudeAliasesFromModels(resolvedModels.value, props.platform))
-const defaultClaudeModel = computed(() => claudeAliases.value?.default || defaultCodexModel.value)
-const showCodexSwitchHint = computed(() => showsCodexModelSwitch(props.platform))
-const showClaudeSwitchHint = computed(() =>
-  showsClaudeModelSwitch(props.platform, props.allowMessagesDispatch === true)
-)
-const showModelSwitchGuide = computed(() =>
-  Boolean(props.platform) && (showCodexSwitchHint.value || showClaudeSwitchHint.value)
-)
 
 const showCodexModelCatalog = computed(() =>
   props.show &&
@@ -463,7 +419,6 @@ watch(() => props.platform, () => {
 watch(() => props.show, (show) => {
   if (show) {
     codexAuthMode.value = 'legacy'
-    copiedModelID.value = null
     copiedCodexModelManifest.value = false
   } else {
     resetCodexModelManifest()
@@ -1957,15 +1912,4 @@ const copyContent = async (content: string, index: number) => {
   }
 }
 
-const copyModelID = async (modelID: string) => {
-  const success = await clipboardCopy(modelID, t('keys.copied'))
-  if (success) {
-    copiedModelID.value = modelID
-    setTimeout(() => {
-      if (copiedModelID.value === modelID) {
-        copiedModelID.value = null
-      }
-    }, 2000)
-  }
-}
 </script>

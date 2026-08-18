@@ -144,7 +144,7 @@ export default {
         authModeLegacy: '兼容模式',
         authModeApiKey: 'API Key Mode',
         authModeApiKeyRestartNotice: '保存此配置后，必须完全退出并重启 Codex Desktop 或 CLI，然后新建 task，让客户端重新构建工具注册表。',
-        configTomlHint: '请确保以下内容位于 config.toml 文件的开头部分',
+        configTomlHint: '请将以下内容保存为 config.toml；其中已包含 model_catalog_json。下载模型目录后重启 Codex。',
         note: '请确保配置目录存在。macOS/Linux 用户可运行 mkdir -p ~/.codex 创建目录。',
         noteWindows:
           '按 Win+R，输入 %userprofile%\\.codex 打开配置目录。如目录不存在，请先手动创建。'
@@ -197,7 +197,7 @@ export default {
         codexDescription:
           '配置 Codex 通过 Sub2API Responses 使用 DeepSeek，包括网关压缩和可选的客户端 WebSocket 入口。',
         codexConfigTomlHint:
-          'provider name 必须精确保持为 "OpenAI"，以便 Codex 启用 remote_compaction_v2。supports_websockets 表示 Sub2API 客户端入口能力；DeepSeek 上游仍使用 HTTP /responses。',
+          'provider name 必须精确保持为 "OpenAI"，以便 Codex 启用 remote_compaction_v2。配置已包含 model_catalog_json；下载模型目录并保存后重启 Codex。supports_websockets 表示 Sub2API 客户端入口能力；DeepSeek 上游仍使用 HTTP /responses。',
         note: '所选客户端通过 DeepSeek API Key 分组发送请求。请勿提交包含 API Key 的配置文件。',
         codexNote:
           '导出 SUB2API_API_KEY，将 config.toml 保存到 ~/.codex。启用 WebSocket 时，由 Sub2API 桥接到 DeepSeek HTTP /responses。',
@@ -206,16 +206,16 @@ export default {
       },
       codexModelCatalog: {
         title: 'Codex 模型目录',
-        description: '从当前 API 密钥对应的分组获取完整模型目录。JSON 文件不包含 API 密钥，保存后 Codex 的 /model 列表即可显示这些模型。',
+        description: '从当前 API 密钥对应的分组获取完整模型目录。下载后保存到下方路径；上面的 config.toml 已包含 model_catalog_json，重启 Codex 后即可在 /model 中看到目录里的模型。',
         notFetched: '未获取',
         loading: '获取中',
         ready: '已获取',
         errorStatus: '获取失败',
-        idleDescription: '点击获取当前分组的 Codex 模型目录。',
+        idleDescription: '先获取并下载目录，再保存到上面的路径。config.toml 会引用这个文件。',
         loadingDescription: '正在通过当前 API 密钥请求模型目录。',
         errorDescription: '模型目录没有获取成功，可以重试。',
         errorDetail: '获取模型目录失败，请检查 API 密钥和 Base URL 是否有效，然后重试。',
-        modelsCount: '已获取 {count} 个模型。下载后保存到上面的路径。',
+        modelsCount: '已获取 {count} 个模型。下载并保存到上面的路径，然后重启 Codex。',
         fetch: '获取模型目录',
         retry: '重新获取',
         preview: '预览 JSON',
@@ -227,13 +227,6 @@ export default {
         subtitle: 'opencode.json',
         hint: '配置文件路径：~/.config/opencode/opencode.json（或 opencode.jsonc），不存在需手动创建。可使用默认 provider（openai/anthropic/google）或自定义 provider_id。API Key 支持直接配置或通过客户端 /connect 命令配置。示例仅供参考，模型与选项可按需调整。'
       },
-      modelSwitch: {
-        title: '切换模型',
-        description: '下面是当前分组会暴露的模型 ID。复制后在客户端里切换即可。',
-        codex: 'Codex：在 CLI 执行 /model {model}，或把 config.toml 里的 model / review_model 改成上面的 ID。',
-        claude:
-          'Claude Code：执行 /model {model}，或设置 ANTHROPIC_MODEL / ANTHROPIC_DEFAULT_OPUS_MODEL / ANTHROPIC_DEFAULT_SONNET_MODEL / ANTHROPIC_DEFAULT_HAIKU_MODEL。'
-      }
     },
     customKeyLabel: '自定义密钥',
     customKeyPlaceholder: '输入自定义密钥（至少16个字符）',

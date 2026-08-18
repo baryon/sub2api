@@ -144,7 +144,7 @@ export default {
         authModeLegacy: 'Compatibility mode',
         authModeApiKey: 'API Key Mode',
         authModeApiKeyRestartNotice: 'After saving this configuration, completely quit and restart Codex Desktop or CLI, then create a new task so the client can rebuild its tool registry.',
-        configTomlHint: 'Make sure the following content is at the beginning of the config.toml file',
+        configTomlHint: 'Save the following as config.toml. It already includes model_catalog_json; download the catalog, then restart Codex.',
         note: 'Make sure the config directory exists. macOS/Linux users can run mkdir -p ~/.codex to create it.',
         noteWindows: 'Press Win+R and enter %userprofile%\\.codex to open the config directory. Create it manually if it does not exist.',
       },
@@ -194,7 +194,7 @@ export default {
         codexDescription:
           'Configure Codex to use DeepSeek through Sub2API Responses, including gateway compaction and optional client WebSocket ingress.',
         codexConfigTomlHint:
-          'Keep provider name exactly "OpenAI" so Codex enables remote_compaction_v2. supports_websockets describes Sub2API client ingress; DeepSeek upstream still uses HTTP /responses.',
+          'Keep provider name exactly "OpenAI" so Codex enables remote_compaction_v2. The config already includes model_catalog_json; download the catalog, save it, then restart Codex. supports_websockets describes Sub2API client ingress; DeepSeek upstream still uses HTTP /responses.',
         note:
           'The selected client sends requests through the DeepSeek API-key group. Do not commit files containing your API key.',
         codexNote:
@@ -205,16 +205,16 @@ export default {
       codexModelCatalog: {
         title: 'Codex model catalog',
         description:
-          'Fetch the complete model catalog for the group behind this API key. The JSON does not contain the API key; save it so Codex can show these models in /model.',
+          'Fetch the complete model catalog for the group behind this API key. Download it to the path below; the config.toml above already includes model_catalog_json, so Codex can show the catalog in /model after restart.',
         notFetched: 'Not fetched',
         loading: 'Fetching',
         ready: 'Ready',
         errorStatus: 'Failed',
-        idleDescription: 'Fetch the Codex model catalog for the current group.',
+        idleDescription: 'Fetch and download the catalog, then save it to the path above. config.toml will reference this file.',
         loadingDescription: 'Requesting the catalog with the current API key.',
         errorDescription: 'The catalog could not be fetched. You can retry the request.',
         errorDetail: 'Could not fetch the model catalog. Check the API key and Base URL, then retry.',
-        modelsCount: 'Fetched {count} models. Download it and save it to the path above.',
+        modelsCount: 'Fetched {count} models. Download it to the path above, then restart Codex.',
         fetch: 'Fetch catalog',
         retry: 'Retry',
         preview: 'Preview JSON',
@@ -225,13 +225,6 @@ export default {
         title: 'OpenCode Example',
         subtitle: 'opencode.json',
         hint: 'Config path: ~/.config/opencode/opencode.json (or opencode.jsonc), create if not exists. Use default providers (openai/anthropic/google) or custom provider_id. API Key can be configured directly or via /connect command. This is an example, adjust models and options as needed.',
-      },
-      modelSwitch: {
-        title: 'Switch models',
-        description: 'These IDs are what this group currently exposes. Copy one, then switch in the client.',
-        codex: 'Codex: run /model {model}, or set model and review_model in config.toml to one of the IDs above.',
-        claude:
-          'Claude Code: run /model {model}, or set ANTHROPIC_MODEL / ANTHROPIC_DEFAULT_OPUS_MODEL / ANTHROPIC_DEFAULT_SONNET_MODEL / ANTHROPIC_DEFAULT_HAIKU_MODEL.',
       },
     },
     customKeyLabel: 'Custom Key',
