@@ -16,7 +16,7 @@ import (
 func TestUpstreamBillingProbeIdentityCoversAllAPIKeyPlatforms(t *testing.T) {
 	for _, platform := range []string{
 		PlatformOpenAI, PlatformGrok, PlatformAnthropic, PlatformGemini, PlatformAntigravity,
-		PlatformKimi, PlatformZhipu, PlatformDeepSeek,
+		PlatformKimi, PlatformZhipu, PlatformDeepseek,
 	} {
 		require.True(t, IsUpstreamBillingProbeIdentity(platform, AccountTypeAPIKey), platform)
 		require.True(t, isUpstreamBillingProbeAccount(&Account{Platform: platform, Type: AccountTypeAPIKey}), platform)
@@ -131,8 +131,8 @@ func TestUpstreamBillingProbeOfficialAPIBaseURLIsUnsupportedWithoutRequest(t *te
 		{PlatformKimi, "https://api.kimi.com/coding"},
 		{PlatformZhipu, "https://open.bigmodel.cn/api/paas/v4"},
 		{PlatformZhipu, "https://open.bigmodel.cn/api/anthropic"},
-		{PlatformDeepSeek, "https://api.deepseek.com"},
-		{PlatformDeepSeek, "https://api.deepseek.com/anthropic"},
+		{PlatformDeepseek, "https://api.deepseek.com"},
+		{PlatformDeepseek, "https://api.deepseek.com/anthropic"},
 	}
 	for i, tc := range cases {
 		account := &Account{

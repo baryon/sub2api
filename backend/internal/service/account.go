@@ -358,7 +358,7 @@ func (a *Account) IsGrokOAuth() bool {
 	return a.IsGrok() && a.Type == AccountTypeOAuth
 }
 
-// IsKimi and IsZhipu identify the additional OpenAI-compatible providers.
+// IsKimi / IsZhipu / IsDeepseek 标识国产 OpenAI 兼容供应商账号。
 func (a *Account) IsKimi() bool {
 	return a.Platform == PlatformKimi
 }
@@ -367,17 +367,21 @@ func (a *Account) IsZhipu() bool {
 	return a.Platform == PlatformZhipu
 }
 
-// IsCNProvider reports whether the account participates in CN-provider quota
-// and balance monitoring. DeepSeek still uses its dedicated protocol handlers.
+func (a *Account) IsDeepseek() bool {
+	return a.Platform == PlatformDeepseek
+}
+
+// IsCNProvider 报告是否为国产 OpenAI 兼容供应商（kimi/zhipu/deepseek）。
 func (a *Account) IsCNProvider() bool {
 	return a != nil && IsCNProvider(a.Platform)
 }
 
-// IsOpenAICompatible reports whether the account uses the OpenAI protocol
-// family. DeepSeek uses dedicated handlers within that gateway.
+// IsOpenAICompatible 报告账号是否走 OpenAI 网关（OpenAI 协议族）。
+// openai/grok 原生走 OpenAI 网关；kimi/zhipu/deepseek 同为 OpenAI Chat Completions
+// 兼容上游，也经 OpenAI 网关转发。
 func (a *Account) IsOpenAICompatible() bool {
 	return a != nil && (a.Platform == PlatformOpenAI || a.Platform == PlatformGrok ||
-		a.Platform == PlatformKimi || a.Platform == PlatformZhipu || a.Platform == PlatformDeepSeek)
+		a.Platform == PlatformKimi || a.Platform == PlatformZhipu || a.Platform == PlatformDeepseek)
 }
 
 func (a *Account) GeminiOAuthType() string {
@@ -1410,8 +1414,8 @@ func (a *Account) GetOpenAIBaseURL() string {
 			return DefaultZhipuCodingBaseURL
 		}
 		return DefaultZhipuPayGBaseURL
-	case PlatformDeepSeek:
-		return DefaultDeepSeekBaseURL
+	case PlatformDeepseek:
+		return DefaultDeepseekBaseURL
 	default:
 		return "https://api.openai.com"
 	}
@@ -1435,18 +1439,21 @@ func (a *Account) IsCodingPlan() bool {
 	return a.GetAccountMode() == AccountModeCoding
 }
 
-// GetAPIProtocol returns the configured upstream protocol for Kimi and Zhipu.
-// DeepSeek always uses its dedicated native protocol routing from PR #5653.
+// GetAPIProtocol 返回国产供应商账号的上游 API 协议。存储于
+// credentials["api_protocol"]；缺失或与平台不匹配时回退 chat_completions
+// （与既有行为完全一致）。responses 协议仅 deepseek 支持（官方原生 /responses
+// 端点，适配 Codex）；kimi/zhipu 无此端点。
 func (a *Account) GetAPIProtocol() string {
 	if a == nil || !a.IsCNProvider() {
-		return APIProtocolChatCompletions
-	}
-	if a.IsDeepSeek() {
 		return APIProtocolChatCompletions
 	}
 	switch strings.TrimSpace(a.GetCredential("api_protocol")) {
 	case APIProtocolAnthropic:
 		return APIProtocolAnthropic
+	case APIProtocolResponses:
+		if a.Platform == PlatformDeepseek {
+			return APIProtocolResponses
+		}
 	case APIProtocolChatCompletions:
 		return APIProtocolChatCompletions
 	}
@@ -1479,6 +1486,8 @@ func (a *Account) GetAnthropicProtocolBaseURL() string {
 		return DefaultKimiPayGAnthropicBaseURL
 	case PlatformZhipu:
 		return DefaultZhipuAnthropicBaseURL
+	case PlatformDeepseek:
+		return DefaultDeepseekAnthropicBaseURL
 	default:
 		return ""
 	}
@@ -1504,6 +1513,8 @@ func (a *Account) GetOpenAIFormatBaseURL() string {
 			return DefaultZhipuCodingBaseURL
 		}
 		return DefaultZhipuPayGBaseURL
+	case PlatformDeepseek:
+		return DefaultDeepseekBaseURL
 	default:
 		return a.GetOpenAIBaseURL()
 	}

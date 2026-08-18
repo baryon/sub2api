@@ -75,12 +75,12 @@ func RegisterGatewayRoutes(
 	}
 	countTokensHandler := func(c *gin.Context) {
 		switch getGroupPlatform(c) {
-		case service.PlatformOpenAI, service.PlatformKimi, service.PlatformZhipu:
+		case service.PlatformOpenAI:
 			h.OpenAIGateway.CountTokens(c)
-		case service.PlatformGrok:
+		case service.PlatformGrok, service.PlatformKimi, service.PlatformZhipu, service.PlatformDeepseek:
+			// CN providers have no count_tokens upstream; estimate locally like Grok
+			// so Claude Code keeps working without selecting an account.
 			h.OpenAIGateway.GrokCountTokens(c)
-		case service.PlatformDeepSeek:
-			writeUnsupportedPlatformFeature(c, "Messages count_tokens API")
 		default:
 			h.Gateway.CountTokens(c)
 		}
@@ -503,12 +503,11 @@ func dispatchChatResponsesGateway(c *gin.Context, openAIHandler, genericHandler 
 	}
 }
 
-// dispatchMessagesGateway intentionally leaves DeepSeek on GatewayHandler:
-// that handler forwards DeepSeek's native Anthropic-compatible Messages API
-// without converting it through the OpenAI compatibility path.
+// dispatchMessagesGateway routes OpenAI-compatible and CN-provider groups,
+// including DeepSeek Anthropic-protocol accounts, onto the OpenAI gateway.
 func dispatchMessagesGateway(c *gin.Context, openAIHandler, genericHandler gin.HandlerFunc) {
 	switch getGroupPlatform(c) {
-	case service.PlatformOpenAI, service.PlatformGrok, service.PlatformKimi, service.PlatformZhipu:
+	case service.PlatformOpenAI, service.PlatformGrok, service.PlatformKimi, service.PlatformZhipu, service.PlatformDeepSeek:
 		openAIHandler(c)
 	default:
 		genericHandler(c)

@@ -325,6 +325,7 @@ func (s *GatewayService) buildUpstreamRequestAnthropicAPIKeyPassthrough(
 	body []byte,
 	token string,
 ) (*http.Request, []byte, error) {
+	body = stripDeferredToolCacheControl(body)
 	targetURL := claudeAPIURL
 	if account.IsDeepSeekAPIKey() {
 		root, err := normalizeDeepSeekBaseURL(account.GetDeepSeekBaseURL())

@@ -7,8 +7,6 @@ import (
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 )
 
-const DefaultDeepSeekBaseURL = "https://api.deepseek.com"
-
 var deepSeekDefaultModels = [...]string{
 	"deepseek-v4-flash",
 	"deepseek-v4-pro",

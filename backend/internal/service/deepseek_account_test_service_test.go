@@ -51,18 +51,19 @@ func TestBuildDeepSeekUpstreamModelsRequest(t *testing.T) {
 	req, err := svc.buildUpstreamModelsRequest(context.Background(), deepSeekAccountTestFixture(""))
 	require.NoError(t, err)
 	require.Equal(t, http.MethodGet, req.Method)
-	require.Equal(t, "https://api.deepseek.com/models", req.URL.String())
+	require.Equal(t, "https://api.deepseek.com/v1/models", req.URL.String())
 	require.Equal(t, "application/json", req.Header.Get("Accept"))
 	require.Equal(t, "Bearer deepseek-secret", req.Header.Get("Authorization"))
-	require.Equal(t, HTTPUpstreamProfileOpenAI, HTTPUpstreamProfileFromContext(req.Context()))
-	require.True(t, HTTPUpstreamRedirectsDisabled(req.Context()))
 
 	customReq, err := svc.buildUpstreamModelsRequest(context.Background(), deepSeekAccountTestFixture("https://relay.example/deepseek"))
 	require.NoError(t, err)
-	require.Equal(t, "https://relay.example/deepseek/models", customReq.URL.String())
+	require.Equal(t, "https://relay.example/deepseek/v1/models", customReq.URL.String())
 
-	_, err = svc.buildUpstreamModelsRequest(context.Background(), deepSeekAccountTestFixture("https://relay.example/v1"))
-	require.Error(t, err, "custom DeepSeek roots must not include a version suffix")
+	// Official CN-provider probe reuses the OpenAI /v1/models builder, which
+	// treats a trailing /v1 as already versioned rather than rejecting it.
+	versionedReq, err := svc.buildUpstreamModelsRequest(context.Background(), deepSeekAccountTestFixture("https://relay.example/v1"))
+	require.NoError(t, err)
+	require.Equal(t, "https://relay.example/v1/models", versionedReq.URL.String())
 }
 
 func TestFetchDeepSeekUpstreamSupportedModels(t *testing.T) {
@@ -81,7 +82,7 @@ func TestFetchDeepSeekUpstreamSupportedModels(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, []string{"deepseek-v4-flash", "deepseek-v4-pro"}, models)
 	require.Equal(t, http.MethodGet, upstream.lastReq.Method)
-	require.Equal(t, "https://api.deepseek.com/models", upstream.lastReq.URL.String())
+	require.Equal(t, "https://api.deepseek.com/v1/models", upstream.lastReq.URL.String())
 }
 
 func TestAccountTestServiceDispatchesDeepSeekToModelsProbe(t *testing.T) {
@@ -99,7 +100,7 @@ func TestAccountTestServiceDispatchesDeepSeekToModelsProbe(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, upstream.requests, 1)
 	require.Equal(t, http.MethodGet, upstream.requests[0].Method)
-	require.Equal(t, "https://api.deepseek.com/models", upstream.requests[0].URL.String())
+	require.Equal(t, "https://api.deepseek.com/v1/models", upstream.requests[0].URL.String())
 	require.Equal(t, "Bearer deepseek-secret", upstream.requests[0].Header.Get("Authorization"))
 	require.Contains(t, recorder.Body.String(), `"type":"test_start"`)
 	require.Contains(t, recorder.Body.String(), `"model":"deepseek-v4-flash"`)

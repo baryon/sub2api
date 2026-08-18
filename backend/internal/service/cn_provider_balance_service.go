@@ -115,7 +115,7 @@ func (s *CNProviderBalanceService) queryBalance(ctx context.Context, accountID i
 		return nil, err
 	}
 	provider := account.Platform
-	if provider != PlatformKimi && provider != PlatformDeepSeek {
+	if provider != PlatformKimi && provider != PlatformDeepseek {
 		return nil, infraerrors.New(http.StatusBadRequest, "CN_BALANCE_NO_ENDPOINT", "account provider has no balance endpoint")
 	}
 
@@ -125,6 +125,13 @@ func (s *CNProviderBalanceService) queryBalance(ctx context.Context, accountID i
 	}
 
 	targetURL := cnBalanceURL(account)
+	// 探测发起前过出站 URL 安全策略（与网关转发/Grok 探测同一套校验）：
+	// DeepSeek 端点由账号 base_url 衍生，不得把 API key 发往策略外主机。
+	validatedURL, err := cnValidateProbeURL(s.cfg, targetURL)
+	if err != nil {
+		return nil, infraerrors.New(http.StatusForbidden, "CN_BALANCE_URL_REJECTED", err.Error())
+	}
+	targetURL = validatedURL
 	proxyURL := s.resolveProxyURL(ctx, account)
 	callCtx, cancel := context.WithTimeout(ctx, cnBalanceUpstreamTimeout)
 	defer cancel()
@@ -167,7 +174,7 @@ func (s *CNProviderBalanceService) queryBalance(ctx context.Context, accountID i
 		// Moonshot：code==0 成功；data.available_balance（number），单币种 CNY。
 		balance, _ := cnParseF64(gjson.GetBytes(bodyBytes, "data.available_balance").Value())
 		entries = append(entries, CNProviderBalanceEntry{Currency: "CNY", Balance: balance})
-	case PlatformDeepSeek:
+	case PlatformDeepseek:
 		// is_available 缺省视为 true（健康）；显式存在时取其值。
 		if v := gjson.GetBytes(bodyBytes, "is_available"); v.Exists() {
 			available = v.Bool()
@@ -260,8 +267,10 @@ func cnBalanceURL(account *Account) string {
 	switch account.Platform {
 	case PlatformKimi:
 		return "https://api.moonshot.cn/v1/users/me/balance"
-	case PlatformDeepSeek:
-		return strings.TrimRight(account.GetDeepSeekBaseURL(), "/") + "/user/balance"
+	case PlatformDeepseek:
+		// Anthropic 协议账号的凭证 base_url 指向 /anthropic 端点，余额探测需回退
+		// 到 OpenAI 格式 base（协议感知）再拼接 /user/balance。
+		return strings.TrimRight(account.GetOpenAIFormatBaseURL(), "/") + "/user/balance"
 	default:
 		return ""
 	}

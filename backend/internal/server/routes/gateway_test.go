@@ -491,8 +491,6 @@ func TestGatewayRoutesDeepSeekRejectsUnsupportedResponsesSurfaces(t *testing.T) 
 		{http.MethodPost, "/v1/alpha/search"},
 		{http.MethodPost, "/alpha/search"},
 		{http.MethodPost, "/backend-api/codex/alpha/search"},
-		{http.MethodPost, "/v1/messages/count_tokens"},
-		{http.MethodPost, "/messages/count_tokens"},
 	} {
 		req := httptest.NewRequest(tc.method, tc.path, strings.NewReader(`{"model":"deepseek-v4-pro"}`))
 		req.Header.Set("Content-Type", "application/json")
@@ -501,6 +499,24 @@ func TestGatewayRoutesDeepSeekRejectsUnsupportedResponsesSurfaces(t *testing.T) 
 		router.ServeHTTP(w, req)
 		require.Equal(t, http.StatusNotFound, w.Code, "method=%s path=%s", tc.method, tc.path)
 		require.Contains(t, w.Body.String(), "not supported for this platform", "method=%s path=%s", tc.method, tc.path)
+	}
+}
+
+func TestGatewayRoutesDeepSeekAllowsLocalCountTokens(t *testing.T) {
+	router := newGatewayRoutesTestRouter(service.PlatformDeepSeek)
+
+	for _, path := range []string{"/v1/messages/count_tokens", "/messages/count_tokens"} {
+		req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(`{"model":"deepseek-v4-pro","messages":[{"role":"user","content":"hi"}]}`))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		router.ServeHTTP(w, req)
+		require.Equal(t, http.StatusOK, w.Code, "path=%s", path)
+		var response struct {
+			InputTokens int `json:"input_tokens"`
+		}
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response), "path=%s", path)
+		require.Positive(t, response.InputTokens, "path=%s", path)
 	}
 }
 

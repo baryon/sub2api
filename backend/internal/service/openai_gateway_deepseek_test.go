@@ -61,9 +61,9 @@ func TestBuildDeepSeekNativeEndpointURLsDoNotInsertV1(t *testing.T) {
 
 func TestNormalizeOpenAICompatiblePlatformPreservesDeepSeek(t *testing.T) {
 	t.Parallel()
-	require.Equal(t, PlatformDeepSeek, normalizeOpenAICompatiblePlatform(PlatformDeepSeek))
-	require.Equal(t, PlatformGrok, normalizeOpenAICompatiblePlatform(PlatformGrok))
-	require.Equal(t, PlatformOpenAI, normalizeOpenAICompatiblePlatform(PlatformOpenAI))
+	require.Equal(t, PlatformDeepSeek, NormalizeOpenAICompatiblePlatform(PlatformDeepSeek))
+	require.Equal(t, PlatformGrok, NormalizeOpenAICompatiblePlatform(PlatformGrok))
+	require.Equal(t, PlatformOpenAI, NormalizeOpenAICompatiblePlatform(PlatformOpenAI))
 }
 
 func TestForwardAsChatCompletionsDeepSeekUsesNativeRawEndpoint(t *testing.T) {

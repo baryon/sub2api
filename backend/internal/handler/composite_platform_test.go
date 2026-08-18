@@ -118,7 +118,7 @@ func TestAllowOpenAICompatibleMessagesDispatchUsesCompositeTarget(t *testing.T) 
 		{name: "openai target", platform: service.PlatformOpenAI, resolved: true, want: true},
 		{name: "grok target", platform: service.PlatformGrok, resolved: true, want: true},
 		{name: "anthropic target", platform: service.PlatformAnthropic, resolved: true, want: false},
-		{name: "deepseek target", platform: service.PlatformDeepSeek, resolved: true, want: false},
+		{name: "deepseek target", platform: service.PlatformDeepSeek, resolved: true, want: true},
 		{name: "unresolved target", want: false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

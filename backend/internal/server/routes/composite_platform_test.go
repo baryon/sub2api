@@ -188,7 +188,7 @@ func TestCompositeDeepSeekDispatchesEachProtocolToItsNativeHandler(t *testing.T)
 	}{
 		{path: "/v1/chat/completions", want: "openai-native-chat"},
 		{path: "/v1/responses", want: "openai-native-responses"},
-		{path: "/v1/messages", want: "deepseek-native-messages"},
+		{path: "/v1/messages", want: "openai-messages-bridge"},
 	} {
 		req := httptest.NewRequest(http.MethodPost, tc.path, strings.NewReader(`{"model":"deepseek-alias"}`))
 		req.Header.Set("Content-Type", "application/json")

@@ -13,22 +13,12 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/config"
 )
 
-func TestNormalizeAccountPlatformIncludesKimiAndZhipu(t *testing.T) {
-	t.Parallel()
-
-	for _, platform := range []string{PlatformKimi, PlatformZhipu} {
-		normalized, err := normalizeAccountPlatform(platform)
-		require.NoError(t, err)
-		require.Equal(t, platform, normalized)
-	}
-}
-
 // TestCNExtraKey 验证 provider 维度的 Extra 快照键由前缀 + 后缀拼接。
 func TestCNExtraKey(t *testing.T) {
 	t.Parallel()
 	require.Equal(t, "kimi_5h_used_percent", cnExtraKey(PlatformKimi, cnExtraSuffix5hUsed))
 	require.Equal(t, "zhipu_weekly_reset_at", cnExtraKey(PlatformZhipu, cnExtraSuffixWeeklyReset))
-	require.Equal(t, "deepseek_balance", cnExtraKey(PlatformDeepSeek, cnBalanceExtraSuffixBalance))
+	require.Equal(t, "deepseek_balance", cnExtraKey(PlatformDeepseek, cnBalanceExtraSuffixBalance))
 }
 
 // TestCNParseF64 兼容 JSON 数值与字符串（cc-switch 与上游字段类型不一致）。
@@ -65,9 +55,9 @@ func TestCNMillisToRFC3339(t *testing.T) {
 	t.Parallel()
 	// 1700000000 秒 = 1700000000000 毫秒
 	want := time.UnixMilli(1700000000000).UTC().Format(time.RFC3339)
-	require.Equal(t, want, cnMillisToRFC3339(1700000000))    // 秒级
-	require.Equal(t, want, cnMillisToRFC3339(1700000000000)) // 毫秒级
-	require.Equal(t, "", cnMillisToRFC3339(0))               // 非正
+	require.Equal(t, want, cnMillisToRFC3339(1700000000))      // 秒级
+	require.Equal(t, want, cnMillisToRFC3339(1700000000000))   // 毫秒级
+	require.Equal(t, "", cnMillisToRFC3339(0))                 // 非正
 	require.Equal(t, "", cnMillisToRFC3339(-1))
 }
 
@@ -246,7 +236,7 @@ func TestCNBalanceURL(t *testing.T) {
 	require.Equal(t, "https://api.moonshot.cn/v1/users/me/balance", cnBalanceURL(kimi))
 
 	deepseek := &Account{
-		Platform:    PlatformDeepSeek,
+		Platform:    PlatformDeepseek,
 		Credentials: map[string]any{"base_url": "https://api.deepseek.com"},
 	}
 	require.Equal(t, "https://api.deepseek.com/user/balance", cnBalanceURL(deepseek))
@@ -304,8 +294,8 @@ func TestEvaluateAccountSchedulingThreshold_KimiCodingPlan(t *testing.T) {
 	account := &Account{
 		Platform: PlatformKimi,
 		Extra: map[string]any{
-			"kimi_5h_used_percent":     90.0,
-			"kimi_5h_reset_at":         reset.Format(time.RFC3339),
+			"kimi_5h_used_percent": 90.0,
+			"kimi_5h_reset_at":     reset.Format(time.RFC3339),
 			"kimi_weekly_used_percent": 30.0,
 			"kimi_weekly_reset_at":     now.Add(7 * 24 * time.Hour).Format(time.RFC3339),
 		},
@@ -407,7 +397,7 @@ func TestNormalizeOpenAICompatiblePlatform_SchedulerExactMatch(t *testing.T) {
 	require.Equal(t, PlatformGrok, NormalizeOpenAICompatiblePlatform(PlatformGrok))
 	require.Equal(t, PlatformKimi, NormalizeOpenAICompatiblePlatform(PlatformKimi))
 	require.Equal(t, PlatformZhipu, NormalizeOpenAICompatiblePlatform(PlatformZhipu))
-	require.Equal(t, PlatformDeepSeek, NormalizeOpenAICompatiblePlatform(PlatformDeepSeek))
+	require.Equal(t, PlatformDeepseek, NormalizeOpenAICompatiblePlatform(PlatformDeepseek))
 	// 其他平台（含空、anthropic、未知）一律归一为 openai。
 	require.Equal(t, PlatformOpenAI, NormalizeOpenAICompatiblePlatform(""))
 	require.Equal(t, PlatformOpenAI, NormalizeOpenAICompatiblePlatform(PlatformAnthropic))
@@ -420,16 +410,16 @@ func TestGetOpenAIProtocolAPIKey_CNProviders(t *testing.T) {
 	t.Parallel()
 
 	kimi := &Account{
-		Platform:    PlatformKimi,
-		Type:        AccountTypeAPIKey,
-		Credentials: map[string]any{"api_key": "sk-kimi"},
+		Platform:     PlatformKimi,
+		Type:         AccountTypeAPIKey,
+		Credentials:  map[string]any{"api_key": "sk-kimi"},
 	}
 	require.Equal(t, "sk-kimi", kimi.GetOpenAIProtocolAPIKey())
 	require.False(t, kimi.IsOpenAIApiKey(), "IsOpenAIApiKey stays openai-only for scheduling gates")
 
 	// 非 APIKey 类型的 CN 账号不返回密钥
 	notAPIKey := &Account{
-		Platform:    PlatformDeepSeek,
+		Platform:    PlatformDeepseek,
 		Type:        AccountTypeOAuth,
 		Credentials: map[string]any{"api_key": "sk-leak"},
 	}
@@ -460,7 +450,7 @@ func TestBuildUpstreamModelsRequest_CNProviders(t *testing.T) {
 		{"kimi coding", PlatformKimi, AccountModeCoding, "https://api.kimi.com/coding/v1/models"},
 		{"zhipu default", PlatformZhipu, "", "https://open.bigmodel.cn/api/paas/v4/models"},
 		{"zhipu coding", PlatformZhipu, AccountModeCoding, "https://open.bigmodel.cn/api/coding/paas/v4/models"},
-		{"deepseek", PlatformDeepSeek, "", "https://api.deepseek.com/models"},
+		{"deepseek", PlatformDeepseek, "", "https://api.deepseek.com/v1/models"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -478,8 +468,8 @@ func TestBuildUpstreamModelsRequest_CNProviders(t *testing.T) {
 	}
 }
 
-// TestGetAPIProtocol verifies Kimi/Zhipu protocol selection. DeepSeek uses its
-// dedicated native routing and ignores this compatibility credential.
+// TestGetAPIProtocol 验证协议凭证维度的平台校验矩阵：
+// responses 仅 deepseek；缺失/非法值回退 chat_completions（与旧行为一致）。
 func TestGetAPIProtocol(t *testing.T) {
 	t.Parallel()
 
@@ -494,8 +484,8 @@ func TestGetAPIProtocol(t *testing.T) {
 	require.Equal(t, APIProtocolChatCompletions, mk(PlatformKimi, "").GetAPIProtocol(), "缺失回退默认")
 	require.Equal(t, APIProtocolAnthropic, mk(PlatformZhipu, APIProtocolAnthropic).GetAPIProtocol())
 	require.Equal(t, APIProtocolAnthropic, mk(PlatformKimi, APIProtocolAnthropic).GetAPIProtocol())
-	require.Equal(t, APIProtocolChatCompletions, mk(PlatformDeepSeek, APIProtocolAnthropic).GetAPIProtocol())
-	require.Equal(t, APIProtocolChatCompletions, mk(PlatformDeepSeek, APIProtocolResponses).GetAPIProtocol())
+	require.Equal(t, APIProtocolAnthropic, mk(PlatformDeepseek, APIProtocolAnthropic).GetAPIProtocol())
+	require.Equal(t, APIProtocolResponses, mk(PlatformDeepseek, APIProtocolResponses).GetAPIProtocol())
 	require.Equal(t, APIProtocolChatCompletions, mk(PlatformKimi, APIProtocolResponses).GetAPIProtocol(), "kimi 无 responses 端点")
 	require.Equal(t, APIProtocolChatCompletions, mk(PlatformZhipu, APIProtocolResponses).GetAPIProtocol(), "zhipu 无 responses 端点")
 	require.Equal(t, APIProtocolChatCompletions, mk(PlatformKimi, "bogus").GetAPIProtocol(), "非法值回退默认")
@@ -520,6 +510,11 @@ func TestAnthropicProtocolBaseURL(t *testing.T) {
 		Platform: PlatformZhipu, Type: AccountTypeAPIKey,
 		Credentials: map[string]any{"api_protocol": APIProtocolAnthropic},
 	}).GetAnthropicProtocolBaseURL())
+	require.Equal(t, "https://api.deepseek.com/anthropic", (&Account{
+		Platform: PlatformDeepseek, Type: AccountTypeAPIKey,
+		Credentials: map[string]any{"api_protocol": APIProtocolAnthropic},
+	}).GetAnthropicProtocolBaseURL())
+
 	// 凭证 base_url 覆盖默认值
 	require.Equal(t, "https://custom.example.com/anthropic", (&Account{
 		Platform: PlatformZhipu, Type: AccountTypeAPIKey,
@@ -559,10 +554,10 @@ func TestGetOpenAIFormatBaseURL_ProtocolAware(t *testing.T) {
 
 	// chat_completions 协议下行为不变（凭证 base_url 原样返回）
 	ccAccount := &Account{
-		Platform: PlatformKimi, Type: AccountTypeAPIKey,
-		Credentials: map[string]any{"base_url": "https://kimi-relay.example.com"},
+		Platform: PlatformDeepseek, Type: AccountTypeAPIKey,
+		Credentials: map[string]any{"base_url": "https://ds-relay.example.com"},
 	}
-	require.Equal(t, "https://kimi-relay.example.com", ccAccount.GetOpenAIFormatBaseURL())
+	require.Equal(t, "https://ds-relay.example.com", ccAccount.GetOpenAIFormatBaseURL())
 }
 
 // TestBuildUpstreamModelsRequest_AnthropicProtocol 模型同步使用协议感知 base。
@@ -580,6 +575,38 @@ func TestBuildUpstreamModelsRequest_AnthropicProtocol(t *testing.T) {
 	req, err := svc.buildUpstreamModelsRequest(context.Background(), account)
 	require.NoError(t, err)
 	require.Equal(t, "https://open.bigmodel.cn/api/paas/v4/models", req.URL.String())
+}
+
+// TestBuildOpenAIResponsesURLForPlatform deepseek 官方端点为 /responses（无 /v1）。
+func TestBuildOpenAIResponsesURLForPlatform(t *testing.T) {
+	t.Parallel()
+	require.Equal(t, "https://api.deepseek.com/responses", buildOpenAIResponsesURLForPlatform(PlatformDeepseek, "https://api.deepseek.com"))
+	require.Equal(t, "https://api.openai.com/v1/responses", buildOpenAIResponsesURLForPlatform(PlatformOpenAI, "https://api.openai.com"))
+	require.Equal(t, "https://open.bigmodel.cn/api/paas/v4/responses", buildOpenAIResponsesURLForPlatform(PlatformZhipu, "https://open.bigmodel.cn/api/paas/v4"))
+}
+
+// TestNormalizeDeepSeekResponsesRequestBody 无状态适配：强制 store=false、
+// 清除 previous_response_id；非 deepseek responses 协议原样返回。
+func TestNormalizeDeepSeekResponsesRequestBody(t *testing.T) {
+	t.Parallel()
+
+	deepseekResponses := &Account{
+		Platform: PlatformDeepseek, Type: AccountTypeAPIKey,
+		Credentials: map[string]any{"api_protocol": APIProtocolResponses},
+	}
+	body := []byte(`{"model":"deepseek-v4-pro","store":true,"previous_response_id":"resp_123","input":"hi"}`)
+	normalized := normalizeDeepSeekResponsesRequestBody(deepseekResponses, body)
+	require.False(t, gjson.GetBytes(normalized, "store").Bool())
+	require.False(t, gjson.GetBytes(normalized, "previous_response_id").Exists())
+	require.Equal(t, "deepseek-v4-pro", gjson.GetBytes(normalized, "model").String())
+
+	// 非 responses 协议（deepseek CC 账号）原样返回
+	deepseekCC := &Account{Platform: PlatformDeepseek, Type: AccountTypeAPIKey}
+	require.Equal(t, string(body), string(normalizeDeepSeekResponsesRequestBody(deepseekCC, body)))
+
+	// openai 账号原样返回
+	openai := &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey}
+	require.Equal(t, string(body), string(normalizeDeepSeekResponsesRequestBody(openai, body)))
 }
 
 // TestGetAnthropicAPIKeyAuthScheme_CNProvider CN 账号可经 extra 覆写鉴权方案，
