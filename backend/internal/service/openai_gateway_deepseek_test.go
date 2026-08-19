@@ -127,6 +127,32 @@ func TestForwardDeepSeekResponsesUsesNativeEndpointAndOpaqueBody(t *testing.T) {
 	require.Equal(t, deepSeekResponsesEndpoint, result.UpstreamEndpoint)
 }
 
+func TestForwardDeepSeekResponsesStripsPromptCacheRetention(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	body := []byte(`{"model":"deepseek-v4-pro","input":"hello","prompt_cache_retention":"in-memory","safety_identifier":"sid","stream":false}`)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(body))
+	c.Request.Header.Set("User-Agent", "codex-tui/0.141.0")
+	c.Request.Header.Set("originator", "codex_cli_rs")
+
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body: io.NopCloser(strings.NewReader(
+			`{"id":"resp_ds","object":"response","model":"deepseek-v4-pro","status":"completed","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"ok"}]}],"usage":{"input_tokens":5,"output_tokens":2,"total_tokens":7}}`,
+		)),
+	}}
+	svc := &OpenAIGatewayService{cfg: deepSeekForwardTestConfig(), httpUpstream: upstream}
+
+	result, err := svc.Forward(context.Background(), c, deepSeekForwardTestAccount(), body)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.False(t, gjson.GetBytes(upstream.lastBody, "prompt_cache_retention").Exists())
+	require.False(t, gjson.GetBytes(upstream.lastBody, "safety_identifier").Exists())
+	require.Equal(t, "hello", gjson.GetBytes(upstream.lastBody, "input").String())
+}
+
 func TestForwardAsChatCompletionsDeepSeekStreamCompletesWithDoneAndUsage(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	body := []byte(`{"model":"deepseek-v4-pro","messages":[{"role":"user","content":"hello"}],"reasoning_effort":"max","stream":true}`)

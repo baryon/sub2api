@@ -31,11 +31,13 @@ func TestResolveOpenAIWSClientFirstMessageTimeout(t *testing.T) {
 }
 
 func TestPrepareOpenAIWSHTTPBridgeBodyStripsWSFields(t *testing.T) {
-	body, err := prepareOpenAIWSHTTPBridgeBody([]byte(`{"type":"response.create","generate":true,"model":"gpt-5","stream":false,"previous_response_id":"resp_prev","input":"hi"}`))
+	body, err := prepareOpenAIWSHTTPBridgeBody([]byte(`{"type":"response.create","generate":true,"model":"gpt-5","stream":false,"previous_response_id":"resp_prev","prompt_cache_retention":"24h","safety_identifier":"sid","input":"hi"}`))
 	require.NoError(t, err)
 	require.False(t, gjson.GetBytes(body, "type").Exists())
 	require.False(t, gjson.GetBytes(body, "generate").Exists())
 	require.False(t, gjson.GetBytes(body, "previous_response_id").Exists())
+	require.False(t, gjson.GetBytes(body, "prompt_cache_retention").Exists())
+	require.False(t, gjson.GetBytes(body, "safety_identifier").Exists())
 	require.Equal(t, "gpt-5", gjson.GetBytes(body, "model").String())
 	require.True(t, gjson.GetBytes(body, "stream").Bool())
 	require.Equal(t, "hi", gjson.GetBytes(body, "input").String())

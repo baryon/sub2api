@@ -55,6 +55,44 @@ func buildOpenAIResponsesURLForPlatform(platform string, base string) string {
 	return buildOpenAIResponsesURL(base)
 }
 
+// openAIResponsesOptionalCacheFields are top-level Responses hints that Codex
+// CLI always sends. Many models and OpenAI-compatible upstreams reject them
+// with "prompt_cache_retention is not supported on this model", which aborts
+// the Codex SSE stream. They are optional and must be stripped for every
+// client, including official Codex CLI.
+var openAIResponsesOptionalCacheFields = []string{
+	"prompt_cache_retention",
+	"safety_identifier",
+	"prompt_cache_options",
+}
+
+func stripOpenAIResponsesOptionalCacheFields(body []byte) ([]byte, error) {
+	if len(body) == 0 {
+		return body, nil
+	}
+	out := body
+	for _, field := range openAIResponsesOptionalCacheFields {
+		if !gjson.GetBytes(out, field).Exists() {
+			continue
+		}
+		next, err := sjson.DeleteBytes(out, field)
+		if err != nil {
+			return body, fmt.Errorf("strip %s: %w", field, err)
+		}
+		out = next
+	}
+	return out, nil
+}
+
+func deleteOpenAIResponsesOptionalCacheFieldsFromObject(body map[string]any) {
+	if body == nil {
+		return
+	}
+	for _, field := range openAIResponsesOptionalCacheFields {
+		delete(body, field)
+	}
+}
+
 // normalizeDeepSeekResponsesRequestBody 适配 DeepSeek 无状态 Responses 端点：
 // 强制 store=false 并清除 previous_response_id（官方 /responses 不支持服务端
 // 状态存储，携带这些字段会被拒绝）。非 deepseek responses 协议账号原样返回。

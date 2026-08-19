@@ -199,3 +199,18 @@ func TestTrimOpenAIEncryptedReasoningItems_ContentNullDropsBareSkeleton(t *testi
 	_, hasInput := reqBody["input"]
 	assert.False(t, hasInput, "bare reasoning skeleton should be dropped, emptying input")
 }
+
+func TestStripOpenAIResponsesOptionalCacheFields(t *testing.T) {
+	body := []byte(`{"model":"gpt-5.4","prompt_cache_retention":"24h","safety_identifier":"sid","prompt_cache_options":{"enabled":true},"input":"hi"}`)
+	stripped, err := stripOpenAIResponsesOptionalCacheFields(body)
+	require.NoError(t, err)
+	require.False(t, gjson.GetBytes(stripped, "prompt_cache_retention").Exists())
+	require.False(t, gjson.GetBytes(stripped, "safety_identifier").Exists())
+	require.False(t, gjson.GetBytes(stripped, "prompt_cache_options").Exists())
+	require.Equal(t, "gpt-5.4", gjson.GetBytes(stripped, "model").String())
+	require.Equal(t, "hi", gjson.GetBytes(stripped, "input").String())
+
+	unchanged, err := stripOpenAIResponsesOptionalCacheFields([]byte(`{"model":"gpt-5.4","input":"hi"}`))
+	require.NoError(t, err)
+	require.JSONEq(t, `{"model":"gpt-5.4","input":"hi"}`, string(unchanged))
+}

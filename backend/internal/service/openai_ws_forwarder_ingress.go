@@ -413,6 +413,11 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 			)
 		}
 		normalized = policyApplied
+		strippedCache, stripCacheErr := stripOpenAIResponsesOptionalCacheFields(normalized)
+		if stripCacheErr != nil {
+			return openAIWSClientPayload{}, NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "invalid websocket request payload", stripCacheErr)
+		}
+		normalized = strippedCache
 		ingressSessionOriginalModel = originalModel
 
 		return openAIWSClientPayload{

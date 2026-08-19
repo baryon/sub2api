@@ -291,6 +291,9 @@ func prepareDeepSeekWSHTTPBridgeBody(payload []byte) ([]byte, error) {
 	delete(body, "type")
 	delete(body, "generate")
 	delete(body, "previous_response_id")
+	for _, field := range openAIResponsesOptionalCacheFields {
+		delete(body, field)
+	}
 	body["stream"] = json.RawMessage("true")
 	if strings.TrimSpace(gjson.GetBytes(payload, "model").String()) == "" {
 		return nil, errors.New("model is required in response.create payload")

@@ -238,6 +238,47 @@ func TestOpenAIGatewayService_Forward_NormalizesMaxTokensAndStripsPromptCacheOpt
 	})
 }
 
+func TestOpenAIGatewayService_Forward_CodexCLIStripsPromptCacheRetention(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	upstream := &httpUpstreamRecorder{
+		resp: &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Body:       io.NopCloser(strings.NewReader(`{"usage":{"input_tokens":1,"output_tokens":2}}`)),
+		},
+	}
+	cfg := &config.Config{}
+	cfg.Security.URLAllowlist.Enabled = false
+	svc := &OpenAIGatewayService{cfg: cfg, httpUpstream: upstream}
+	account := &Account{
+		ID:          4,
+		Name:        "openai-apikey",
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Concurrency: 1,
+		Credentials: map[string]any{
+			"api_key":  "sk-test",
+			"base_url": "https://example.com",
+		},
+		Extra: map[string]any{"openai_responses_supported": true},
+	}
+	body := []byte(`{"model":"gpt-5.6-sol","stream":false,"prompt_cache_retention":"24h","safety_identifier":"sid","prompt_cache_options":{"enabled":true},"input":[{"type":"message","content":"hi"}]}`)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/openai/v1/responses", nil)
+	c.Request.Header.Set("User-Agent", "codex-tui/0.141.0 (Mac OS 15.5.0; arm64)")
+	c.Request.Header.Set("originator", "codex_cli_rs")
+	SetOpenAIClientTransport(c, OpenAIClientTransportHTTP)
+
+	result, err := svc.Forward(context.Background(), c, account, body)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.False(t, gjson.GetBytes(upstream.lastBody, "prompt_cache_retention").Exists())
+	require.False(t, gjson.GetBytes(upstream.lastBody, "safety_identifier").Exists())
+	require.False(t, gjson.GetBytes(upstream.lastBody, "prompt_cache_options").Exists())
+	require.Equal(t, "gpt-5.6-sol", gjson.GetBytes(upstream.lastBody, "model").String())
+}
+
 func TestOpenAIGatewayService_Forward_MappedImageModelUsesImageGate(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	upstream := &httpUpstreamRecorder{

@@ -20,6 +20,11 @@ import (
 // Forward forwards request to OpenAI API
 func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, account *Account, body []byte) (*OpenAIForwardResult, error) {
 	beginUpstreamResponseModelObservation(c)
+	strippedBody, stripErr := stripOpenAIResponsesOptionalCacheFields(body)
+	if stripErr != nil {
+		return nil, stripErr
+	}
+	body = strippedBody
 	if account != nil && account.IsDeepSeek() {
 		return s.forwardDeepSeekResponses(ctx, c, account, body)
 	}
@@ -495,11 +500,6 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		}
 		if gjson.GetBytes(body, "max_completion_tokens").Exists() && (account.Type == AccountTypeAPIKey || account.Platform != PlatformOpenAI) {
 			markPatchDelete("max_completion_tokens")
-		}
-		for _, unsupportedField := range []string{"prompt_cache_retention", "safety_identifier", "prompt_cache_options"} {
-			if gjson.GetBytes(body, unsupportedField).Exists() {
-				markPatchDelete(unsupportedField)
-			}
 		}
 	}
 	if wsDecision.Transport != OpenAIUpstreamTransportResponsesWebsocketV2 && gjson.GetBytes(body, "previous_response_id").Exists() {

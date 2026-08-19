@@ -86,6 +86,7 @@ func prepareOpenAIWSHTTPBridgeBody(payload []byte) ([]byte, error) {
 	delete(body, "type")
 	delete(body, "generate")
 	delete(body, "previous_response_id")
+	deleteOpenAIResponsesOptionalCacheFieldsFromObject(body)
 	body["stream"] = true
 	return json.Marshal(body)
 }

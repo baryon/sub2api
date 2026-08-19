@@ -114,6 +114,30 @@ func TestNormalizeOpenAIResponsesRejectedFieldRetryBodyBindsMaxOutputTokensToRej
 	require.False(t, gjson.GetBytes(retryBody, "max_output_tokens").Exists())
 }
 
+func TestNormalizeOpenAIResponsesRejectedFieldRetryBodyStripsPromptCacheRetentionWhenModelRejectsIt(t *testing.T) {
+	body := []byte(`{"model":"gpt-5.6-sol","prompt_cache_retention":"24h","input":[{"type":"message","content":{"prompt_cache_retention":"keep"}}]}`)
+	responseBody := []byte(`{"error":{"code":"invalid_parameter","message":"prompt_cache_retention is not supported on this model","param":"prompt_cache_retention","type":"invalid_request_error"}}`)
+
+	retryBody, reason, changed, err := normalizeOpenAIResponsesRejectedFieldRetryBody(http.StatusBadRequest, body, responseBody)
+
+	require.NoError(t, err)
+	require.True(t, changed)
+	require.Contains(t, reason, "prompt_cache_retention")
+	require.False(t, gjson.GetBytes(retryBody, "prompt_cache_retention").Exists())
+	require.Equal(t, "keep", gjson.GetBytes(retryBody, "input.0.content.prompt_cache_retention").String())
+}
+
+func TestNormalizeOpenAIResponsesRejectedFieldRetryBodyIgnoresOtherModelUnsupportedFields(t *testing.T) {
+	body := []byte(`{"temperature":0.2,"prompt_cache_retention":"24h"}`)
+	responseBody := []byte(`{"error":{"message":"temperature is not supported on this model","param":"temperature","type":"invalid_request_error"}}`)
+
+	retryBody, _, changed, err := normalizeOpenAIResponsesRejectedFieldRetryBody(http.StatusBadRequest, body, responseBody)
+
+	require.NoError(t, err)
+	require.False(t, changed)
+	require.Nil(t, retryBody)
+}
+
 func TestOpenAIGatewayService_APIKeyStripsAllIndexedNamespacesBeforeFirstForward(t *testing.T) {
 	body := []byte(`{"model":"gpt-5.5","stream":false,"input":[{"type":"function_call","name":"first","namespace":"remove-first","arguments":"{}"},{"type":"custom_tool_call","name":"second","namespace":"remove-second","input":"{}"}]}`)
 	upstream := &httpUpstreamRecorder{responses: []*http.Response{

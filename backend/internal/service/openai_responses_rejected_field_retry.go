@@ -62,13 +62,18 @@ func normalizeOpenAIResponsesRejectedFieldRetryBody(statusCode int, body, respon
 
 	code := strings.ToLower(strings.TrimSpace(extractUpstreamErrorCode(responseBody)))
 	message := strings.ToLower(strings.TrimSpace(extractUpstreamErrorMessage(responseBody)))
-	if !isExplicitOpenAIResponsesFieldRejection(code, message) {
+	param := strings.ToLower(strings.TrimSpace(gjson.GetBytes(responseBody, "error.param").String()))
+	explicitRejection := isExplicitOpenAIResponsesFieldRejection(code, message)
+	cacheField := openAIResponsesRejectedOptionalCacheField(param, message)
+	modelUnsupported := cacheField != "" && strings.Contains(message, cacheField+" is not supported")
+	if !explicitRejection && !modelUnsupported {
 		return nil, "", false, nil
 	}
-
-	param := strings.ToLower(strings.TrimSpace(gjson.GetBytes(responseBody, "error.param").String()))
 	if param == "" {
 		param = openAIResponsesRejectedParamFromMessage(message)
+	}
+	if cacheField == "" {
+		cacheField = openAIResponsesRejectedOptionalCacheField(param, message)
 	}
 	if index, ok := openAIResponsesRejectedNamespaceIndex(param); ok {
 		return removeOpenAIResponsesRejectedNamespaceAtIndex(body, index)
@@ -79,6 +84,13 @@ func normalizeOpenAIResponsesRejectedFieldRetryBody(statusCode int, body, respon
 			return nil, "", false, fmt.Errorf("delete rejected max_output_tokens: %w", err)
 		}
 		return retryBody, "max_output_tokens parameter rejection", true, nil
+	}
+	if cacheField != "" && gjson.GetBytes(body, cacheField).Exists() {
+		retryBody, err := sjson.DeleteBytes(body, cacheField)
+		if err != nil {
+			return nil, "", false, fmt.Errorf("delete rejected %s: %w", cacheField, err)
+		}
+		return retryBody, cacheField + " parameter rejection", true, nil
 	}
 	return nil, "", false, nil
 }
@@ -98,6 +110,20 @@ func openAIResponsesRejectedParamFromMessage(message string) string {
 		return ""
 	}
 	return strings.ToLower(strings.TrimSpace(match[1]))
+}
+
+func openAIResponsesRejectedOptionalCacheField(param, message string) string {
+	for _, field := range openAIResponsesOptionalCacheFields {
+		if param == field {
+			return field
+		}
+		if strings.Contains(message, field+" is not supported") ||
+			strings.Contains(message, "unsupported parameter: "+field) ||
+			strings.Contains(message, "unknown parameter: "+field) {
+			return field
+		}
+	}
+	return ""
 }
 
 func openAIResponsesRejectedNamespaceIndex(param string) (int, bool) {
