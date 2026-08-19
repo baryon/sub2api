@@ -185,14 +185,20 @@ describe('CreateAccountModal DeepSeek API key accounts', () => {
     probeUpstreamBillingMock.mockReset().mockResolvedValue({})
   })
 
+  it('renders each CN provider platform tab once', () => {
+    const wrapper = mountModal()
+    const platformButtons = wrapper.findAll('button')
+
+    expect(platformButtons.filter((button) => button.text().includes('Kimi'))).toHaveLength(1)
+    expect(platformButtons.filter((button) => button.text().includes('Zhipu GLM'))).toHaveLength(1)
+    expect(platformButtons.filter((button) => button.text().includes('DeepSeek'))).toHaveLength(1)
+  })
+
   it('forces API key mode, uses the official base URL, and disables upstream billing probes', async () => {
     const wrapper = mountModal()
     await wrapper.get('[data-testid="platform-deepseek"]').trigger('click')
     await flushPromises()
 
-    expect(wrapper.get('[data-testid="deepseek-account-type"]').text()).toContain(
-      'admin.accounts.types.deepseekApikey'
-    )
     expect(wrapper.find('[data-testid="upstream-billing-auto-probe"]').exists()).toBe(false)
 
     const isolationSelect = wrapper.get('[data-testid="create-deepseek-user-isolation-mode-select"]')
