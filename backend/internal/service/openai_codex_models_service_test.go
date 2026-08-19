@@ -116,6 +116,30 @@ func TestNewConfiguredCodexModelDescriptorUsesProviderMetadataAndSafeFallback(t 
 	require.NotContains(t, claude.SupportedReasoningLevels, configuredCodexReasoningLevel{Effort: "none"})
 	require.True(t, claude.SupportsParallelToolCalls)
 
+	gpt56 := newConfiguredCodexModelDescriptor("gpt-5.6-sol")
+	require.Equal(t, "GPT-5.6 Sol", gpt56.DisplayName)
+	require.Equal(t, "OpenAI GPT coding model routed through Sub2API.", gpt56.Description)
+	require.NotNil(t, gpt56.DefaultReasoningLevel)
+	require.Equal(t, "medium", *gpt56.DefaultReasoningLevel)
+	require.Equal(t, configuredCodexGPTReasoningLevels("gpt-5.6-sol"), gpt56.SupportedReasoningLevels)
+	require.Equal(t, []string{"low", "medium", "high", "xhigh", "max"}, effortsFromConfiguredCodexLevels(gpt56.SupportedReasoningLevels))
+	require.True(t, gpt56.SupportsParallelToolCalls)
+	require.True(t, gpt56.SupportVerbosity)
+	require.NotNil(t, gpt56.DefaultVerbosity)
+	require.Equal(t, "medium", *gpt56.DefaultVerbosity)
+
+	gpt55 := newConfiguredCodexModelDescriptor("gpt-5.5")
+	require.Equal(t, "GPT-5.5", gpt55.DisplayName)
+	require.NotNil(t, gpt55.DefaultReasoningLevel)
+	require.Equal(t, "medium", *gpt55.DefaultReasoningLevel)
+	require.Equal(t, []string{"low", "medium", "high", "xhigh"}, effortsFromConfiguredCodexLevels(gpt55.SupportedReasoningLevels))
+	require.NotContains(t, gpt55.SupportedReasoningLevels, configuredCodexReasoningLevel{Effort: "max"})
+
+	image := newConfiguredCodexModelDescriptor("gpt-image-2")
+	require.Equal(t, "gpt-image-2", image.DisplayName)
+	require.Nil(t, image.DefaultReasoningLevel)
+	require.Empty(t, image.SupportedReasoningLevels)
+
 	custom := newConfiguredCodexModelDescriptor("company-coding-model")
 	require.Equal(t, "company-coding-model", custom.DisplayName)
 	require.Equal(t, int64(272_000), custom.ContextWindow)
@@ -123,6 +147,14 @@ func TestNewConfiguredCodexModelDescriptorUsesProviderMetadataAndSafeFallback(t 
 	require.Empty(t, custom.SupportedReasoningLevels)
 	require.False(t, custom.SupportsParallelToolCalls)
 	require.NotEmpty(t, custom.ModelMessages.InstructionsTemplate)
+}
+
+func effortsFromConfiguredCodexLevels(levels []configuredCodexReasoningLevel) []string {
+	efforts := make([]string, 0, len(levels))
+	for _, level := range levels {
+		efforts = append(efforts, level.Effort)
+	}
+	return efforts
 }
 
 func TestMergeGroupConfiguredCodexModelsInjectsCurrentGroupAliases(t *testing.T) {
@@ -701,6 +733,9 @@ func TestConvertOpenAIModelListToCodexManifestUsesCompleteDescriptors(t *testing
 
 	require.Len(t, models, 1)
 	requireCompleteConfiguredCodexModel(t, models[0], "gpt-5.5")
+	require.Equal(t, "GPT-5.5", models[0]["display_name"])
+	require.Equal(t, "medium", models[0]["default_reasoning_level"])
+	require.Len(t, models[0]["supported_reasoning_levels"], 4)
 }
 
 func TestAdjustAPIKeyCodexModelsManifest(t *testing.T) {

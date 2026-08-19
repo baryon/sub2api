@@ -233,6 +233,20 @@ func newConfiguredCodexModelDescriptor(modelID string) configuredCodexModelDescr
 		descriptor.SupportsParallelToolCalls = true
 	}
 
+	if isOpenAICodexGPTModel(modelID) {
+		defaultReasoningLevel := "medium"
+		descriptor.DisplayName = openaiCodexDisplayName(modelID)
+		descriptor.Description = "OpenAI GPT coding model routed through Sub2API."
+		descriptor.DefaultReasoningLevel = &defaultReasoningLevel
+		descriptor.SupportedReasoningLevels = configuredCodexGPTReasoningLevels(modelID)
+		descriptor.SupportsParallelToolCalls = true
+		if SupportsVerbosity(modelID) {
+			defaultVerbosity := "medium"
+			descriptor.SupportVerbosity = true
+			descriptor.DefaultVerbosity = &defaultVerbosity
+		}
+	}
+
 	return descriptor
 }
 
@@ -252,6 +266,43 @@ func configuredCodexClaudeReasoningLevels() []configuredCodexReasoningLevel {
 		{Effort: "xhigh", Description: "Extra-high reasoning depth for difficult tasks"},
 		{Effort: "max", Description: "Maximum reasoning depth for complex tasks"},
 	}
+}
+
+func configuredCodexGPTReasoningLevels(modelID string) []configuredCodexReasoningLevel {
+	levels := []configuredCodexReasoningLevel{
+		{Effort: "low", Description: "Fast responses with lighter reasoning"},
+		{Effort: "medium", Description: "Balanced reasoning for most coding tasks"},
+		{Effort: "high", Description: "Greater reasoning depth for coding and agent tasks"},
+		{Effort: "xhigh", Description: "Extra-high reasoning depth for difficult tasks"},
+	}
+	if isOpenAIGPT56Model(modelID) {
+		levels = append(levels, configuredCodexReasoningLevel{
+			Effort:      "max",
+			Description: "Maximum reasoning depth for complex tasks",
+		})
+	}
+	return levels
+}
+
+func isOpenAICodexGPTModel(modelID string) bool {
+	normalized := canonicalizeOpenAIModelAliasSpelling(modelID)
+	if normalized == "" || strings.HasPrefix(normalized, "gpt-image") {
+		return false
+	}
+	return strings.HasPrefix(normalized, "gpt-")
+}
+
+func openaiCodexDisplayName(modelID string) string {
+	normalized := canonicalizeOpenAIModelAliasSpelling(modelID)
+	if normalized == "" {
+		return modelID
+	}
+	for _, model := range openai.DefaultModels {
+		if strings.EqualFold(model.ID, normalized) && strings.TrimSpace(model.DisplayName) != "" {
+			return model.DisplayName
+		}
+	}
+	return modelID
 }
 
 func deepSeekCodexDisplayName(modelID string) string {

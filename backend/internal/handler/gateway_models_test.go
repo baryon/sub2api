@@ -206,7 +206,51 @@ func TestGatewayCodexModels_CompositeUsesCompleteManifest(t *testing.T) {
 	require.Equal(t, "list", got.Models[0].Visibility)
 	require.True(t, got.Models[0].SupportedInAPI)
 	require.Equal(t, int64(272_000), got.Models[0].ContextWindow)
-	require.Equal(t, "gpt-5.5", got.Models[0].DisplayName)
+	require.Equal(t, "GPT-5.5", got.Models[0].DisplayName)
+	require.Equal(t, "medium", got.Models[0].DefaultReasoningLevel)
+	require.Equal(t, []string{"low", "medium", "high", "xhigh"}, codexReasoningEffortsForTest(got.Models[0]))
+	require.NotEmpty(t, got.Models[0].ModelMessages.InstructionsTemplate)
+}
+
+func TestGatewayCodexModels_CompositeAdvertisesGPTReasoningLevels(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	groupID := int64(55)
+	h := newGatewayModelsHandlerForTest(
+		&gatewayModelsAccountRepoStub{
+			byGroup: map[int64][]service.Account{
+				groupID: {
+					{
+						ID:       1,
+						Platform: service.PlatformOpenAI,
+						Credentials: map[string]any{
+							"model_mapping": map[string]any{
+								"gpt-5.6-sol": "gpt-5.6-sol",
+							},
+						},
+					},
+				},
+			},
+		},
+	)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodGet, "/models?client_version=0.147.0", nil)
+	c.Set(string(middleware2.ContextKeyAPIKey), &service.APIKey{
+		Group: &service.Group{ID: groupID, Platform: service.PlatformComposite},
+	})
+
+	h.CodexModels(c)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	var got codexModelsResponseForTest
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
+	require.Len(t, got.Models, 1)
+	require.Equal(t, "gpt-5.6-sol", got.Models[0].Slug)
+	require.Equal(t, "GPT-5.6 Sol", got.Models[0].DisplayName)
+	require.Equal(t, "medium", got.Models[0].DefaultReasoningLevel)
+	require.Equal(t, []string{"low", "medium", "high", "xhigh", "max"}, codexReasoningEffortsForTest(got.Models[0]))
 	require.NotEmpty(t, got.Models[0].ModelMessages.InstructionsTemplate)
 }
 
