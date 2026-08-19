@@ -88,6 +88,15 @@ func TestDefaultModelIDsForCompositeIncludesAntigravityDefaults(t *testing.T) {
 	require.Contains(t, compositeIDs, antigravityIDs[0])
 }
 
+func TestDefaultModelIDsForAnthropicExcludeAntigravityGemini(t *testing.T) {
+	anthropicIDs := defaultModelIDsForPlatform(service.PlatformAnthropic)
+	require.Contains(t, anthropicIDs, "claude-opus-4-6")
+	require.NotContains(t, anthropicIDs, "gemini-2.5-flash")
+
+	antigravityIDs := defaultModelIDsForPlatform(service.PlatformAntigravity)
+	require.Contains(t, antigravityIDs, "gemini-2.5-flash")
+}
+
 func TestDefaultModelIDsIncludeDeepSeekDefaults(t *testing.T) {
 	deepSeekIDs := defaultModelIDsForPlatform(service.PlatformDeepSeek)
 	require.Equal(t, []string{"deepseek-v4-flash", "deepseek-v4-pro"}, deepSeekIDs)
@@ -421,6 +430,91 @@ func TestGatewayCodexModels_UsesOnlyCurrentGroupsSchedulableModels(t *testing.T)
 	var got codexModelsResponseForTest
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
 	require.Empty(t, got.Models)
+}
+
+func TestGatewayModels_CompositeAnthropicDoesNotAdvertiseAntigravityDefaults(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	groupID := int64(64)
+	h := newGatewayModelsHandlerForTest(
+		&gatewayModelsAccountRepoStub{
+			byGroup: map[int64][]service.Account{
+				groupID: {{ID: 1, Platform: service.PlatformAnthropic}},
+			},
+		},
+	)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+	c.Set(string(middleware2.ContextKeyAPIKey), &service.APIKey{
+		Group: &service.Group{ID: groupID, Platform: service.PlatformComposite},
+	})
+
+	h.Models(c)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	var got gatewayModelsResponseForTest
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
+	ids := modelIDsForTest(got.Data)
+	require.Contains(t, ids, "claude-opus-4-6")
+	require.NotContains(t, ids, "gemini-2.5-flash")
+}
+
+func TestGatewayCodexModels_CompositeAnthropicDoesNotAdvertiseAntigravityDefaults(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	groupID := int64(65)
+	h := newGatewayModelsHandlerForTest(
+		&gatewayModelsAccountRepoStub{
+			byGroup: map[int64][]service.Account{
+				groupID: {{ID: 1, Platform: service.PlatformAnthropic}},
+			},
+		},
+	)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodGet, "/models?client_version=0.147.0", nil)
+	c.Set(string(middleware2.ContextKeyAPIKey), &service.APIKey{
+		Group: &service.Group{ID: groupID, Platform: service.PlatformComposite},
+	})
+
+	h.CodexModels(c)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	var got codexModelsResponseForTest
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
+	slugs := codexModelSlugsForTest(got.Models)
+	require.Contains(t, slugs, "claude-opus-4-6")
+	require.NotContains(t, slugs, "gemini-2.5-flash")
+}
+
+func TestGatewayModels_CompositeAntigravityAdvertisesAntigravityDefaults(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	groupID := int64(66)
+	h := newGatewayModelsHandlerForTest(
+		&gatewayModelsAccountRepoStub{
+			byGroup: map[int64][]service.Account{
+				groupID: {{ID: 1, Platform: service.PlatformAntigravity}},
+			},
+		},
+	)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+	c.Set(string(middleware2.ContextKeyAPIKey), &service.APIKey{
+		Group: &service.Group{ID: groupID, Platform: service.PlatformComposite},
+	})
+
+	h.Models(c)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	var got gatewayModelsResponseForTest
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
+	require.Contains(t, modelIDsForTest(got.Data), "gemini-2.5-flash")
 }
 
 func TestGatewayModels_CompositeIncludesSchedulableDeepSeekDefaults(t *testing.T) {
@@ -940,7 +1034,7 @@ func TestGatewayModels_AnthropicCustomModelsListIncludesOAuthClaudeWithoutMappin
 			Platform: service.PlatformAnthropic,
 			ModelsListConfig: service.GroupModelsListConfig{
 				Enabled: true,
-				Models:  []string{"claude-opus-4-6-thinking", "claude-sonnet-4-5"},
+				Models:  []string{"claude-opus-4-6", "claude-sonnet-4-6"},
 			},
 		},
 	})
@@ -951,7 +1045,7 @@ func TestGatewayModels_AnthropicCustomModelsListIncludesOAuthClaudeWithoutMappin
 
 	var got gatewayModelsResponseForTest
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
-	require.Equal(t, []string{"claude-opus-4-6-thinking", "claude-sonnet-4-5"}, modelIDsForTest(got.Data))
+	require.Equal(t, []string{"claude-opus-4-6", "claude-sonnet-4-6"}, modelIDsForTest(got.Data))
 }
 
 func TestGatewayModels_CustomModelsListCanReturnEmptyWhenSelectionsUnavailable(t *testing.T) {
