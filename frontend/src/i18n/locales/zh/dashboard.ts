@@ -204,6 +204,18 @@ export default {
         codexNoteWindows:
           '设置 $env:SUB2API_API_KEY，将 config.toml 保存到 %USERPROFILE%\\.codex。启用 WebSocket 时，由 Sub2API 桥接到 DeepSeek HTTP /responses。'
       },
+      composite: {
+        description: '配置 Claude Code、Codex 或 OpenCode，使用 Sub2API Composite 分组按模型路由的上游模型。',
+        codexDescription:
+          '配置 Codex 通过 Sub2API Composite 分组发送 Responses API 请求；每个模型会按 Composite 路由转发到对应的上游账号。',
+        codexConfigTomlHint:
+          'provider name 必须精确保持为 "OpenAI"，以便 Codex 启用 remote_compaction_v2。配置已包含 model_catalog_json；下载 Composite 模型目录并保存后重启 Codex。supports_websockets 由 Composite 路由和目标账号能力实时计算。',
+        note: '所选客户端通过 Composite 分组发送请求，分组会按模型路由到配置的上游账号。请勿提交包含 API Key 的配置文件。',
+        codexNote:
+          '导出 SUB2API_API_KEY，将 config.toml 保存到 ~/.codex。Composite 会按模型路由选择上游账号，不需要使用 OpenAI ChatGPT 登录。',
+        codexNoteWindows:
+          '设置 $env:SUB2API_API_KEY，将 config.toml 保存到 %USERPROFILE%\\.codex。Composite 会按模型路由选择上游账号，不需要使用 OpenAI ChatGPT 登录。'
+      },
       codexModelCatalog: {
         title: 'Codex 模型目录',
         description: '从当前 API 密钥对应的分组获取完整模型目录。下载后保存到下方路径；上面的 config.toml 已包含 model_catalog_json，重启 Codex 后即可在 /model 中看到目录里的模型。',

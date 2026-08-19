@@ -28,6 +28,7 @@ describe('clientSetupModels', () => {
     )
     expect(pickDefaultCodexModel(['gpt-5.4', 'gpt-5.5'], 'openai')).toBe('gpt-5.5')
     expect(pickDefaultCodexModel(['grok-build-0.1', 'grok-4.5'], 'grok')).toBe('grok-4.5')
+    expect(pickDefaultCodexModel([], 'composite')).toBe('gpt-5.5')
   })
 
   it('maps DeepSeek Claude slots to pro and flash', () => {
@@ -60,6 +61,7 @@ describe('clientSetupModels', () => {
     expect(showsCodexModelSwitch('deepseek')).toBe(true)
     expect(showsClaudeModelSwitch('deepseek')).toBe(true)
     expect(showsCodexModelSwitch('openai')).toBe(true)
+    expect(showsCodexModelSwitch('composite')).toBe(true)
     expect(showsClaudeModelSwitch('openai')).toBe(false)
     expect(showsClaudeModelSwitch('openai', true)).toBe(true)
     expect(showsCodexModelSwitch('anthropic')).toBe(false)

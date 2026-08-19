@@ -378,7 +378,7 @@ const claudeAliases = computed(() => claudeAliasesFromModels(resolvedModels.valu
 const showCodexModelCatalog = computed(() =>
   props.show &&
   ((props.platform === 'openai' && (activeClientTab.value === 'codex' || activeClientTab.value === 'codex-ws')) ||
-    (props.platform === 'deepseek' && activeClientTab.value === 'codex'))
+    ((props.platform === 'deepseek' || props.platform === 'composite') && activeClientTab.value === 'codex'))
 )
 
 const codexModelCatalogPath = computed(() => {
@@ -404,6 +404,8 @@ const defaultClientTab = computed(() => {
     case 'antigravity':
       return 'claude'
     case 'deepseek':
+      return 'claude'
+    case 'composite':
       return 'claude'
     default:
       return 'claude'
@@ -536,6 +538,12 @@ const clientTabs = computed((): TabConfig[] => {
         { id: 'codex', label: t('keys.useKeyModal.cliTabs.codexCli'), icon: TerminalIcon },
         { id: 'opencode', label: t('keys.useKeyModal.cliTabs.opencode'), icon: TerminalIcon }
       ]
+    case 'composite':
+      return [
+        { id: 'claude', label: t('keys.useKeyModal.cliTabs.claudeCode'), icon: TerminalIcon },
+        { id: 'codex', label: t('keys.useKeyModal.cliTabs.codexCli'), icon: TerminalIcon },
+        { id: 'opencode', label: t('keys.useKeyModal.cliTabs.opencode'), icon: TerminalIcon }
+      ]
     default:
       return [
         { id: 'claude', label: t('keys.useKeyModal.cliTabs.claudeCode'), icon: TerminalIcon },
@@ -596,6 +604,11 @@ const platformDescription = computed(() => {
         return t('keys.useKeyModal.deepseek.codexDescription')
       }
       return t('keys.useKeyModal.deepseek.description')
+    case 'composite':
+      if (activeClientTab.value === 'codex') {
+        return t('keys.useKeyModal.composite.codexDescription')
+      }
+      return t('keys.useKeyModal.composite.description')
     default:
       return t('keys.useKeyModal.description')
   }
@@ -640,6 +653,13 @@ const platformNote = computed(() => {
           : t('keys.useKeyModal.deepseek.codexNote')
       }
       return t('keys.useKeyModal.deepseek.note')
+    case 'composite':
+      if (activeClientTab.value === 'codex') {
+        return activeTab.value === 'windows'
+          ? t('keys.useKeyModal.composite.codexNoteWindows')
+          : t('keys.useKeyModal.composite.codexNote')
+      }
+      return t('keys.useKeyModal.composite.note')
     default:
       return t('keys.useKeyModal.note')
   }
@@ -808,6 +828,11 @@ const currentFiles = computed((): FileConfig[] => {
     case 'deepseek':
       if (activeClientTab.value === 'codex') {
         return generateDeepSeekCodexFiles(apiBase, apiKey, props.supportsWebsockets === true)
+      }
+      return generateClaudeClientFiles(baseRoot, apiKey)
+    case 'composite':
+      if (activeClientTab.value === 'codex') {
+        return generateCompositeCodexFiles(apiBase, apiKey, props.supportsWebsockets === true)
       }
       return generateClaudeClientFiles(baseRoot, apiKey)
     default:
@@ -1300,6 +1325,53 @@ supports_websockets = ${supportsWebsockets}${websocketFeature}`
       path: joinConfigPath(configDir, 'config.toml', isWindowsPath),
       content: configContent,
       hint: t('keys.useKeyModal.deepseek.codexConfigTomlHint')
+    }
+  ]
+}
+
+function generateCompositeCodexFiles(
+  baseUrl: string,
+  apiKey: string,
+  supportsWebsockets: boolean
+): FileConfig[] {
+  const shell = activeTab.value
+  const isWindowsPath = shell === 'windows' || shell === 'cmd' || shell === 'powershell'
+  const configDir = isWindowsPath ? '%userprofile%\\.codex' : '~/.codex'
+
+  const envContent = isWindowsPath
+    ? `$env:SUB2API_API_KEY="${apiKey}"`
+    : `export SUB2API_API_KEY="${apiKey}"`
+  const websocketFeature = supportsWebsockets
+    ? `\n[features]\nresponses_websockets_v2 = true`
+    : ''
+  const model = defaultCodexModel.value || 'gpt-5.5'
+  const configContent = `# Codex CLI -> Sub2API Composite group
+# Switch in Codex CLI: /model ${model}
+model_provider = "sub2api"
+model = "${model}"
+review_model = "${model}"
+disable_response_storage = true
+model_catalog_json = "${escapeTomlBasicString(codexModelCatalogPath.value)}"
+
+[model_providers.sub2api]
+# Keep this exact name so Codex enables remote_compaction_v2.
+name = "OpenAI"
+base_url = "${baseUrl}"
+env_key = "SUB2API_API_KEY"
+wire_api = "responses"
+requires_openai_auth = false
+# This is derived from Composite routes and target account capabilities.
+supports_websockets = ${supportsWebsockets}${websocketFeature}`
+
+  return [
+    {
+      path: isWindowsPath ? 'PowerShell' : 'Terminal',
+      content: envContent
+    },
+    {
+      path: joinConfigPath(configDir, 'config.toml', isWindowsPath),
+      content: configContent,
+      hint: t('keys.useKeyModal.composite.codexConfigTomlHint')
     }
   ]
 }

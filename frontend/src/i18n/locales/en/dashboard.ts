@@ -202,6 +202,20 @@ export default {
         codexNoteWindows:
           'Set $env:SUB2API_API_KEY and save config.toml under %USERPROFILE%\\.codex. WebSocket turns, when enabled, are bridged by Sub2API to DeepSeek HTTP /responses.',
       },
+      composite: {
+        description:
+          'Configure Claude Code, Codex, or OpenCode to use models routed by your Sub2API Composite group.',
+        codexDescription:
+          'Configure Codex to send Responses API requests through your Sub2API Composite group. Each model is routed to its configured upstream account.',
+        codexConfigTomlHint:
+          'Keep provider name exactly "OpenAI" so Codex enables remote_compaction_v2. The config includes model_catalog_json; download the Composite catalog, save it, then restart Codex. supports_websockets is derived from the Composite route and target account capabilities.',
+        note:
+          'The selected client sends requests through the Composite group, which routes each model to its configured upstream account. Do not commit files containing your API key.',
+        codexNote:
+          'Export SUB2API_API_KEY and save config.toml under ~/.codex. Composite selects the upstream account from the model route; no OpenAI ChatGPT login is required.',
+        codexNoteWindows:
+          'Set $env:SUB2API_API_KEY and save config.toml under %USERPROFILE%\\.codex. Composite selects the upstream account from the model route; no OpenAI ChatGPT login is required.',
+      },
       codexModelCatalog: {
         title: 'Codex model catalog',
         description:

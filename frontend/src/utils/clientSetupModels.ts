@@ -24,7 +24,8 @@ const PLATFORM_FALLBACK_MODELS: Partial<Record<GroupPlatform, string[]>> = {
 const PLATFORM_PREFERRED_CODEX_MODEL: Partial<Record<GroupPlatform, string>> = {
   deepseek: DEEPSEEK_PRO_MODEL,
   grok: GROK_DEFAULT_MODEL,
-  openai: OPENAI_DEFAULT_MODEL
+  openai: OPENAI_DEFAULT_MODEL,
+  composite: OPENAI_DEFAULT_MODEL
 }
 
 export function uniqueModelIDs(modelIDs: readonly string[] | undefined): string[] {

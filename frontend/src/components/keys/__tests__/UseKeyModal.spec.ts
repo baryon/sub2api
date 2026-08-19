@@ -320,6 +320,59 @@ describe('UseKeyModal', () => {
     expect(config).not.toContain('responses_websockets_v2 = true')
   })
 
+  it('renders Composite Codex setup with route-aware Responses capabilities', async () => {
+    const wrapper = mount(UseKeyModal, {
+      props: {
+        show: true,
+        apiKey: 'sk-composite-codex-test',
+        baseUrl: 'https://example.com/v1',
+        platform: 'composite',
+        models: ['deepseek-v4-pro', 'gpt-5.5', 'grok-4.5'],
+        supportsWebsockets: true
+      },
+      global: {
+        stubs: {
+          BaseDialog: {
+            template: '<div><slot /><slot name="footer" /></div>'
+          },
+          Icon: {
+            template: '<span />'
+          }
+        }
+      }
+    })
+
+    const clientTabs = wrapper.find('nav[aria-label="Client"]').findAll('button').map((button) => button.text())
+    expect(clientTabs).toEqual([
+      'keys.useKeyModal.cliTabs.claudeCode',
+      'keys.useKeyModal.cliTabs.codexCli',
+      'keys.useKeyModal.cliTabs.opencode'
+    ])
+
+    const codexTab = wrapper.findAll('button').find((button) =>
+      button.text().includes('keys.useKeyModal.cliTabs.codexCli')
+    )
+    expect(codexTab).toBeDefined()
+    await codexTab!.trigger('click')
+    await nextTick()
+
+    const configToml = wrapper.findAll('pre code')
+      .map((code) => code.text())
+      .find((content) => content.includes('[model_providers.sub2api]'))
+    expect(configToml).toBeDefined()
+    expect(configToml).toContain('model_provider = "sub2api"')
+    expect(configToml).toContain('model = "gpt-5.5"')
+    expect(configToml).toContain('model_catalog_json = "~/.codex/codex-models.json"')
+    expect(configToml).toContain('base_url = "https://example.com/v1"')
+    expect(configToml).toContain('env_key = "SUB2API_API_KEY"')
+    expect(configToml).toContain('wire_api = "responses"')
+    expect(configToml).toContain('requires_openai_auth = false')
+    expect(configToml).toContain('supports_websockets = true')
+    expect(configToml).toContain('responses_websockets_v2 = true')
+    expect(wrapper.text()).not.toContain('auth.json')
+    expect(wrapper.find('[data-testid="codex-auth-mode-legacy"]').exists()).toBe(false)
+  })
+
   it('renders Codex custom provider setup through the Grok Responses gateway', async () => {
     const wrapper = mount(UseKeyModal, {
       props: {
@@ -750,7 +803,8 @@ describe('UseKeyModal', () => {
 
   it.each([
     { platform: 'openai' as const, apiKey: 'sk-openai-test', model: 'gpt-5.6-luna' },
-    { platform: 'deepseek' as const, apiKey: 'sk-deepseek-test', model: 'deepseek-v4-pro' }
+    { platform: 'deepseek' as const, apiKey: 'sk-deepseek-test', model: 'deepseek-v4-pro' },
+    { platform: 'composite' as const, apiKey: 'sk-composite-test', model: 'gpt-5.5' }
   ])('fetches and exposes the $platform Codex model catalog', async ({ platform, apiKey, model }) => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
@@ -783,7 +837,7 @@ describe('UseKeyModal', () => {
       }
     })
 
-    if (platform === 'deepseek') {
+    if (platform !== 'openai') {
       const codexTab = wrapper.findAll('button').find((button) =>
         button.text().includes('keys.useKeyModal.cliTabs.codexCli')
       )
