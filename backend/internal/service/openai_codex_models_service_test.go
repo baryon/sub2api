@@ -112,9 +112,18 @@ func TestNewConfiguredCodexModelDescriptorUsesProviderMetadataAndSafeFallback(t 
 	require.Equal(t, "Claude Opus 4.6", claude.DisplayName)
 	require.NotNil(t, claude.DefaultReasoningLevel)
 	require.Equal(t, "medium", *claude.DefaultReasoningLevel)
-	require.Equal(t, configuredCodexClaudeReasoningLevels(), claude.SupportedReasoningLevels)
+	require.Equal(t, []string{"low", "medium", "high", "max"}, effortsFromConfiguredCodexLevels(claude.SupportedReasoningLevels))
+	require.NotContains(t, claude.SupportedReasoningLevels, configuredCodexReasoningLevel{Effort: "xhigh"})
 	require.NotContains(t, claude.SupportedReasoningLevels, configuredCodexReasoningLevel{Effort: "none"})
 	require.True(t, claude.SupportsParallelToolCalls)
+
+	claudeOpus5 := newConfiguredCodexModelDescriptor("claude-opus-5")
+	require.Equal(t, []string{"low", "medium", "high", "xhigh", "max"}, effortsFromConfiguredCodexLevels(claudeOpus5.SupportedReasoningLevels))
+
+	claudeHaiku := newConfiguredCodexModelDescriptor("claude-haiku-4-5-20251001")
+	require.Equal(t, "Claude Haiku 4.5", claudeHaiku.DisplayName)
+	require.Nil(t, claudeHaiku.DefaultReasoningLevel)
+	require.Empty(t, claudeHaiku.SupportedReasoningLevels)
 
 	gpt56 := newConfiguredCodexModelDescriptor("gpt-5.6-sol")
 	require.Equal(t, "GPT-5.6 Sol", gpt56.DisplayName)
@@ -155,6 +164,26 @@ func effortsFromConfiguredCodexLevels(levels []configuredCodexReasoningLevel) []
 		efforts = append(efforts, level.Effort)
 	}
 	return efforts
+}
+
+func TestBuildCodexModelsManifestOmitsGrokImagineModels(t *testing.T) {
+	t.Parallel()
+
+	body, err := BuildCodexModelsManifest([]string{
+		"grok-4.6",
+		"grok-imagine-image",
+		"grok-imagine-video",
+		"xai/grok-imagine-image-quality",
+		"grok-4.5",
+	})
+	require.NoError(t, err)
+	models := decodeCodexManifestModels(t, body)
+	slugs := make([]string, 0, len(models))
+	for _, model := range models {
+		slug, _ := model["slug"].(string)
+		slugs = append(slugs, slug)
+	}
+	require.Equal(t, []string{"grok-4.6", "grok-4.5"}, slugs)
 }
 
 func TestMergeGroupConfiguredCodexModelsInjectsCurrentGroupAliases(t *testing.T) {

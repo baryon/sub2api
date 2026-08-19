@@ -48,6 +48,36 @@ func TestResponsesToAnthropicRequest_DropsCodexNoneEffort(t *testing.T) {
 	require.Nil(t, got.Thinking)
 }
 
+func TestResponsesToAnthropicRequest_MapsUnsupportedClaudeEffort(t *testing.T) {
+	t.Parallel()
+
+	req := &ResponsesRequest{
+		Model:     "claude-opus-4-6",
+		Input:     json.RawMessage(`[{"role":"user","content":"hello"}]`),
+		Reasoning: &ResponsesReasoning{Effort: "xhigh"},
+	}
+
+	got, err := ResponsesToAnthropicRequest(req)
+	require.NoError(t, err)
+	require.NotNil(t, got.OutputConfig)
+	require.Equal(t, "max", got.OutputConfig.Effort)
+}
+
+func TestResponsesToAnthropicRequest_DropsEffortOnClaudeWithoutSupport(t *testing.T) {
+	t.Parallel()
+
+	req := &ResponsesRequest{
+		Model:     "claude-haiku-4-5-20251001",
+		Input:     json.RawMessage(`[{"role":"user","content":"hello"}]`),
+		Reasoning: &ResponsesReasoning{Effort: "medium"},
+	}
+
+	got, err := ResponsesToAnthropicRequest(req)
+	require.NoError(t, err)
+	require.Nil(t, got.OutputConfig)
+	require.Nil(t, got.Thinking)
+}
+
 func TestResponsesToAnthropicRequest_KeepsClaudeEffort(t *testing.T) {
 	t.Parallel()
 

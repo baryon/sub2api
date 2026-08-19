@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+
+	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 )
 
 // ResponsesToAnthropicRequest converts a Responses API request into an
@@ -52,10 +54,11 @@ func ResponsesToAnthropicRequest(req *ResponsesRequest) (*AnthropicRequest, erro
 	}
 
 	// reasoning.effort → output_config.effort + thinking.
-	// Codex commonly sends "none"/"minimal" (GPT-5 values). Anthropic only
-	// accepts low|medium|high|xhigh|max and 400s otherwise.
+	// Codex commonly sends "none"/"minimal" (GPT-5 values) and xhigh on
+	// models that only support max. Anthropic 400s on unknown or
+	// model-unsupported effort values, so we map then clamp per model.
 	if req.Reasoning != nil && req.Reasoning.Effort != "" {
-		if effort := mapResponsesEffortToAnthropic(req.Reasoning.Effort); effort != "" {
+		if effort := mapResponsesEffortToAnthropicForModel(req.Model, req.Reasoning.Effort); effort != "" {
 			out.OutputConfig = &AnthropicOutputConfig{Effort: effort}
 			if effort != "low" {
 				out.Thinking = &AnthropicThinking{
@@ -102,6 +105,14 @@ func mapResponsesEffortToAnthropic(effort string) string {
 	default:
 		return ""
 	}
+}
+
+func mapResponsesEffortToAnthropicForModel(model, effort string) string {
+	mapped := mapResponsesEffortToAnthropic(effort)
+	if mapped == "" {
+		return ""
+	}
+	return claude.ClampEffortForModel(model, mapped)
 }
 
 // convertResponsesInputToAnthropic extracts system prompt and messages from

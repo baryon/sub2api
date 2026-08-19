@@ -301,7 +301,8 @@ func TestGatewayCodexModels_CompositeAdvertisesClaudeReasoningLevels(t *testing.
 	require.Equal(t, "claude-opus-4-6", got.Models[0].Slug)
 	require.Equal(t, "Claude Opus 4.6", got.Models[0].DisplayName)
 	require.Equal(t, "medium", got.Models[0].DefaultReasoningLevel)
-	require.Equal(t, []string{"low", "medium", "high", "xhigh", "max"}, codexReasoningEffortsForTest(got.Models[0]))
+	require.Equal(t, []string{"low", "medium", "high", "max"}, codexReasoningEffortsForTest(got.Models[0]))
+	require.NotContains(t, codexReasoningEffortsForTest(got.Models[0]), "xhigh")
 	require.NotEmpty(t, got.Models[0].ModelMessages.InstructionsTemplate)
 }
 
@@ -392,6 +393,37 @@ func TestGatewayCodexModels_GrokUsesCompleteManifest(t *testing.T) {
 	require.Equal(t, "high", got.Models[0].DefaultReasoningLevel)
 	require.Equal(t, []string{"low", "medium", "high"}, codexReasoningEffortsForTest(got.Models[0]))
 	require.NotEmpty(t, got.Models[0].ModelMessages.InstructionsTemplate)
+}
+
+func TestGatewayCodexModels_GrokOmitsImagineModels(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	groupID := int64(67)
+	h := newGatewayModelsHandlerForTest(
+		&gatewayModelsAccountRepoStub{
+			byGroup: map[int64][]service.Account{
+				groupID: {{ID: 1, Platform: service.PlatformGrok}},
+			},
+		},
+	)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodGet, "/models?client_version=0.147.0", nil)
+	c.Set(string(middleware2.ContextKeyAPIKey), &service.APIKey{
+		Group: &service.Group{ID: groupID, Platform: service.PlatformGrok},
+	})
+
+	h.CodexModels(c)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	var got codexModelsResponseForTest
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
+	slugs := codexModelSlugsForTest(got.Models)
+	require.Contains(t, slugs, "grok-4.6")
+	require.NotContains(t, slugs, "grok-imagine-image")
+	require.NotContains(t, slugs, "grok-imagine-video")
+	require.NotContains(t, slugs, "grok-imagine-image-quality")
 }
 
 func TestGatewayCodexModels_UsesOnlyCurrentGroupsSchedulableModels(t *testing.T) {

@@ -225,12 +225,14 @@ func newConfiguredCodexModelDescriptor(modelID string) configuredCodexModelDescr
 	}
 
 	if isClaudeCodexModel(modelID) {
-		defaultReasoningLevel := "medium"
 		descriptor.DisplayName = claudeCodexDisplayName(modelID)
 		descriptor.Description = "Claude coding and reasoning model routed through Sub2API."
-		descriptor.DefaultReasoningLevel = &defaultReasoningLevel
-		descriptor.SupportedReasoningLevels = configuredCodexClaudeReasoningLevels()
 		descriptor.SupportsParallelToolCalls = true
+		if levels := configuredCodexClaudeReasoningLevels(modelID); len(levels) > 0 {
+			defaultReasoningLevel := claudeCodexDefaultReasoningLevel(levels)
+			descriptor.DefaultReasoningLevel = &defaultReasoningLevel
+			descriptor.SupportedReasoningLevels = levels
+		}
 	}
 
 	if isOpenAICodexGPTModel(modelID) {
@@ -258,14 +260,37 @@ func configuredCodexGrokReasoningLevels() []configuredCodexReasoningLevel {
 	}
 }
 
-func configuredCodexClaudeReasoningLevels() []configuredCodexReasoningLevel {
-	return []configuredCodexReasoningLevel{
-		{Effort: "low", Description: "Fast responses with lighter reasoning"},
-		{Effort: "medium", Description: "Balanced reasoning for most coding tasks"},
-		{Effort: "high", Description: "Greater reasoning depth for coding and agent tasks"},
-		{Effort: "xhigh", Description: "Extra-high reasoning depth for difficult tasks"},
-		{Effort: "max", Description: "Maximum reasoning depth for complex tasks"},
+func configuredCodexClaudeReasoningLevels(modelID string) []configuredCodexReasoningLevel {
+	descriptions := map[string]string{
+		"low":    "Fast responses with lighter reasoning",
+		"medium": "Balanced reasoning for most coding tasks",
+		"high":   "Greater reasoning depth for coding and agent tasks",
+		"xhigh":  "Extra-high reasoning depth for difficult tasks",
+		"max":    "Maximum reasoning depth for complex tasks",
 	}
+	levels := claude.EffortLevelsForModel(modelID)
+	out := make([]configuredCodexReasoningLevel, 0, len(levels))
+	for _, effort := range levels {
+		out = append(out, configuredCodexReasoningLevel{
+			Effort:      effort,
+			Description: descriptions[effort],
+		})
+	}
+	return out
+}
+
+func claudeCodexDefaultReasoningLevel(levels []configuredCodexReasoningLevel) string {
+	for _, preferred := range []string{"medium", "high", "low"} {
+		for _, level := range levels {
+			if level.Effort == preferred {
+				return preferred
+			}
+		}
+	}
+	if len(levels) == 0 {
+		return ""
+	}
+	return levels[0].Effort
 }
 
 func configuredCodexGPTReasoningLevels(modelID string) []configuredCodexReasoningLevel {
@@ -405,6 +430,9 @@ func BuildCodexModelsManifest(modelIDs []string) ([]byte, error) {
 			continue
 		}
 		if _, exists := seen[modelID]; exists {
+			continue
+		}
+		if xai.IsGrokImagineModel(modelID) {
 			continue
 		}
 		seen[modelID] = struct{}{}
