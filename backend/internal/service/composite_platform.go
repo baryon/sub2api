@@ -126,6 +126,10 @@ func DetectModelPlatform(model string) (string, bool) {
 			return PlatformGemini, true
 		case "xai", "x-ai", "grok":
 			return PlatformGrok, true
+		case "kimi", "moonshot":
+			return PlatformKimi, true
+		case "zhipu", "glm", "bigmodel":
+			return PlatformZhipu, true
 		case "deepseek":
 			return PlatformDeepSeek, true
 		}
@@ -155,6 +159,10 @@ func DetectModelPlatform(model string) (string, bool) {
 		return PlatformGemini, true
 	case normalized == "grok" || strings.HasPrefix(normalized, "grok-"):
 		return PlatformGrok, true
+	case normalized == "kimi" || strings.HasPrefix(normalized, "kimi-") || strings.HasPrefix(normalized, "moonshot-"):
+		return PlatformKimi, true
+	case normalized == "glm" || strings.HasPrefix(normalized, "glm-"):
+		return PlatformZhipu, true
 	case normalized == "deepseek" || strings.HasPrefix(normalized, "deepseek-"):
 		return PlatformDeepSeek, true
 	default:

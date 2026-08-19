@@ -288,6 +288,9 @@ func (s *AccountTestService) TestAccountConnection(c *gin.Context, accountID int
 	if account.IsDeepSeek() {
 		return s.testDeepSeekAccountConnection(c, account, modelID)
 	}
+	if usesCNProviderChatCompletionsConnectionTest(account) {
+		return s.testCNProviderChatCompletionsConnection(c, account, modelID, prompt)
+	}
 
 	if account.IsOpenAI() {
 		return s.testOpenAIAccountConnection(c, account, modelID, prompt, normalizeAccountTestMode(mode))
@@ -306,6 +309,44 @@ func (s *AccountTestService) TestAccountConnection(c *gin.Context, accountID int
 	}
 
 	return s.testClaudeAccountConnection(c, account, modelID)
+}
+
+func usesCNProviderChatCompletionsConnectionTest(account *Account) bool {
+	return account != nil && !account.IsDeepSeek() && account.IsCNProvider() &&
+		account.GetAPIProtocol() == APIProtocolChatCompletions
+}
+
+func (s *AccountTestService) testCNProviderChatCompletionsConnection(c *gin.Context, account *Account, modelID string, prompt string) error {
+	testModelID := strings.TrimSpace(modelID)
+	if testModelID == "" {
+		switch account.Platform {
+		case PlatformKimi:
+			if ids := KimiDefaultModelIDs(); len(ids) > 0 {
+				testModelID = ids[0]
+			}
+		case PlatformZhipu:
+			if ids := ZhipuDefaultModelIDs(); len(ids) > 0 {
+				testModelID = ids[0]
+			}
+		}
+		if testModelID == "" {
+			testModelID = openai.DefaultTestModel
+		}
+	}
+	testModelID = account.GetMappedModel(testModelID)
+
+	authToken := strings.TrimSpace(account.GetOpenAIProtocolAPIKey())
+	if authToken == "" {
+		return s.sendErrorAndEnd(c, "No API key available")
+	}
+
+	baseURL := account.GetOpenAIBaseURL()
+	normalizedBaseURL, err := s.validateUpstreamBaseURL(baseURL)
+	if err != nil {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Invalid base URL: %s", err.Error()))
+	}
+
+	return s.testOpenAIChatCompletionsConnection(c, account, testModelID, prompt, normalizedBaseURL, authToken)
 }
 
 // testDeepSeekAccountConnection verifies an API-key account through DeepSeek's

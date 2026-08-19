@@ -520,6 +520,28 @@ func TestGatewayRoutesDeepSeekAllowsLocalCountTokens(t *testing.T) {
 	}
 }
 
+func TestGatewayRoutesOpenAICompatibleAllowsResponsesInputTokens(t *testing.T) {
+	for _, platform := range []string{service.PlatformOpenAI, service.PlatformGrok, service.PlatformDeepSeek} {
+		t.Run(platform, func(t *testing.T) {
+			router := newGatewayRoutesTestRouter(platform)
+			for _, path := range []string{
+				"/v1/responses/input_tokens",
+				"/responses/input_tokens",
+				"/backend-api/codex/responses/input_tokens",
+			} {
+				req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(`{"model":"gpt-5.4","input":"hi"}`))
+				req.Header.Set("Content-Type", "application/json")
+				w := httptest.NewRecorder()
+
+				router.ServeHTTP(w, req)
+				require.NotEqual(t, http.StatusNotFound, w.Code, "platform=%s path=%s", platform, path)
+				require.NotContains(t, w.Body.String(), "Unsupported responses subpath", "platform=%s path=%s", platform, path)
+				require.NotContains(t, w.Body.String(), "not supported for this platform", "platform=%s path=%s", platform, path)
+			}
+		})
+	}
+}
+
 func TestGatewayRoutesDeepSeekAllowsResponsesWebSocketEntrypoints(t *testing.T) {
 	router := newGatewayRoutesTestRouter(service.PlatformDeepSeek)
 
