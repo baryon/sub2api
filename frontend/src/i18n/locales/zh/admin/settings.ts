@@ -628,9 +628,9 @@ export default {
         logoReadError: '读取图片文件失败',
         homeContent: '首页内容',
         homeContentPlaceholder:
-          '在此输入首页内容，支持 Markdown & HTML 代码。如果输入的是一个链接，则会使用该链接作为 iframe 的 src 属性。',
+          '在此输入首页内容，支持 Markdown & HTML 代码，文本中的 http(s) 地址会自动生成链接。如果输入的是一个完整链接，则会使用该链接作为 iframe 的 src 属性。',
         homeContentHint:
-          '自定义首页内容，支持 Markdown/HTML。如果输入的是链接（以 http:// 或 https:// 开头），则会使用该链接作为 iframe 的 src 属性，这允许你设置任意网页作为首页。设置后首页的状态信息将不再显示。',
+          '自定义首页内容，支持 Markdown/HTML；普通文本中的 http(s) 地址会自动生成可点击链接。如果输入的是完整链接（以 http:// 或 https:// 开头），则会使用该链接作为 iframe 的 src 属性，这允许你设置任意网页作为首页。设置后首页的状态信息将不再显示。',
         homeContentIframeWarning:
           '⚠️ iframe 模式提示：部分网站设置了 X-Frame-Options 或 CSP 安全策略，禁止被嵌入到 iframe 中。如果页面显示空白或报错，请确认目标网站允许被嵌入，或考虑使用 HTML 模式自行构建页面内容。',
         compactHome: '简洁首页',

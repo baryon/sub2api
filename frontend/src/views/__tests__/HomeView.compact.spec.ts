@@ -86,6 +86,27 @@ describe('HomeView compact mode', () => {
     expect(wrapper.find('[data-testid="compact-home"]').exists()).toBe(false)
   })
 
+  it('renders Markdown and turns a bare dashboard URL into a usable link', () => {
+    const wrapper = mountHome({
+      compact_home_enabled: true,
+      home_content: 'ChainBow AI Provider 进入控制台 https://sub2api.chainbow.io/dashboard',
+    })
+
+    const link = wrapper.get('a[href="https://sub2api.chainbow.io/dashboard"]')
+    expect(link.text()).toBe('https://sub2api.chainbow.io/dashboard')
+    expect(wrapper.find('[data-testid="compact-home"]').exists()).toBe(false)
+  })
+
+  it('preserves safe HTML while removing unsafe custom markup', () => {
+    const wrapper = mountHome({
+      compact_home_enabled: true,
+      home_content: '<strong>ChainBow AI Provider</strong><script>alert(1)</script>',
+    })
+
+    expect(wrapper.get('strong').text()).toBe('ChainBow AI Provider')
+    expect(wrapper.find('script').exists()).toBe(false)
+  })
+
   it('treats whitespace-only custom content as empty and selects compact mode', () => {
     const wrapper = mountHome({ compact_home_enabled: true, home_content: ' \n\t ' })
 

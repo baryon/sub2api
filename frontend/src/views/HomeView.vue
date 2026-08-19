@@ -8,8 +8,8 @@
       class="h-screen w-full border-0"
       allowfullscreen
     ></iframe>
-    <!-- HTML mode - SECURITY: homeContent is admin-only setting, XSS risk is acceptable -->
-    <div v-else v-html="homeContent"></div>
+    <!-- Markdown/HTML mode; sanitize admin-provided markup before injecting it. -->
+    <div v-else class="markdown-body" v-html="renderedHomeContent"></div>
   </div>
 
   <!-- Compact Home Page -->
@@ -476,10 +476,13 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { marked } from 'marked'
+import DOMPurify from 'dompurify'
 import { useAuthStore, useAppStore } from '@/stores'
 import LocaleSwitcher from '@/components/common/LocaleSwitcher.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { sanitizeUrl } from '@/utils/url'
+import '@/styles/announcement-markdown.css'
 
 const { t } = useI18n()
 
@@ -494,6 +497,13 @@ const docUrl = computed(() => sanitizeUrl(appStore.cachedPublicSettings?.doc_url
 const homeContent = computed(() => appStore.cachedPublicSettings?.home_content || '')
 const hasHomeContent = computed(() => homeContent.value.trim().length > 0)
 const compactHomeEnabled = computed(() => appStore.cachedPublicSettings?.compact_home_enabled === true)
+const renderedHomeContent = computed(() => {
+  const content = homeContent.value.trim()
+  if (!content) return ''
+
+  const html = marked.parse(content, { breaks: true, gfm: true }) as string
+  return DOMPurify.sanitize(html)
+})
 
 // Check if homeContent is a URL (for iframe display)
 const isHomeContentUrl = computed(() => {
