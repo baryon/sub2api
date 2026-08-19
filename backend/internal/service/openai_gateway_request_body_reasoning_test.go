@@ -200,9 +200,9 @@ func TestTrimOpenAIEncryptedReasoningItems_ContentNullDropsBareSkeleton(t *testi
 	assert.False(t, hasInput, "bare reasoning skeleton should be dropped, emptying input")
 }
 
-func TestStripOpenAIResponsesOptionalCacheFields(t *testing.T) {
-	body := []byte(`{"model":"gpt-5.4","prompt_cache_retention":"24h","safety_identifier":"sid","prompt_cache_options":{"enabled":true},"input":"hi"}`)
-	stripped, err := stripOpenAIResponsesOptionalCacheFields(body)
+func TestStripOpenAIResponsesOptionalFields(t *testing.T) {
+	body := []byte(`{"model":"gpt-5.4","prompt_cache_retention":"24h","safety_identifier":"sid","prompt_cache_options":{"ttl":"30m"},"input":"hi"}`)
+	stripped, err := stripOpenAIResponsesOptionalFields(body)
 	require.NoError(t, err)
 	require.False(t, gjson.GetBytes(stripped, "prompt_cache_retention").Exists())
 	require.False(t, gjson.GetBytes(stripped, "safety_identifier").Exists())
@@ -210,7 +210,77 @@ func TestStripOpenAIResponsesOptionalCacheFields(t *testing.T) {
 	require.Equal(t, "gpt-5.4", gjson.GetBytes(stripped, "model").String())
 	require.Equal(t, "hi", gjson.GetBytes(stripped, "input").String())
 
-	unchanged, err := stripOpenAIResponsesOptionalCacheFields([]byte(`{"model":"gpt-5.4","input":"hi"}`))
+	unchanged, err := stripOpenAIResponsesOptionalFields([]byte(`{"model":"gpt-5.4","input":"hi"}`))
 	require.NoError(t, err)
 	require.JSONEq(t, `{"model":"gpt-5.4","input":"hi"}`, string(unchanged))
+}
+
+func TestShouldPreserveOpenAIResponsesOptionalFields(t *testing.T) {
+	tests := []struct {
+		name    string
+		account *Account
+		want    bool
+	}{
+		{
+			name: "official OpenAI API key",
+			account: &Account{
+				Platform: PlatformOpenAI,
+				Type:     AccountTypeAPIKey,
+			},
+			want: true,
+		},
+		{
+			name: "explicit official OpenAI API key endpoint",
+			account: &Account{
+				Platform: PlatformOpenAI,
+				Type:     AccountTypeAPIKey,
+				Credentials: map[string]any{
+					"base_url": "https://api.openai.com/v1",
+				},
+			},
+			want: true,
+		},
+		{
+			name: "custom OpenAI-compatible API key endpoint",
+			account: &Account{
+				Platform: PlatformOpenAI,
+				Type:     AccountTypeAPIKey,
+				Credentials: map[string]any{
+					"base_url": "https://example.com/v1",
+				},
+			},
+			want: false,
+		},
+		{
+			name: "OpenAI lookalike host",
+			account: &Account{
+				Platform: PlatformOpenAI,
+				Type:     AccountTypeAPIKey,
+				Credentials: map[string]any{
+					"base_url": "https://api.openai.com.example/v1",
+				},
+			},
+			want: false,
+		},
+		{
+			name:    "OpenAI OAuth internal endpoint",
+			account: &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth},
+			want:    false,
+		},
+		{
+			name:    "known third-party platform",
+			account: &Account{Platform: PlatformGrok, Type: AccountTypeAPIKey},
+			want:    false,
+		},
+		{
+			name: "missing account",
+			want: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, shouldPreserveOpenAIResponsesOptionalFields(tt.account))
+		})
+	}
 }

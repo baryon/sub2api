@@ -129,7 +129,7 @@ func TestForwardDeepSeekResponsesUsesNativeEndpointAndOpaqueBody(t *testing.T) {
 
 func TestForwardDeepSeekResponsesStripsPromptCacheRetention(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	body := []byte(`{"model":"deepseek-v4-pro","input":"hello","prompt_cache_retention":"in-memory","safety_identifier":"sid","stream":false}`)
+	body := []byte(`{"model":"deepseek-v4-pro","input":"hello","prompt_cache_retention":"in-memory","safety_identifier":"sid","prompt_cache_options":{"ttl":"30m"},"stream":false}`)
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
 	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(body))
@@ -150,6 +150,7 @@ func TestForwardDeepSeekResponsesStripsPromptCacheRetention(t *testing.T) {
 	require.NotNil(t, result)
 	require.False(t, gjson.GetBytes(upstream.lastBody, "prompt_cache_retention").Exists())
 	require.False(t, gjson.GetBytes(upstream.lastBody, "safety_identifier").Exists())
+	require.False(t, gjson.GetBytes(upstream.lastBody, "prompt_cache_options").Exists())
 	require.Equal(t, "hello", gjson.GetBytes(upstream.lastBody, "input").String())
 }
 

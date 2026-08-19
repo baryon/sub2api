@@ -55,23 +55,20 @@ func buildOpenAIResponsesURLForPlatform(platform string, base string) string {
 	return buildOpenAIResponsesURL(base)
 }
 
-// openAIResponsesOptionalCacheFields are top-level Responses hints that Codex
-// CLI always sends. Many models and OpenAI-compatible upstreams reject them
-// with "prompt_cache_retention is not supported on this model", which aborts
-// the Codex SSE stream. They are optional and must be stripped for every
-// client, including official Codex CLI.
-var openAIResponsesOptionalCacheFields = []string{
+// openAIResponsesOptionalFields are valid top-level OpenAI Responses fields
+// that some compatible or internal upstreams do not implement.
+var openAIResponsesOptionalFields = []string{
 	"prompt_cache_retention",
 	"safety_identifier",
 	"prompt_cache_options",
 }
 
-func stripOpenAIResponsesOptionalCacheFields(body []byte) ([]byte, error) {
+func stripOpenAIResponsesOptionalFields(body []byte) ([]byte, error) {
 	if len(body) == 0 {
 		return body, nil
 	}
 	out := body
-	for _, field := range openAIResponsesOptionalCacheFields {
+	for _, field := range openAIResponsesOptionalFields {
 		if !gjson.GetBytes(out, field).Exists() {
 			continue
 		}
@@ -84,13 +81,28 @@ func stripOpenAIResponsesOptionalCacheFields(body []byte) ([]byte, error) {
 	return out, nil
 }
 
-func deleteOpenAIResponsesOptionalCacheFieldsFromObject(body map[string]any) {
+func deleteOpenAIResponsesOptionalFieldsFromObject(body map[string]any) {
 	if body == nil {
 		return
 	}
-	for _, field := range openAIResponsesOptionalCacheFields {
+	for _, field := range openAIResponsesOptionalFields {
 		delete(body, field)
 	}
+}
+
+func shouldPreserveOpenAIResponsesOptionalFields(account *Account) bool {
+	if account == nil || !account.IsOpenAIApiKey() {
+		return false
+	}
+	baseURL := strings.TrimSpace(account.GetCredential("base_url"))
+	return baseURL == "" || isOfficialOpenAIModelsBaseURL(baseURL)
+}
+
+func filterOpenAIResponsesOptionalFieldsForAccount(account *Account, body []byte) ([]byte, error) {
+	if shouldPreserveOpenAIResponsesOptionalFields(account) {
+		return body, nil
+	}
+	return stripOpenAIResponsesOptionalFields(body)
 }
 
 // normalizeDeepSeekResponsesRequestBody 适配 DeepSeek 无状态 Responses 端点：

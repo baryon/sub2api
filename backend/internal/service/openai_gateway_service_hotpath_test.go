@@ -1,6 +1,7 @@
 package service
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -184,9 +185,9 @@ func TestOpenAIGatewayService_Forward_DecodedMutationKeepsLaterFieldDeletes(t *t
 	require.Equal(t, "png", gjson.GetBytes(upstream.lastBody, "tools.0.output_format").String())
 }
 
-// #4417：/v1/responses 原生转发路径需将 Chat-Completions 风格的 max_tokens 归一化为
-// max_output_tokens，并移除兼容上游不接受的 prompt_cache_options。
-func TestOpenAIGatewayService_Forward_NormalizesMaxTokensAndStripsPromptCacheOptions(t *testing.T) {
+// #4417：自定义 Responses 兼容端点需归一化 max_tokens，并在首次转发前
+// 主动清理仅官方 OpenAI 支持的可选字段。
+func TestOpenAIGatewayService_Forward_CustomEndpointNormalizesMaxTokensAndStripsResponsesOptionalFields(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	runForward := func(t *testing.T, body []byte) []byte {
@@ -224,10 +225,12 @@ func TestOpenAIGatewayService_Forward_NormalizesMaxTokensAndStripsPromptCacheOpt
 		return upstream.lastBody
 	}
 
-	t.Run("max_tokens 归一化为 max_output_tokens 并移除 prompt_cache_options", func(t *testing.T) {
-		out := runForward(t, []byte(`{"model":"gpt-5.4","stream":false,"max_tokens":256,"prompt_cache_options":{"enabled":true},"input":[{"type":"message","content":"hi"}]}`))
+	t.Run("max_tokens 归一化并主动清理官方可选字段", func(t *testing.T) {
+		out := runForward(t, []byte(`{"model":"gpt-5.4","stream":false,"max_tokens":256,"prompt_cache_retention":"24h","safety_identifier":"sid","prompt_cache_options":{"ttl":"30m"},"input":[{"type":"message","content":"hi"}]}`))
 		require.Equal(t, int64(256), gjson.GetBytes(out, "max_output_tokens").Int())
 		require.False(t, gjson.GetBytes(out, "max_tokens").Exists())
+		require.False(t, gjson.GetBytes(out, "prompt_cache_retention").Exists())
+		require.False(t, gjson.GetBytes(out, "safety_identifier").Exists())
 		require.False(t, gjson.GetBytes(out, "prompt_cache_options").Exists())
 	})
 
@@ -238,7 +241,53 @@ func TestOpenAIGatewayService_Forward_NormalizesMaxTokensAndStripsPromptCacheOpt
 	})
 }
 
-func TestOpenAIGatewayService_Forward_CodexCLIStripsPromptCacheRetention(t *testing.T) {
+func TestOpenAIGatewayService_Forward_CNResponsesAccountsStripOptionalFieldsBeforeFirstForward(t *testing.T) {
+	tests := []struct {
+		name     string
+		platform string
+		baseURL  string
+	}{
+		{name: "Kimi", platform: PlatformKimi, baseURL: "https://api.moonshot.cn/v1"},
+		{name: "Zhipu", platform: PlatformZhipu, baseURL: "https://open.bigmodel.cn/api/paas/v4"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			upstream := &httpUpstreamRecorder{resp: &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{"Content-Type": []string{"application/json"}},
+				Body:       io.NopCloser(strings.NewReader(`{"usage":{"input_tokens":1,"output_tokens":2}}`)),
+			}}
+			cfg := &config.Config{}
+			cfg.Security.URLAllowlist.Enabled = false
+			svc := &OpenAIGatewayService{cfg: cfg, httpUpstream: upstream}
+			account := &Account{
+				ID:          40,
+				Name:        tt.name,
+				Platform:    tt.platform,
+				Type:        AccountTypeAPIKey,
+				Concurrency: 1,
+				Credentials: map[string]any{"api_key": "sk-test", "base_url": tt.baseURL},
+				Extra:       map[string]any{"openai_responses_supported": true},
+			}
+			body := []byte(`{"model":"compat-model","stream":false,"prompt_cache_retention":"24h","safety_identifier":"sid","prompt_cache_options":{"ttl":"30m"},"input":"hi"}`)
+			rec := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(rec)
+			c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(body))
+			SetOpenAIClientTransport(c, OpenAIClientTransportHTTP)
+
+			result, err := svc.Forward(context.Background(), c, account, body)
+			require.NoError(t, err)
+			require.NotNil(t, result)
+			require.Len(t, upstream.bodies, 1)
+			require.False(t, gjson.GetBytes(upstream.lastBody, "prompt_cache_retention").Exists())
+			require.False(t, gjson.GetBytes(upstream.lastBody, "safety_identifier").Exists())
+			require.False(t, gjson.GetBytes(upstream.lastBody, "prompt_cache_options").Exists())
+		})
+	}
+}
+
+func TestOpenAIGatewayService_Forward_OfficialAPIKeyPreservesResponsesOptionalFields(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	upstream := &httpUpstreamRecorder{
 		resp: &http.Response{
@@ -257,12 +306,11 @@ func TestOpenAIGatewayService_Forward_CodexCLIStripsPromptCacheRetention(t *test
 		Type:        AccountTypeAPIKey,
 		Concurrency: 1,
 		Credentials: map[string]any{
-			"api_key":  "sk-test",
-			"base_url": "https://example.com",
+			"api_key": "sk-test",
 		},
 		Extra: map[string]any{"openai_responses_supported": true},
 	}
-	body := []byte(`{"model":"gpt-5.6-sol","stream":false,"prompt_cache_retention":"24h","safety_identifier":"sid","prompt_cache_options":{"enabled":true},"input":[{"type":"message","content":"hi"}]}`)
+	body := []byte(`{"model":"gpt-5.6-sol","stream":false,"prompt_cache_retention":"24h","safety_identifier":"sid","prompt_cache_options":{"ttl":"30m"},"input":[{"type":"message","content":"hi"}]}`)
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
 	c.Request = httptest.NewRequest(http.MethodPost, "/openai/v1/responses", nil)
@@ -273,9 +321,9 @@ func TestOpenAIGatewayService_Forward_CodexCLIStripsPromptCacheRetention(t *test
 	result, err := svc.Forward(context.Background(), c, account, body)
 	require.NoError(t, err)
 	require.NotNil(t, result)
-	require.False(t, gjson.GetBytes(upstream.lastBody, "prompt_cache_retention").Exists())
-	require.False(t, gjson.GetBytes(upstream.lastBody, "safety_identifier").Exists())
-	require.False(t, gjson.GetBytes(upstream.lastBody, "prompt_cache_options").Exists())
+	require.Equal(t, "24h", gjson.GetBytes(upstream.lastBody, "prompt_cache_retention").String())
+	require.Equal(t, "sid", gjson.GetBytes(upstream.lastBody, "safety_identifier").String())
+	require.Equal(t, "30m", gjson.GetBytes(upstream.lastBody, "prompt_cache_options.ttl").String())
 	require.Equal(t, "gpt-5.6-sol", gjson.GetBytes(upstream.lastBody, "model").String())
 }
 

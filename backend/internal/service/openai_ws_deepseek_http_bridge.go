@@ -291,7 +291,7 @@ func prepareDeepSeekWSHTTPBridgeBody(payload []byte) ([]byte, error) {
 	delete(body, "type")
 	delete(body, "generate")
 	delete(body, "previous_response_id")
-	for _, field := range openAIResponsesOptionalCacheFields {
+	for _, field := range openAIResponsesOptionalFields {
 		delete(body, field)
 	}
 	body["stream"] = json.RawMessage("true")

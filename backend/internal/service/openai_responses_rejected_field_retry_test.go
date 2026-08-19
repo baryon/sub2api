@@ -138,6 +138,52 @@ func TestNormalizeOpenAIResponsesRejectedFieldRetryBodyIgnoresOtherModelUnsuppor
 	require.Nil(t, retryBody)
 }
 
+func TestOpenAIGatewayService_OfficialResponsesEndpointRetriesRejectedPromptCacheRetention(t *testing.T) {
+	body := []byte(`{"model":"gpt-5.6-sol","stream":false,"prompt_cache_retention":"24h","safety_identifier":"sid","prompt_cache_options":{"ttl":"30m"},"input":"hello"}`)
+	upstream := &httpUpstreamRecorder{responses: []*http.Response{
+		newOpenAIRejectedFieldTestResponse(http.StatusBadRequest, `{"error":{"code":"invalid_parameter","message":"prompt_cache_retention is not supported on this model","param":"prompt_cache_retention","type":"invalid_request_error"}}`),
+		newOpenAIRejectedFieldTestResponse(http.StatusOK, `{"output":[],"usage":{"input_tokens":1,"output_tokens":1,"input_tokens_details":{"cached_tokens":0}}}`),
+	}}
+
+	result, err := newOpenAIRejectedFieldTestService(upstream).Forward(
+		context.Background(),
+		newOpenAIRejectedFieldTestContext(body),
+		newOfficialOpenAIRejectedFieldTestAccount(),
+		body,
+	)
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Len(t, upstream.bodies, 2)
+	require.Equal(t, "24h", gjson.GetBytes(upstream.bodies[0], "prompt_cache_retention").String())
+	require.False(t, gjson.GetBytes(upstream.bodies[1], "prompt_cache_retention").Exists())
+	for _, forwardedBody := range upstream.bodies {
+		require.Equal(t, "sid", gjson.GetBytes(forwardedBody, "safety_identifier").String())
+		require.Equal(t, "30m", gjson.GetBytes(forwardedBody, "prompt_cache_options.ttl").String())
+	}
+}
+
+func TestOpenAIGatewayService_CustomResponsesEndpointStripsOptionalFieldsBeforeFirstForward(t *testing.T) {
+	body := []byte(`{"model":"gpt-5.6-sol","stream":false,"prompt_cache_retention":"24h","safety_identifier":"sid","prompt_cache_options":{"ttl":"30m"},"input":"hello"}`)
+	upstream := &httpUpstreamRecorder{responses: []*http.Response{
+		newOpenAIRejectedFieldTestResponse(http.StatusOK, `{"output":[],"usage":{"input_tokens":1,"output_tokens":1,"input_tokens_details":{"cached_tokens":0}}}`),
+	}}
+
+	result, err := newOpenAIRejectedFieldTestService(upstream).Forward(
+		context.Background(),
+		newOpenAIRejectedFieldTestContext(body),
+		newOpenAIRejectedFieldTestAccount(),
+		body,
+	)
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Len(t, upstream.bodies, 1)
+	require.False(t, gjson.GetBytes(upstream.bodies[0], "prompt_cache_retention").Exists())
+	require.False(t, gjson.GetBytes(upstream.bodies[0], "safety_identifier").Exists())
+	require.False(t, gjson.GetBytes(upstream.bodies[0], "prompt_cache_options").Exists())
+}
+
 func TestOpenAIGatewayService_APIKeyStripsAllIndexedNamespacesBeforeFirstForward(t *testing.T) {
 	body := []byte(`{"model":"gpt-5.5","stream":false,"input":[{"type":"function_call","name":"first","namespace":"remove-first","arguments":"{}"},{"type":"custom_tool_call","name":"second","namespace":"remove-second","input":"{}"}]}`)
 	upstream := &httpUpstreamRecorder{responses: []*http.Response{
@@ -277,6 +323,13 @@ func newOpenAIRejectedFieldTestAccount() *Account {
 		Status:      StatusActive,
 		Schedulable: true,
 	}
+}
+
+func newOfficialOpenAIRejectedFieldTestAccount() *Account {
+	account := newOpenAIRejectedFieldTestAccount()
+	account.Name = "official-openai"
+	delete(account.Credentials, "base_url")
+	return account
 }
 
 func newOpenAIOAuthNamespaceTestAccount() *Account {

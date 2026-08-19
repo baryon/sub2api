@@ -20,11 +20,11 @@ import (
 // Forward forwards request to OpenAI API
 func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, account *Account, body []byte) (*OpenAIForwardResult, error) {
 	beginUpstreamResponseModelObservation(c)
-	strippedBody, stripErr := stripOpenAIResponsesOptionalCacheFields(body)
-	if stripErr != nil {
-		return nil, stripErr
+	filteredBody, filterErr := filterOpenAIResponsesOptionalFieldsForAccount(account, body)
+	if filterErr != nil {
+		return nil, filterErr
 	}
-	body = strippedBody
+	body = filteredBody
 	if account != nil && account.IsDeepSeek() {
 		return s.forwardDeepSeekResponses(ctx, c, account, body)
 	}

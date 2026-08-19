@@ -101,7 +101,9 @@ func TestForwardAlphaSearchPATUsesResponsesWebSearchFallback(t *testing.T) {
 		"model":"gpt-5.6-sol",
 		"commands":{"search_query":[{"q":"OpenAI news"}]},
 		"prompt_cache_key":"responses-cache-key",
-		"prompt_cache_retention":"24h"
+		"prompt_cache_retention":"24h",
+		"safety_identifier":"sid",
+		"prompt_cache_options":{"ttl":"30m"}
 	}`)
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
@@ -163,6 +165,8 @@ func TestForwardAlphaSearchPATUsesResponsesWebSearchFallback(t *testing.T) {
 	require.Empty(t, upstream.lastReq.Header.Get("Accept-Language"))
 	require.False(t, gjson.GetBytes(upstream.lastBody, "prompt_cache_key").Exists())
 	require.False(t, gjson.GetBytes(upstream.lastBody, "prompt_cache_retention").Exists())
+	require.False(t, gjson.GetBytes(upstream.lastBody, "safety_identifier").Exists())
+	require.False(t, gjson.GetBytes(upstream.lastBody, "prompt_cache_options").Exists())
 	require.Equal(t, "gpt-5.6-sol", gjson.GetBytes(upstream.lastBody, "model").String())
 	require.True(t, gjson.GetBytes(upstream.lastBody, "stream").Bool())
 	require.False(t, gjson.GetBytes(upstream.lastBody, "store").Bool())

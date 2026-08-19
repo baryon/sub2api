@@ -113,7 +113,7 @@ func openAIResponsesRejectedParamFromMessage(message string) string {
 }
 
 func openAIResponsesRejectedOptionalCacheField(param, message string) string {
-	for _, field := range openAIResponsesOptionalCacheFields {
+	for _, field := range openAIResponsesOptionalFields {
 		if param == field {
 			return field
 		}
