@@ -51,15 +51,17 @@ func ResponsesToAnthropicRequest(req *ResponsesRequest) (*AnthropicRequest, erro
 		out.ToolChoice = tc
 	}
 
-	// reasoning.effort → output_config.effort + thinking
+	// reasoning.effort → output_config.effort + thinking.
+	// Codex commonly sends "none"/"minimal" (GPT-5 values). Anthropic only
+	// accepts low|medium|high|xhigh|max and 400s otherwise.
 	if req.Reasoning != nil && req.Reasoning.Effort != "" {
-		effort := mapResponsesEffortToAnthropic(req.Reasoning.Effort)
-		out.OutputConfig = &AnthropicOutputConfig{Effort: effort}
-		// Enable thinking for non-low efforts
-		if effort != "low" {
-			out.Thinking = &AnthropicThinking{
-				Type:         "enabled",
-				BudgetTokens: defaultThinkingBudget(effort),
+		if effort := mapResponsesEffortToAnthropic(req.Reasoning.Effort); effort != "" {
+			out.OutputConfig = &AnthropicOutputConfig{Effort: effort}
+			if effort != "low" {
+				out.Thinking = &AnthropicThinking{
+					Type:         "enabled",
+					BudgetTokens: defaultThinkingBudget(effort),
+				}
 			}
 		}
 	}
@@ -84,17 +86,22 @@ func defaultThinkingBudget(effort string) int {
 }
 
 // mapResponsesEffortToAnthropic converts OpenAI Responses reasoning effort to
-// Anthropic effort levels. Reverse of mapAnthropicEffortToResponses.
+// Anthropic output_config.effort. Unknown GPT-5 values such as "none" are
+// dropped so the upstream request omits the field.
 //
-//	low    → low
-//	medium → medium
-//	high   → high
-//	xhigh  → max
+//	low / medium / high / xhigh / max → same
+//	minimal                           → low
+//	none / empty / unknown            → omit
 func mapResponsesEffortToAnthropic(effort string) string {
-	if effort == "xhigh" {
-		return "max"
+	value := strings.ToLower(strings.TrimSpace(effort))
+	switch value {
+	case "low", "medium", "high", "xhigh", "max":
+		return value
+	case "minimal":
+		return "low"
+	default:
+		return ""
 	}
-	return effort // low→low, medium→medium, high→high, unknown→passthrough
 }
 
 // convertResponsesInputToAnthropic extracts system prompt and messages from

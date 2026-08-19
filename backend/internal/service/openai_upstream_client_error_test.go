@@ -129,6 +129,26 @@ func TestHandleErrorResponse_Deterministic400WithoutUpstreamMetadata(t *testing.
 	require.False(t, gjson.Get(body, "error.param").Exists(), "上游没给 param 就不要编一个")
 }
 
+func TestHandleErrorResponse_XAIStringErrorIsReturnedToClient(t *testing.T) {
+	c, rec := newOpenAIUpstreamErrorTestContext(t)
+	svc := &OpenAIGatewayService{cfg: &config.Config{}}
+	body := `{"code":"invalid-argument","error":"This model does not support ` + "`reasoning_effort`" + ` value ` + "`none`" + `."}`
+
+	_, err := svc.handleErrorResponse(
+		context.Background(),
+		newOpenAIUpstreamErrorResponse(http.StatusBadRequest, body),
+		c, &Account{ID: 14, Platform: PlatformGrok, Type: AccountTypeAPIKey, Name: "Grok lilong"}, nil,
+	)
+
+	require.Error(t, err)
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+	got := rec.Body.String()
+	require.Equal(t, "invalid_request_error", gjson.Get(got, "error.type").String())
+	require.Equal(t, "invalid-argument", gjson.Get(got, "error.code").String())
+	require.Equal(t, "This model does not support `reasoning_effort` value `none`.", gjson.Get(got, "error.message").String())
+	require.NotContains(t, got, openAIUpstreamClientErrorFallbackMessage)
+}
+
 // 上游回非 JSON（反代的 HTML 错误页等）时不得 panic，也不得回空 message。
 func TestHandleErrorResponse_Deterministic400WithNonJSONBody(t *testing.T) {
 	c, rec := newOpenAIUpstreamErrorTestContext(t)

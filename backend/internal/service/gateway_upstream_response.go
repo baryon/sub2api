@@ -279,40 +279,73 @@ func sanitizeStreamError(err error) string {
 	return "upstream connection error"
 }
 
-// ExtractUpstreamErrorMessage 从上游响应体中提取错误消息
-// 支持 Claude 风格的错误格式：{"type":"error","error":{"type":"...","message":"..."}}
+// ExtractUpstreamErrorMessage 从上游响应体中提取错误消息。
+// 支持 Claude/OpenAI 的 {"error":{"message":"..."}}，以及 xAI 的
+// {"code":"...","error":"字符串"}。
 func ExtractUpstreamErrorMessage(body []byte) string {
 	return extractUpstreamErrorMessage(body)
 }
 
 func extractUpstreamErrorMessage(body []byte) string {
-	// Claude 风格：{"type":"error","error":{"type":"...","message":"..."}}
-	if m := gjson.GetBytes(body, "error.message").String(); strings.TrimSpace(m) != "" {
-		inner := strings.TrimSpace(m)
-		// 有些上游会把完整 JSON 作为字符串塞进 message
-		if strings.HasPrefix(inner, "{") {
-			if innerMsg := gjson.Get(inner, "error.message").String(); strings.TrimSpace(innerMsg) != "" {
-				return innerMsg
-			}
-		}
-		return m
+	if msg := extractJSONErrorText(string(body)); msg != "" {
+		return msg
 	}
 
 	// ChatGPT 内部 API 风格：{"detail":"..."}
-	if d := gjson.GetBytes(body, "detail").String(); strings.TrimSpace(d) != "" {
+	if d := strings.TrimSpace(gjson.GetBytes(body, "detail").String()); d != "" {
 		return d
 	}
 
 	// 兜底：尝试顶层 message
-	return gjson.GetBytes(body, "message").String()
+	return strings.TrimSpace(gjson.GetBytes(body, "message").String())
+}
+
+// extractJSONErrorText reads OpenAI/Claude object envelopes and xAI's flat
+// string error: {"code":"invalid-argument","error":"..."}. Nested JSON strings
+// are unwrapped once so a quoted error object still yields the inner text.
+func extractJSONErrorText(raw string) string {
+	errNode := gjson.Get(raw, "error")
+	switch {
+	case errNode.Type == gjson.String:
+		return unwrapJSONErrorText(errNode.String())
+	case errNode.IsObject():
+		if msg := strings.TrimSpace(errNode.Get("message").String()); msg != "" {
+			return unwrapJSONErrorText(msg)
+		}
+		if inner := errNode.Get("error"); inner.Type == gjson.String {
+			return unwrapJSONErrorText(inner.String())
+		}
+	}
+	return ""
+}
+
+func unwrapJSONErrorText(raw string) string {
+	msg := strings.TrimSpace(raw)
+	if msg == "" {
+		return ""
+	}
+	if strings.HasPrefix(msg, "{") {
+		if inner := extractJSONErrorText(msg); inner != "" {
+			return inner
+		}
+	}
+	return msg
 }
 
 func extractUpstreamErrorCode(body []byte) string {
 	if code := strings.TrimSpace(gjson.GetBytes(body, "error.code").String()); code != "" {
 		return code
 	}
+	if code := strings.TrimSpace(gjson.GetBytes(body, "code").String()); code != "" {
+		return code
+	}
 
 	inner := strings.TrimSpace(gjson.GetBytes(body, "error.message").String())
+	if inner == "" {
+		if errNode := gjson.GetBytes(body, "error"); errNode.Type == gjson.String {
+			inner = strings.TrimSpace(errNode.String())
+		}
+	}
 	if !strings.HasPrefix(inner, "{") {
 		return ""
 	}
@@ -320,9 +353,15 @@ func extractUpstreamErrorCode(body []byte) string {
 	if code := strings.TrimSpace(gjson.Get(inner, "error.code").String()); code != "" {
 		return code
 	}
+	if code := strings.TrimSpace(gjson.Get(inner, "code").String()); code != "" {
+		return code
+	}
 
 	if lastBrace := strings.LastIndex(inner, "}"); lastBrace >= 0 {
 		if code := strings.TrimSpace(gjson.Get(inner[:lastBrace+1], "error.code").String()); code != "" {
+			return code
+		}
+		if code := strings.TrimSpace(gjson.Get(inner[:lastBrace+1], "code").String()); code != "" {
 			return code
 		}
 	}

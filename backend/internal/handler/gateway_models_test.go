@@ -42,13 +42,16 @@ type gatewayReasoningEffortOptionForTest struct {
 }
 
 type codexModelForTest struct {
-	Slug                  string `json:"slug"`
-	DisplayName           string `json:"display_name"`
-	Visibility            string `json:"visibility"`
-	SupportedInAPI        bool   `json:"supported_in_api"`
-	ContextWindow         int64  `json:"context_window"`
-	DefaultReasoningLevel string `json:"default_reasoning_level"`
-	ModelMessages         struct {
+	Slug                     string `json:"slug"`
+	DisplayName              string `json:"display_name"`
+	Visibility               string `json:"visibility"`
+	SupportedInAPI           bool   `json:"supported_in_api"`
+	ContextWindow            int64  `json:"context_window"`
+	DefaultReasoningLevel    string `json:"default_reasoning_level"`
+	SupportedReasoningLevels []struct {
+		Effort string `json:"effort"`
+	} `json:"supported_reasoning_levels"`
+	ModelMessages struct {
 		InstructionsTemplate string `json:"instructions_template"`
 	} `json:"model_messages"`
 }
@@ -204,6 +207,137 @@ func TestGatewayCodexModels_CompositeUsesCompleteManifest(t *testing.T) {
 	require.True(t, got.Models[0].SupportedInAPI)
 	require.Equal(t, int64(272_000), got.Models[0].ContextWindow)
 	require.Equal(t, "gpt-5.5", got.Models[0].DisplayName)
+	require.NotEmpty(t, got.Models[0].ModelMessages.InstructionsTemplate)
+}
+
+func TestGatewayCodexModels_CompositeAdvertisesClaudeReasoningLevels(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	groupID := int64(54)
+	h := newGatewayModelsHandlerForTest(
+		&gatewayModelsAccountRepoStub{
+			byGroup: map[int64][]service.Account{
+				groupID: {
+					{
+						ID:       1,
+						Platform: service.PlatformAnthropic,
+						Credentials: map[string]any{
+							"model_mapping": map[string]any{
+								"claude-opus-4-6": "claude-opus-4-6",
+							},
+						},
+					},
+				},
+			},
+		},
+	)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodGet, "/models?client_version=0.147.0", nil)
+	c.Set(string(middleware2.ContextKeyAPIKey), &service.APIKey{
+		Group: &service.Group{ID: groupID, Platform: service.PlatformComposite},
+	})
+
+	h.CodexModels(c)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	var got codexModelsResponseForTest
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
+	require.Len(t, got.Models, 1)
+	require.Equal(t, "claude-opus-4-6", got.Models[0].Slug)
+	require.Equal(t, "Claude Opus 4.6", got.Models[0].DisplayName)
+	require.Equal(t, "medium", got.Models[0].DefaultReasoningLevel)
+	require.Equal(t, []string{"low", "medium", "high", "xhigh", "max"}, codexReasoningEffortsForTest(got.Models[0]))
+	require.NotEmpty(t, got.Models[0].ModelMessages.InstructionsTemplate)
+}
+
+func TestGatewayCodexModels_CompositeAdvertisesGrokReasoningLevels(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	groupID := int64(52)
+	h := newGatewayModelsHandlerForTest(
+		&gatewayModelsAccountRepoStub{
+			byGroup: map[int64][]service.Account{
+				groupID: {
+					{
+						ID:       1,
+						Platform: service.PlatformGrok,
+						Credentials: map[string]any{
+							"model_mapping": map[string]any{
+								"grok-4.6": "grok-4.6",
+							},
+						},
+					},
+				},
+			},
+		},
+	)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodGet, "/models?client_version=0.147.0", nil)
+	c.Set(string(middleware2.ContextKeyAPIKey), &service.APIKey{
+		Group: &service.Group{ID: groupID, Platform: service.PlatformComposite},
+	})
+
+	h.CodexModels(c)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	var got codexModelsResponseForTest
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
+	require.Len(t, got.Models, 1)
+	require.Equal(t, "grok-4.6", got.Models[0].Slug)
+	require.Equal(t, "Grok 4.6", got.Models[0].DisplayName)
+	require.Equal(t, "list", got.Models[0].Visibility)
+	require.True(t, got.Models[0].SupportedInAPI)
+	require.Equal(t, "high", got.Models[0].DefaultReasoningLevel)
+	require.Equal(t, []string{"low", "medium", "high"}, codexReasoningEffortsForTest(got.Models[0]))
+	require.Equal(t, int64(500_000), got.Models[0].ContextWindow)
+	require.NotEmpty(t, got.Models[0].ModelMessages.InstructionsTemplate)
+}
+
+func TestGatewayCodexModels_GrokUsesCompleteManifest(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	groupID := int64(53)
+	h := newGatewayModelsHandlerForTest(
+		&gatewayModelsAccountRepoStub{
+			byGroup: map[int64][]service.Account{
+				groupID: {
+					{
+						ID:       1,
+						Platform: service.PlatformGrok,
+						Credentials: map[string]any{
+							"model_mapping": map[string]any{
+								"grok-4.6": "grok-4.6",
+							},
+						},
+					},
+				},
+			},
+		},
+	)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodGet, "/models?client_version=0.147.0", nil)
+	c.Set(string(middleware2.ContextKeyAPIKey), &service.APIKey{
+		Group: &service.Group{ID: groupID, Platform: service.PlatformGrok},
+	})
+
+	h.CodexModels(c)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	var got codexModelsResponseForTest
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
+	require.Len(t, got.Models, 1)
+	require.Equal(t, "grok-4.6", got.Models[0].Slug)
+	require.Equal(t, "Grok 4.6", got.Models[0].DisplayName)
+	require.Equal(t, "list", got.Models[0].Visibility)
+	require.True(t, got.Models[0].SupportedInAPI)
+	require.Equal(t, "high", got.Models[0].DefaultReasoningLevel)
+	require.Equal(t, []string{"low", "medium", "high"}, codexReasoningEffortsForTest(got.Models[0]))
 	require.NotEmpty(t, got.Models[0].ModelMessages.InstructionsTemplate)
 }
 
@@ -978,4 +1112,12 @@ func codexModelSlugsForTest(models []codexModelForTest) []string {
 		slugs = append(slugs, model.Slug)
 	}
 	return slugs
+}
+
+func codexReasoningEffortsForTest(model codexModelForTest) []string {
+	efforts := make([]string, 0, len(model.SupportedReasoningLevels))
+	for _, level := range model.SupportedReasoningLevels {
+		efforts = append(efforts, level.Effort)
+	}
+	return efforts
 }

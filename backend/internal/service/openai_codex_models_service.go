@@ -16,9 +16,11 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/httpclient"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 	"golang.org/x/net/http2"
 	"golang.org/x/sync/singleflight"
 )
@@ -118,6 +120,8 @@ const (
 	configuredCodexModelPriority       = 50
 	configuredCodexFallbackContext     = 272_000
 	configuredCodexDeepSeekV4Context   = 1_000_000
+	configuredCodexGrokContext         = 500_000
+	configuredCodexGrokBuildContext    = 256_000
 	configuredCodexToolOutputMaxTokens = 10_000
 )
 
@@ -207,7 +211,47 @@ func newConfiguredCodexModelDescriptor(modelID string) configuredCodexModelDescr
 		descriptor.MaxContextWindow = configuredCodexDeepSeekV4Context
 	}
 
+	if isGrokCodexModel(modelID) {
+		descriptor.DisplayName = grokCodexDisplayName(modelID)
+		descriptor.Description = "Grok coding and reasoning model routed through Sub2API."
+		descriptor.SupportsParallelToolCalls = true
+		descriptor.ContextWindow = grokCodexContextWindow(modelID)
+		descriptor.MaxContextWindow = descriptor.ContextWindow
+		if grokCodexSupportsReasoningEffort(modelID) {
+			defaultReasoningLevel := "high"
+			descriptor.DefaultReasoningLevel = &defaultReasoningLevel
+			descriptor.SupportedReasoningLevels = configuredCodexGrokReasoningLevels()
+		}
+	}
+
+	if isClaudeCodexModel(modelID) {
+		defaultReasoningLevel := "medium"
+		descriptor.DisplayName = claudeCodexDisplayName(modelID)
+		descriptor.Description = "Claude coding and reasoning model routed through Sub2API."
+		descriptor.DefaultReasoningLevel = &defaultReasoningLevel
+		descriptor.SupportedReasoningLevels = configuredCodexClaudeReasoningLevels()
+		descriptor.SupportsParallelToolCalls = true
+	}
+
 	return descriptor
+}
+
+func configuredCodexGrokReasoningLevels() []configuredCodexReasoningLevel {
+	return []configuredCodexReasoningLevel{
+		{Effort: "low", Description: "Fast responses with lighter reasoning"},
+		{Effort: "medium", Description: "Balanced reasoning for most coding tasks"},
+		{Effort: "high", Description: "Greater reasoning depth for coding and agent tasks"},
+	}
+}
+
+func configuredCodexClaudeReasoningLevels() []configuredCodexReasoningLevel {
+	return []configuredCodexReasoningLevel{
+		{Effort: "low", Description: "Fast responses with lighter reasoning"},
+		{Effort: "medium", Description: "Balanced reasoning for most coding tasks"},
+		{Effort: "high", Description: "Greater reasoning depth for coding and agent tasks"},
+		{Effort: "xhigh", Description: "Extra-high reasoning depth for difficult tasks"},
+		{Effort: "max", Description: "Maximum reasoning depth for complex tasks"},
+	}
 }
 
 func deepSeekCodexDisplayName(modelID string) string {
@@ -223,6 +267,79 @@ func deepSeekCodexDisplayName(modelID string) string {
 
 func isDeepSeekCodexModel(modelID string) bool {
 	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(modelID)), "deepseek-")
+}
+
+func isGrokCodexModel(modelID string) bool {
+	return xai.IsGrokModelID(modelID)
+}
+
+func grokCodexSupportsReasoningEffort(modelID string) bool {
+	if grokSupportsReasoningEffort(modelID) {
+		return true
+	}
+	canonical := xai.ResolveGrokTextResponsesModelID(modelID)
+	if canonical == "" || strings.EqualFold(canonical, modelID) {
+		return false
+	}
+	return grokSupportsReasoningEffort(canonical)
+}
+
+func grokCodexDisplayName(modelID string) string {
+	normalized := strings.ToLower(xai.StripGrokProviderPrefix(strings.TrimSpace(modelID)))
+	if normalized == "" {
+		return modelID
+	}
+	if name := grokDefaultDisplayName(normalized); name != "" {
+		return name
+	}
+	canonical := strings.ToLower(xai.ResolveGrokTextResponsesModelID(normalized))
+	if canonical != "" && canonical != normalized {
+		if name := grokDefaultDisplayName(canonical); name != "" {
+			return name
+		}
+	}
+	return modelID
+}
+
+func grokDefaultDisplayName(modelID string) string {
+	for _, model := range xai.DefaultModels() {
+		if model.ID == modelID {
+			return strings.TrimSpace(model.DisplayName)
+		}
+	}
+	return ""
+}
+
+func grokCodexContextWindow(modelID string) int64 {
+	normalized := strings.ToLower(xai.StripGrokProviderPrefix(strings.TrimSpace(modelID)))
+	if strings.HasPrefix(normalized, "grok-build") {
+		return configuredCodexGrokBuildContext
+	}
+	return configuredCodexGrokContext
+}
+
+func isClaudeCodexModel(modelID string) bool {
+	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(modelID)), "claude")
+}
+
+func claudeCodexDisplayName(modelID string) string {
+	normalized := strings.ToLower(strings.TrimSpace(modelID))
+	if normalized == "" {
+		return modelID
+	}
+	for _, model := range claude.DefaultModels {
+		if strings.EqualFold(model.ID, normalized) && strings.TrimSpace(model.DisplayName) != "" {
+			return model.DisplayName
+		}
+	}
+	if canonical, ok := claude.ModelIDOverrides[normalized]; ok {
+		for _, model := range claude.DefaultModels {
+			if model.ID == canonical && strings.TrimSpace(model.DisplayName) != "" {
+				return model.DisplayName
+			}
+		}
+	}
+	return modelID
 }
 
 // BuildCodexModelsManifest builds a standalone Codex model catalog for models
