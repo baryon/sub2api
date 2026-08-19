@@ -1182,13 +1182,13 @@ func (h *GatewayHandler) CodexModels(c *gin.Context) {
 		platform = forcedPlatform
 	}
 	modelIDs := listClientVisibleModelIDs(c.Request.Context(), h.gatewayService, apiKey.Group, forcedPlatform)
-	if platform == service.PlatformDeepSeek {
-		manifest, err := service.BuildDeepSeekCodexModelsManifest(modelIDs)
+	if platform == service.PlatformDeepSeek || platform == service.PlatformComposite {
+		manifest, err := service.BuildCodexModelsManifest(modelIDs)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{
 				"error": gin.H{
 					"type":    "api_error",
-					"message": "Failed to build DeepSeek Codex models manifest",
+					"message": "Failed to build Codex models manifest",
 				},
 			})
 			return

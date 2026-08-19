@@ -164,6 +164,49 @@ func TestGatewayCodexModels_ListsAdminConfiguredDeepSeekModel(t *testing.T) {
 	require.NotEmpty(t, got.Models[0].ModelMessages.InstructionsTemplate)
 }
 
+func TestGatewayCodexModels_CompositeUsesCompleteManifest(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	groupID := int64(51)
+	h := newGatewayModelsHandlerForTest(
+		&gatewayModelsAccountRepoStub{
+			byGroup: map[int64][]service.Account{
+				groupID: {
+					{
+						ID:       1,
+						Platform: service.PlatformOpenAI,
+						Credentials: map[string]any{
+							"model_mapping": map[string]any{
+								"gpt-5.5": "gpt-5.5",
+							},
+						},
+					},
+				},
+			},
+		},
+	)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodGet, "/models?client_version=0.147.0", nil)
+	c.Set(string(middleware2.ContextKeyAPIKey), &service.APIKey{
+		Group: &service.Group{ID: groupID, Platform: service.PlatformComposite},
+	})
+
+	h.CodexModels(c)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	var got codexModelsResponseForTest
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
+	require.Len(t, got.Models, 1)
+	require.Equal(t, "gpt-5.5", got.Models[0].Slug)
+	require.Equal(t, "list", got.Models[0].Visibility)
+	require.True(t, got.Models[0].SupportedInAPI)
+	require.Equal(t, int64(272_000), got.Models[0].ContextWindow)
+	require.Equal(t, "gpt-5.5", got.Models[0].DisplayName)
+	require.NotEmpty(t, got.Models[0].ModelMessages.InstructionsTemplate)
+}
+
 func TestGatewayCodexModels_UsesOnlyCurrentGroupsSchedulableModels(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

@@ -655,9 +655,22 @@ func TestFetchCodexModelsManifestAPIKeyConvertsStandardOpenAIModelList(t *testin
 	if err != nil {
 		t.Fatalf("FetchCodexModelsManifest returned error: %v", err)
 	}
-	require.JSONEq(t, `{"models":[{"slug":"gpt-5.6"},{"slug":"gpt-5.6-codex"}]}`, string(manifest.Body))
+	models := decodeCodexManifestModels(t, manifest.Body)
+	require.Len(t, models, 2)
+	requireCompleteConfiguredCodexModel(t, models[0], "gpt-5.6")
+	requireCompleteConfiguredCodexModel(t, models[1], "gpt-5.6-codex")
 	require.Equal(t, codexModelsManifestBodyETag(manifest.Body), manifest.ETag)
 	require.Equal(t, `W/"openai-list"`, manifest.upstreamETag)
+}
+
+func TestConvertOpenAIModelListToCodexManifestUsesCompleteDescriptors(t *testing.T) {
+	upstreamBody := `{"object":"list","data":[{"id":"gpt-5.5","object":"model"}]}`
+
+	converted := convertOpenAIModelListToCodexManifest([]byte(upstreamBody))
+	models := decodeCodexManifestModels(t, converted)
+
+	require.Len(t, models, 1)
+	requireCompleteConfiguredCodexModel(t, models[0], "gpt-5.5")
 }
 
 func TestAdjustAPIKeyCodexModelsManifest(t *testing.T) {

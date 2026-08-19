@@ -225,10 +225,10 @@ func isDeepSeekCodexModel(modelID string) bool {
 	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(modelID)), "deepseek-")
 }
 
-// BuildDeepSeekCodexModelsManifest builds a standalone Codex model catalog for
-// a DeepSeek group. The response is also suitable for saving as
-// model_catalog_json in clients that do not refresh custom-provider catalogs.
-func BuildDeepSeekCodexModelsManifest(modelIDs []string) ([]byte, error) {
+// BuildCodexModelsManifest builds a standalone Codex model catalog for models
+// routed through a custom provider. The response is also suitable for saving
+// as model_catalog_json in clients that do not refresh custom-provider catalogs.
+func BuildCodexModelsManifest(modelIDs []string) ([]byte, error) {
 	seen := make(map[string]struct{}, len(modelIDs))
 	models := make([]configuredCodexModelDescriptor, 0, len(modelIDs))
 	for _, modelID := range modelIDs {
@@ -245,6 +245,12 @@ func BuildDeepSeekCodexModelsManifest(modelIDs []string) ([]byte, error) {
 	return json.Marshal(struct {
 		Models []configuredCodexModelDescriptor `json:"models"`
 	}{Models: models})
+}
+
+// BuildDeepSeekCodexModelsManifest preserves the historical entry point for
+// callers that still use the provider-specific function name.
+func BuildDeepSeekCodexModelsManifest(modelIDs []string) ([]byte, error) {
+	return BuildCodexModelsManifest(modelIDs)
 }
 
 func mergeConfiguredCodexModelsManifest(
@@ -926,10 +932,8 @@ func adjustAPIKeyCodexModelsManifest(body []byte) ([]byte, error) {
 
 // convertOpenAIModelListToCodexManifest rewrites a standard OpenAI
 // GET /v1/models response ({"object":"list","data":[{"id":...},...]}) into the
-// Codex manifest envelope. DeepSeek entries receive the complete ModelInfo
-// metadata required for reliable Codex operation; other providers retain the
-// legacy slug-only conversion until their context and capability contracts are
-// known. Bodies that already carry a top-level models field, are not the
+// same complete Codex manifest used by locally generated custom-provider
+// catalogs. Bodies that already carry a top-level models field, are not the
 // standard list shape, or yield no usable model IDs are returned unchanged so
 // envelope validation reports the original payload.
 func convertOpenAIModelListToCodexManifest(body []byte) []byte {
@@ -950,30 +954,18 @@ func convertOpenAIModelListToCodexManifest(body []byte) []byte {
 	if err := json.Unmarshal(data, &entries); err != nil {
 		return body
 	}
-	models := make([]json.RawMessage, 0, len(entries))
+	modelIDs := make([]string, 0, len(entries))
 	for _, entry := range entries {
 		id := strings.TrimSpace(entry.ID)
 		if id == "" {
 			continue
 		}
-		var encoded []byte
-		var err error
-		if isDeepSeekCodexModel(id) {
-			encoded, err = json.Marshal(newConfiguredCodexModelDescriptor(id))
-		} else {
-			encoded, err = json.Marshal(struct {
-				Slug string `json:"slug"`
-			}{Slug: id})
-		}
-		if err != nil {
-			return body
-		}
-		models = append(models, encoded)
+		modelIDs = append(modelIDs, id)
 	}
-	if len(models) == 0 {
+	if len(modelIDs) == 0 {
 		return body
 	}
-	converted, err := json.Marshal(map[string][]json.RawMessage{"models": models})
+	converted, err := BuildCodexModelsManifest(modelIDs)
 	if err != nil {
 		return body
 	}
