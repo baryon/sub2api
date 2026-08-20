@@ -57,7 +57,10 @@ func (h *OpenAIGatewayHandler) CodexModels(c *gin.Context) {
 		setOpsSelectedAccount(c, account.ID, account.Platform)
 
 		ifNoneMatch := c.GetHeader("If-None-Match")
-		manifest, err := h.gatewayService.FetchCodexModelsManifest(c.Request.Context(), account, c.Query("client_version"), ifNoneMatch)
+		// The client ETag identifies the final group-specific manifest. Fetch the
+		// source body first so filtering and alias merging run before conditional
+		// response handling for both OAuth and API key accounts.
+		manifest, err := h.gatewayService.FetchCodexModelsManifest(c.Request.Context(), account, c.Query("client_version"), "")
 		if err != nil {
 			if c.Request.Context().Err() != nil {
 				return

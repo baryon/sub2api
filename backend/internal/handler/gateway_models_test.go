@@ -107,6 +107,11 @@ func TestDefaultModelIDsIncludeDeepSeekDefaults(t *testing.T) {
 	require.Contains(t, compositeIDs, "deepseek-v4-pro")
 }
 
+func TestDefaultModelIDsExcludeCodexAutoReview(t *testing.T) {
+	require.NotContains(t, defaultModelIDsForPlatform(service.PlatformOpenAI), "codex-auto-review")
+	require.NotContains(t, defaultModelIDsForPlatform(service.PlatformComposite), "codex-auto-review")
+}
+
 func TestGatewayModels_DeepSeekGroupFallsBackToDeepSeekModels(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
@@ -347,7 +352,7 @@ func TestGatewayCodexModels_CompositeAdvertisesGrokReasoningLevels(t *testing.T)
 	require.Equal(t, "list", got.Models[0].Visibility)
 	require.True(t, got.Models[0].SupportedInAPI)
 	require.Equal(t, "high", got.Models[0].DefaultReasoningLevel)
-	require.Equal(t, []string{"low", "medium", "high"}, codexReasoningEffortsForTest(got.Models[0]))
+	require.Equal(t, []string{"low", "medium", "high", "xhigh"}, codexReasoningEffortsForTest(got.Models[0]))
 	require.Equal(t, int64(500_000), got.Models[0].ContextWindow)
 	require.NotEmpty(t, got.Models[0].ModelMessages.InstructionsTemplate)
 }
@@ -392,7 +397,7 @@ func TestGatewayCodexModels_GrokUsesCompleteManifest(t *testing.T) {
 	require.Equal(t, "list", got.Models[0].Visibility)
 	require.True(t, got.Models[0].SupportedInAPI)
 	require.Equal(t, "high", got.Models[0].DefaultReasoningLevel)
-	require.Equal(t, []string{"low", "medium", "high"}, codexReasoningEffortsForTest(got.Models[0]))
+	require.Equal(t, []string{"low", "medium", "high", "xhigh"}, codexReasoningEffortsForTest(got.Models[0]))
 	require.NotEmpty(t, got.Models[0].ModelMessages.InstructionsTemplate)
 }
 

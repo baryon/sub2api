@@ -63,6 +63,19 @@ func decodeCodexManifestModels(t *testing.T, body []byte) []map[string]any {
 	return envelope.Models
 }
 
+func codexManifestModelSlugs(t *testing.T, body []byte) []string {
+	t.Helper()
+
+	models := decodeCodexManifestModels(t, body)
+	slugs := make([]string, 0, len(models))
+	for _, model := range models {
+		slug, ok := model["slug"].(string)
+		require.True(t, ok)
+		slugs = append(slugs, slug)
+	}
+	return slugs
+}
+
 func requireCompleteConfiguredCodexModel(t *testing.T, model map[string]any, slug string) {
 	t.Helper()
 
@@ -108,7 +121,7 @@ func TestNewConfiguredCodexModelDescriptorUsesProviderMetadataAndSafeFallback(t 
 	require.Equal(t, int64(500_000), grok.MaxContextWindow)
 	require.NotNil(t, grok.DefaultReasoningLevel)
 	require.Equal(t, "high", *grok.DefaultReasoningLevel)
-	require.Equal(t, configuredCodexGrokReasoningLevels(), grok.SupportedReasoningLevels)
+	require.Equal(t, []string{"low", "medium", "high", "xhigh"}, effortsFromConfiguredCodexLevels(grok.SupportedReasoningLevels))
 	require.True(t, grok.SupportsParallelToolCalls)
 	require.Equal(t, []string{"text"}, grok.InputModalities)
 	require.NotContains(t, grok.SupportedReasoningLevels, configuredCodexReasoningLevel{Effort: "none"})
@@ -118,7 +131,10 @@ func TestNewConfiguredCodexModelDescriptorUsesProviderMetadataAndSafeFallback(t 
 	require.Equal(t, "Grok 4.6", grokAlias.DisplayName)
 	require.NotNil(t, grokAlias.DefaultReasoningLevel)
 	require.Equal(t, "high", *grokAlias.DefaultReasoningLevel)
-	require.Equal(t, configuredCodexGrokReasoningLevels(), grokAlias.SupportedReasoningLevels)
+	require.Equal(t, []string{"low", "medium", "high", "xhigh"}, effortsFromConfiguredCodexLevels(grokAlias.SupportedReasoningLevels))
+
+	grok45 := newConfiguredCodexModelDescriptor("grok-4.5")
+	require.Equal(t, []string{"low", "medium", "high"}, effortsFromConfiguredCodexLevels(grok45.SupportedReasoningLevels))
 
 	grokNonReasoning := newConfiguredCodexModelDescriptor("grok-4.20-0309-non-reasoning")
 	require.Equal(t, "Grok 4.20 Non Reasoning", grokNonReasoning.DisplayName)
@@ -568,6 +584,82 @@ func TestMergeGroupConfiguredCodexModelsInjectsCurrentGroupAliases(t *testing.T)
 	require.Len(t, models[1]["supported_reasoning_levels"], 3)
 	require.NotContains(t, string(manifest.Body), "other-group-model")
 	require.Equal(t, codexModelsManifestBodyETag(manifest.Body), manifest.ETag)
+}
+
+func TestMergeGroupConfiguredCodexModelsFiltersAutoReviewByDefault(t *testing.T) {
+	t.Parallel()
+
+	const groupID int64 = 74
+	svc := &OpenAIGatewayService{accountRepo: codexModelsVisibilityAccountRepo{}}
+	manifest := &CodexModelsManifest{
+		Body: []byte(`{"models":[{"slug":"codex-auto-review","visibility":"list"},{"slug":"codex-auto-future","visibility":"list"},{"slug":"gpt-5.6","visibility":"list"}]}`),
+	}
+
+	require.NoError(t, svc.MergeGroupConfiguredCodexModels(
+		context.Background(),
+		&Group{ID: groupID, Platform: PlatformOpenAI},
+		manifest,
+		"",
+	))
+	models := decodeCodexManifestModels(t, manifest.Body)
+	require.Len(t, models, 1)
+	require.Equal(t, "gpt-5.6", models[0]["slug"])
+	require.Equal(t, codexModelsManifestBodyETag(manifest.Body), manifest.ETag)
+}
+
+func TestMergeGroupConfiguredCodexModelsKeepsExplicitAutoReviewMapping(t *testing.T) {
+	t.Parallel()
+
+	const groupID int64 = 75
+	svc := &OpenAIGatewayService{accountRepo: codexModelsVisibilityAccountRepo{
+		byGroup: map[int64][]Account{
+			groupID: {
+				{
+					Platform: PlatformOpenAI,
+					Credentials: map[string]any{
+						"model_mapping": map[string]any{
+							openai.CodexUsageProbeModel: openai.CodexUsageProbeModel,
+						},
+					},
+				},
+			},
+		},
+	}}
+	manifest := &CodexModelsManifest{
+		Body: []byte(`{"models":[{"slug":"codex-auto-review","visibility":"hide","model_messages":{"auto_review":{"enabled":true}}},{"slug":"gpt-5.6","visibility":"list"}]}`),
+	}
+
+	require.NoError(t, svc.MergeGroupConfiguredCodexModels(
+		context.Background(),
+		&Group{ID: groupID, Platform: PlatformOpenAI},
+		manifest,
+		"",
+	))
+	models := decodeCodexManifestModels(t, manifest.Body)
+	require.Equal(t, []string{"codex-auto-review", "gpt-5.6"}, codexManifestModelSlugs(t, manifest.Body))
+	require.Equal(t, "list", models[0]["visibility"])
+	require.Equal(t, map[string]any{"auto_review": map[string]any{"enabled": true}}, models[0]["model_messages"])
+}
+
+func TestMergeGroupConfiguredCodexModelsKeepsExplicitAutoReviewSelection(t *testing.T) {
+	t.Parallel()
+
+	const groupID int64 = 76
+	svc := &OpenAIGatewayService{accountRepo: codexModelsVisibilityAccountRepo{}}
+	manifest := &CodexModelsManifest{
+		Body: []byte(`{"models":[{"slug":"codex-auto-review","visibility":"list"},{"slug":"gpt-5.6","visibility":"list"}]}`),
+	}
+	group := &Group{
+		ID:       groupID,
+		Platform: PlatformOpenAI,
+		ModelsListConfig: GroupModelsListConfig{
+			Enabled: true,
+			Models:  []string{openai.CodexUsageProbeModel},
+		},
+	}
+
+	require.NoError(t, svc.MergeGroupConfiguredCodexModels(context.Background(), group, manifest, ""))
+	require.Equal(t, []string{"codex-auto-review"}, codexManifestModelSlugs(t, manifest.Body))
 }
 
 func TestMergeGroupConfiguredCodexModelsHonorsCustomListAndFinalETag(t *testing.T) {

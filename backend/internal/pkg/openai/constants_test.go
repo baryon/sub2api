@@ -14,3 +14,8 @@ func TestDefaultModelsPreferConcreteGPT56SolForAccountTests(t *testing.T) {
 	require.NotEmpty(t, DefaultModels)
 	require.Equal(t, "gpt-5.6-sol", DefaultModels[0].ID)
 }
+
+func TestDefaultModelsExcludeCodexAutoReviewButKeepUsageProbe(t *testing.T) {
+	require.Equal(t, "codex-auto-review", CodexUsageProbeModel)
+	require.NotContains(t, DefaultModelIDs(), CodexUsageProbeModel)
+}

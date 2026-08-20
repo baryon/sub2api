@@ -25,6 +25,7 @@ const (
 	// grokUpstreamUserAgent lives in grok_upstream_headers.go (shared with TLS header helpers).
 	grokCLIVersion                   = xai.CLIClientVersion
 	grokDefaultResponsesModel        = "grok-4.5"
+	grokExtraHighReasoningModel      = "grok-4.6"
 	grokRateLimitFallbackCooldown    = 2 * time.Minute
 	grokRateLimitRepeatCooldown      = 10 * time.Minute
 	grokRateLimitSustainedCooldown   = 30 * time.Minute
@@ -558,7 +559,7 @@ func normalizeGrokResponsesReasoningEffort(body []byte, upstreamModel string) ([
 		if !value.Exists() {
 			continue
 		}
-		normalized, keep := normalizeGrokReasoningEffortValue(value.String())
+		normalized, keep := normalizeGrokReasoningEffortValue(value.String(), upstreamModel)
 		if !supportsEffort || !keep {
 			out, err = sjson.DeleteBytes(out, field)
 		} else {
@@ -569,7 +570,7 @@ func normalizeGrokResponsesReasoningEffort(body []byte, upstreamModel string) ([
 		}
 	}
 	if camel := gjson.GetBytes(out, "reasoningEffort"); camel.Exists() {
-		normalized, keep := normalizeGrokReasoningEffortValue(camel.String())
+		normalized, keep := normalizeGrokReasoningEffortValue(camel.String(), upstreamModel)
 		out, err = sjson.DeleteBytes(out, "reasoningEffort")
 		if err != nil {
 			return nil, fmt.Errorf("remove Grok reasoningEffort: %w", err)
@@ -595,7 +596,7 @@ func normalizeGrokChatReasoningEffort(body []byte, upstreamModel string) ([]byte
 	if raw == "" {
 		raw = strings.TrimSpace(gjson.GetBytes(body, "reasoningEffort").String())
 	}
-	normalized, keep := normalizeGrokReasoningEffortValue(raw)
+	normalized, keep := normalizeGrokReasoningEffortValue(raw, upstreamModel)
 	keep = keep && grokSupportsReasoningEffort(upstreamModel)
 	out := body
 	var err error
@@ -615,7 +616,7 @@ func normalizeGrokChatReasoningEffort(body []byte, upstreamModel string) ([]byte
 	return out, err
 }
 
-func normalizeGrokReasoningEffortValue(raw string) (string, bool) {
+func normalizeGrokReasoningEffortValue(raw, upstreamModel string) (string, bool) {
 	value := strings.NewReplacer("-", "", "_", "", " ", "").Replace(strings.ToLower(strings.TrimSpace(raw)))
 	switch value {
 	case "none", "low", "medium", "high":
@@ -623,16 +624,26 @@ func normalizeGrokReasoningEffortValue(raw string) (string, bool) {
 	case "minimal":
 		return "low", true
 	case "xhigh", "extrahigh", "max", "ultra":
+		if grokSupportsExtraHighReasoningEffort(upstreamModel) {
+			return "xhigh", true
+		}
 		return "high", true
 	default:
 		return "", false
 	}
 }
 
+func grokSupportsExtraHighReasoningEffort(model string) bool {
+	canonical := xai.ResolveGrokTextResponsesModelID(
+		strings.ToLower(xai.StripGrokProviderPrefix(strings.TrimSpace(model))),
+	)
+	return canonical == grokExtraHighReasoningModel
+}
+
 func grokSupportsReasoningEffort(model string) bool {
 	model = strings.ToLower(xai.StripGrokProviderPrefix(strings.TrimSpace(model)))
 	switch model {
-	case xai.DefaultTextModel, "grok-4.5-latest", "grok-4.6", "grok-4.6-latest",
+	case xai.DefaultTextModel, "grok-4.5-latest", grokExtraHighReasoningModel, "grok-4.6-latest",
 		"grok-4.3", "grok-4.3-latest",
 		"grok-3-mini", "grok-3-mini-fast", "grok-4.20-0309-reasoning",
 		"grok-4.20-reasoning", "grok-4.20-multi-agent-0309":

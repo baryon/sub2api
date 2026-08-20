@@ -36,6 +36,7 @@ const (
 	codexModelsManifestCacheTTL              = 30 * time.Second
 	codexModelsManifestCacheStaleTTL         = 5 * time.Minute
 	codexModelsManifestRequestTimeout        = 15 * time.Second
+	codexAutoModelPrefix                     = "codex-auto-"
 )
 
 // CodexModelsManifest carries the client representation plus caching metadata.
@@ -220,7 +221,7 @@ func newConfiguredCodexModelDescriptor(modelID string) configuredCodexModelDescr
 		if grokCodexSupportsReasoningEffort(modelID) {
 			defaultReasoningLevel := "high"
 			descriptor.DefaultReasoningLevel = &defaultReasoningLevel
-			descriptor.SupportedReasoningLevels = configuredCodexGrokReasoningLevels()
+			descriptor.SupportedReasoningLevels = configuredCodexGrokReasoningLevels(modelID)
 		}
 	}
 
@@ -252,12 +253,19 @@ func newConfiguredCodexModelDescriptor(modelID string) configuredCodexModelDescr
 	return descriptor
 }
 
-func configuredCodexGrokReasoningLevels() []configuredCodexReasoningLevel {
-	return []configuredCodexReasoningLevel{
+func configuredCodexGrokReasoningLevels(modelID string) []configuredCodexReasoningLevel {
+	levels := []configuredCodexReasoningLevel{
 		{Effort: "low", Description: "Fast responses with lighter reasoning"},
 		{Effort: "medium", Description: "Balanced reasoning for most coding tasks"},
 		{Effort: "high", Description: "Greater reasoning depth for coding and agent tasks"},
 	}
+	if grokSupportsExtraHighReasoningEffort(modelID) {
+		levels = append(levels, configuredCodexReasoningLevel{
+			Effort:      "xhigh",
+			Description: "Extra-high reasoning depth for difficult tasks",
+		})
+	}
+	return levels
 }
 
 func configuredCodexClaudeReasoningLevels(modelID string) []configuredCodexReasoningLevel {
@@ -649,10 +657,6 @@ func mergeConfiguredCodexModelsManifest(
 	selectedModels []string,
 	filterBySelection bool,
 ) ([]byte, bool, error) {
-	if len(configuredModels) == 0 && !filterBySelection {
-		return body, false, nil
-	}
-
 	var envelope map[string]json.RawMessage
 	if err := json.Unmarshal(body, &envelope); err != nil {
 		return nil, false, err
@@ -667,6 +671,13 @@ func mergeConfiguredCodexModelsManifest(
 		modelID = strings.TrimSpace(modelID)
 		if modelID != "" {
 			selected[modelID] = struct{}{}
+		}
+	}
+	configured := make(map[string]struct{}, len(configuredModels))
+	for _, modelID := range configuredModels {
+		modelID = strings.TrimSpace(modelID)
+		if modelID != "" {
+			configured[modelID] = struct{}{}
 		}
 	}
 
@@ -691,6 +702,24 @@ func mergeConfiguredCodexModelsManifest(
 				changed = true
 				continue
 			}
+		}
+		if strings.HasPrefix(descriptor.Slug, codexAutoModelPrefix) {
+			explicitlyEnabled := false
+			if filterBySelection {
+				_, explicitlyEnabled = selected[descriptor.Slug]
+			} else {
+				_, explicitlyEnabled = configured[descriptor.Slug]
+			}
+			if !explicitlyEnabled {
+				changed = true
+				continue
+			}
+			visibleModel, visibilityChanged, err := codexModelWithVisibility(rawModel, "list")
+			if err != nil {
+				return nil, false, err
+			}
+			rawModel = visibleModel
+			changed = changed || visibilityChanged
 		}
 		seen[descriptor.Slug] = struct{}{}
 		merged = append(merged, rawModel)
@@ -727,6 +756,29 @@ func mergeConfiguredCodexModelsManifest(
 		return nil, false, err
 	}
 	return mergedBody, true, nil
+}
+
+func codexModelWithVisibility(rawModel json.RawMessage, visibility string) (json.RawMessage, bool, error) {
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(rawModel, &fields); err != nil {
+		return nil, false, err
+	}
+	var current string
+	if rawVisibility, ok := fields["visibility"]; ok {
+		if err := json.Unmarshal(rawVisibility, &current); err == nil && current == visibility {
+			return rawModel, false, nil
+		}
+	}
+	rawVisibility, err := json.Marshal(visibility)
+	if err != nil {
+		return nil, false, err
+	}
+	fields["visibility"] = rawVisibility
+	updated, err := json.Marshal(fields)
+	if err != nil {
+		return nil, false, err
+	}
+	return updated, true, nil
 }
 
 type codexModelsManifestUpstreamError struct {

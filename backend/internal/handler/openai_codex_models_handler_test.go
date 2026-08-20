@@ -120,6 +120,63 @@ func TestCodexModelsCanceledRequestDoesNotWriteResponse(t *testing.T) {
 	}
 }
 
+func TestCodexModelsAppliesLocalFiltersBeforeClientETag(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	groupID := int64(43)
+	repo := &codexModelsFailoverAccountRepo{accounts: []service.Account{
+		{
+			ID:          1,
+			Name:        "custom-openai",
+			Platform:    service.PlatformOpenAI,
+			Type:        service.AccountTypeAPIKey,
+			Status:      service.StatusActive,
+			Schedulable: true,
+			Concurrency: 1,
+			Credentials: map[string]any{
+				"api_key":  "sk-test",
+				"base_url": "https://upstream.example/v1",
+				"model_mapping": map[string]any{
+					"codex-auto-review": "codex-auto-review",
+				},
+			},
+		},
+	}}
+	upstream := &codexModelsFailoverHTTPUpstream{
+		firstBody: `{"object":"list","data":[{"id":"codex-auto-review"},{"id":"gpt-5.6"}]}`,
+	}
+	gatewayService := service.NewOpenAIGatewayService(
+		repo,
+		nil, nil, nil, nil, nil, nil, &config.Config{RunMode: config.RunModeSimple}, nil, nil, nil, nil, nil,
+		upstream,
+		nil, nil, nil, nil, nil, nil, nil, nil,
+	)
+	handler := &OpenAIGatewayHandler{gatewayService: gatewayService}
+
+	first := performCodexModelsRequestWithETag(t, handler, groupID, "")
+	if first.Code != http.StatusOK {
+		t.Fatalf("first status: got %d, want %d; body=%s", first.Code, http.StatusOK, first.Body.String())
+	}
+	oldETag := first.Header().Get("ETag")
+	if oldETag == "" {
+		t.Fatal("first response did not include an ETag")
+	}
+
+	repo.accounts[0].Credentials = map[string]any{
+		"api_key":  "sk-test",
+		"base_url": "https://upstream.example/v1",
+	}
+	second := performCodexModelsRequestWithETag(t, handler, groupID, oldETag)
+	if second.Code != http.StatusOK {
+		t.Fatalf("second status: got %d, want %d; body=%s", second.Code, http.StatusOK, second.Body.String())
+	}
+	if body := second.Body.String(); strings.Contains(body, "codex-auto-review") || !strings.Contains(body, "gpt-5.6") {
+		t.Fatalf("second body was not the filtered manifest: %s", body)
+	}
+	if newETag := second.Header().Get("ETag"); newETag == "" || newETag == oldETag {
+		t.Fatalf("second ETag: got %q, want a new final-body ETag", newETag)
+	}
+}
+
 func TestCodexModelsFailsOverFromRetryableUpstreamStatus(t *testing.T) {
 	retryableStatuses := []int{
 		http.StatusTooManyRequests,
@@ -291,10 +348,17 @@ func newCodexModelsFailoverTestHandlerWithAccountCount(firstStatus, accountCount
 }
 
 func performCodexModelsRequest(t *testing.T, handler *OpenAIGatewayHandler, groupID int64) *httptest.ResponseRecorder {
+	return performCodexModelsRequestWithETag(t, handler, groupID, "")
+}
+
+func performCodexModelsRequestWithETag(t *testing.T, handler *OpenAIGatewayHandler, groupID int64, etag string) *httptest.ResponseRecorder {
 	t.Helper()
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
 	c.Request = httptest.NewRequest(http.MethodGet, "/v1/models?client_version=0.144.0", nil)
+	if etag != "" {
+		c.Request.Header.Set("If-None-Match", etag)
+	}
 	c.Set(string(middleware2.ContextKeyAPIKey), &service.APIKey{
 		GroupID: &groupID,
 		Group:   &service.Group{ID: groupID, Platform: service.PlatformOpenAI},
