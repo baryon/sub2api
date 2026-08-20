@@ -17,7 +17,8 @@ type userGroupClientModelsResponse struct {
 }
 
 // ListUserGroupModels returns the model IDs a bindable group will expose to
-// Codex and Claude clients. The list matches GET /v1/models for that group.
+// Codex and Claude clients. Codex-only automatic modes are omitted unless the
+// group's enabled custom list explicitly selects them.
 func (h *GatewayHandler) ListUserGroupModels(c *gin.Context) {
 	if h == nil || h.apiKeyService == nil {
 		response.ErrorFrom(c, service.ErrGroupNotAllowed)
@@ -83,7 +84,7 @@ func listClientVisibleModelIDs(
 			modelIDs = fallbackModels
 		}
 	}
-	return mergeModelIDs(modelIDs, nil)
+	return service.FilterCodexModelIDsForGroup(mergeModelIDs(modelIDs, nil), group)
 }
 
 func listCompositeAvailableModels(ctx context.Context, gateway *service.GatewayService, groupID *int64) []string {

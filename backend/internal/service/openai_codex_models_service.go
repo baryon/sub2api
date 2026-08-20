@@ -39,6 +39,46 @@ const (
 	codexAutoModelPrefix                     = "codex-auto-"
 )
 
+// FilterCodexModelIDsForGroup removes dedicated media-generation models and
+// Codex automatic modes from a client catalog. Automatic modes are retained
+// only when the group's enabled custom model list explicitly selects the exact
+// slug; account model mappings describe routing and are not feature opt-ins.
+func FilterCodexModelIDsForGroup(modelIDs []string, group *Group) []string {
+	explicitlyEnabled := make(map[string]struct{})
+	if group != nil && group.CustomModelsListEnabled() {
+		for _, modelID := range group.ModelsListConfig.Models {
+			modelID = strings.TrimSpace(modelID)
+			if strings.HasPrefix(modelID, codexAutoModelPrefix) {
+				explicitlyEnabled[modelID] = struct{}{}
+			}
+		}
+	}
+
+	filtered := make([]string, 0, len(modelIDs))
+	for _, modelID := range modelIDs {
+		modelID = strings.TrimSpace(modelID)
+		if modelID == "" {
+			continue
+		}
+		if isCodexDedicatedMediaModel(modelID) {
+			continue
+		}
+		if strings.HasPrefix(modelID, codexAutoModelPrefix) {
+			if _, ok := explicitlyEnabled[modelID]; !ok {
+				continue
+			}
+		}
+		filtered = append(filtered, modelID)
+	}
+	return filtered
+}
+
+func isCodexDedicatedMediaModel(modelID string) bool {
+	return IsGPTImageGenerationModel(modelID) ||
+		isImageGenerationModel(modelID) ||
+		xai.IsGrokImagineModel(modelID)
+}
+
 // CodexModelsManifest carries the client representation plus caching metadata.
 type CodexModelsManifest struct {
 	Body         []byte
@@ -492,7 +532,7 @@ func buildCodexModelsManifest(modelIDs []string, imageInputModels map[string]boo
 		if _, exists := seen[modelID]; exists {
 			continue
 		}
-		if xai.IsGrokImagineModel(modelID) {
+		if isCodexDedicatedMediaModel(modelID) {
 			continue
 		}
 		seen[modelID] = struct{}{}
@@ -673,14 +713,6 @@ func mergeConfiguredCodexModelsManifest(
 			selected[modelID] = struct{}{}
 		}
 	}
-	configured := make(map[string]struct{}, len(configuredModels))
-	for _, modelID := range configuredModels {
-		modelID = strings.TrimSpace(modelID)
-		if modelID != "" {
-			configured[modelID] = struct{}{}
-		}
-	}
-
 	seen := make(map[string]struct{}, len(upstreamModels)+len(configuredModels))
 	merged := make([]json.RawMessage, 0, len(upstreamModels)+len(configuredModels))
 	changed := false
@@ -697,6 +729,10 @@ func mergeConfiguredCodexModelsManifest(
 			continue
 		}
 		descriptor.Slug = strings.TrimSpace(descriptor.Slug)
+		if isCodexDedicatedMediaModel(descriptor.Slug) {
+			changed = true
+			continue
+		}
 		if filterBySelection {
 			if _, allowed := selected[descriptor.Slug]; !allowed {
 				changed = true
@@ -704,12 +740,8 @@ func mergeConfiguredCodexModelsManifest(
 			}
 		}
 		if strings.HasPrefix(descriptor.Slug, codexAutoModelPrefix) {
-			explicitlyEnabled := false
-			if filterBySelection {
-				_, explicitlyEnabled = selected[descriptor.Slug]
-			} else {
-				_, explicitlyEnabled = configured[descriptor.Slug]
-			}
+			_, explicitlyEnabled := selected[descriptor.Slug]
+			explicitlyEnabled = filterBySelection && explicitlyEnabled
 			if !explicitlyEnabled {
 				changed = true
 				continue
@@ -726,8 +758,16 @@ func mergeConfiguredCodexModelsManifest(
 	}
 
 	for _, modelID := range configuredModels {
+		if isCodexDedicatedMediaModel(modelID) {
+			continue
+		}
 		if filterBySelection {
 			if _, allowed := selected[modelID]; !allowed {
+				continue
+			}
+		}
+		if strings.HasPrefix(modelID, codexAutoModelPrefix) {
+			if _, explicitlyEnabled := selected[modelID]; !filterBySelection || !explicitlyEnabled {
 				continue
 			}
 		}

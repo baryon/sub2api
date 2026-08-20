@@ -200,11 +200,18 @@ func effortsFromConfiguredCodexLevels(levels []configuredCodexReasoningLevel) []
 	return efforts
 }
 
-func TestBuildCodexModelsManifestOmitsGrokImagineModels(t *testing.T) {
+// Scenario: 专用图片生成模型不进入 Codex 主模型目录。
+func TestBuildCodexModelsManifestOmitsDedicatedImageModels(t *testing.T) {
 	t.Parallel()
 
 	body, err := BuildCodexModelsManifest([]string{
 		"grok-4.6",
+		"gpt-image-1",
+		"gpt-image-1.5",
+		"gpt-image-2",
+		"gemini-2.5-flash-image",
+		"gemini-3.1-flash-image-preview",
+		"gemini-3-pro-image",
 		"grok-imagine-image",
 		"grok-imagine-video",
 		"xai/grok-imagine-image-quality",
@@ -592,7 +599,7 @@ func TestMergeGroupConfiguredCodexModelsFiltersAutoReviewByDefault(t *testing.T)
 	const groupID int64 = 74
 	svc := &OpenAIGatewayService{accountRepo: codexModelsVisibilityAccountRepo{}}
 	manifest := &CodexModelsManifest{
-		Body: []byte(`{"models":[{"slug":"codex-auto-review","visibility":"list"},{"slug":"codex-auto-future","visibility":"list"},{"slug":"gpt-5.6","visibility":"list"}]}`),
+		Body: []byte(`{"models":[{"slug":"codex-auto-review","visibility":"list"},{"slug":"codex-auto-future","visibility":"list"},{"slug":"gpt-image-2","visibility":"list"},{"slug":"gpt-5.6","visibility":"list"}]}`),
 	}
 
 	require.NoError(t, svc.MergeGroupConfiguredCodexModels(
@@ -607,7 +614,8 @@ func TestMergeGroupConfiguredCodexModelsFiltersAutoReviewByDefault(t *testing.T)
 	require.Equal(t, codexModelsManifestBodyETag(manifest.Body), manifest.ETag)
 }
 
-func TestMergeGroupConfiguredCodexModelsKeepsExplicitAutoReviewMapping(t *testing.T) {
+// Scenario: OpenAI 账号映射不启用 Auto Review。
+func TestMergeGroupConfiguredCodexModelsFiltersAccountMappedAutoReviewByDefault(t *testing.T) {
 	t.Parallel()
 
 	const groupID int64 = 75
@@ -635,12 +643,10 @@ func TestMergeGroupConfiguredCodexModelsKeepsExplicitAutoReviewMapping(t *testin
 		manifest,
 		"",
 	))
-	models := decodeCodexManifestModels(t, manifest.Body)
-	require.Equal(t, []string{"codex-auto-review", "gpt-5.6"}, codexManifestModelSlugs(t, manifest.Body))
-	require.Equal(t, "list", models[0]["visibility"])
-	require.Equal(t, map[string]any{"auto_review": map[string]any{"enabled": true}}, models[0]["model_messages"])
+	require.Equal(t, []string{"gpt-5.6"}, codexManifestModelSlugs(t, manifest.Body))
 }
 
+// Scenario: 启用的分组自定义列表允许 Auto Review。
 func TestMergeGroupConfiguredCodexModelsKeepsExplicitAutoReviewSelection(t *testing.T) {
 	t.Parallel()
 

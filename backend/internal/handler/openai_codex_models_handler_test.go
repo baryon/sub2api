@@ -151,21 +151,29 @@ func TestCodexModelsAppliesLocalFiltersBeforeClientETag(t *testing.T) {
 		nil, nil, nil, nil, nil, nil, nil, nil,
 	)
 	handler := &OpenAIGatewayHandler{gatewayService: gatewayService}
+	group := &service.Group{
+		ID:       groupID,
+		Platform: service.PlatformOpenAI,
+		ModelsListConfig: service.GroupModelsListConfig{
+			Enabled: true,
+			Models:  []string{"codex-auto-review", "gpt-5.6"},
+		},
+	}
 
-	first := performCodexModelsRequestWithETag(t, handler, groupID, "")
+	first := performCodexModelsRequestForGroupWithETag(t, handler, group, "")
 	if first.Code != http.StatusOK {
 		t.Fatalf("first status: got %d, want %d; body=%s", first.Code, http.StatusOK, first.Body.String())
+	}
+	if body := first.Body.String(); !strings.Contains(body, "codex-auto-review") || !strings.Contains(body, "gpt-5.6") {
+		t.Fatalf("first body did not include the explicitly selected models: %s", body)
 	}
 	oldETag := first.Header().Get("ETag")
 	if oldETag == "" {
 		t.Fatal("first response did not include an ETag")
 	}
 
-	repo.accounts[0].Credentials = map[string]any{
-		"api_key":  "sk-test",
-		"base_url": "https://upstream.example/v1",
-	}
-	second := performCodexModelsRequestWithETag(t, handler, groupID, oldETag)
+	group.ModelsListConfig.Enabled = false
+	second := performCodexModelsRequestForGroupWithETag(t, handler, group, oldETag)
 	if second.Code != http.StatusOK {
 		t.Fatalf("second status: got %d, want %d; body=%s", second.Code, http.StatusOK, second.Body.String())
 	}
@@ -352,6 +360,10 @@ func performCodexModelsRequest(t *testing.T, handler *OpenAIGatewayHandler, grou
 }
 
 func performCodexModelsRequestWithETag(t *testing.T, handler *OpenAIGatewayHandler, groupID int64, etag string) *httptest.ResponseRecorder {
+	return performCodexModelsRequestForGroupWithETag(t, handler, &service.Group{ID: groupID, Platform: service.PlatformOpenAI}, etag)
+}
+
+func performCodexModelsRequestForGroupWithETag(t *testing.T, handler *OpenAIGatewayHandler, group *service.Group, etag string) *httptest.ResponseRecorder {
 	t.Helper()
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
@@ -359,9 +371,10 @@ func performCodexModelsRequestWithETag(t *testing.T, handler *OpenAIGatewayHandl
 	if etag != "" {
 		c.Request.Header.Set("If-None-Match", etag)
 	}
+	groupID := group.ID
 	c.Set(string(middleware2.ContextKeyAPIKey), &service.APIKey{
 		GroupID: &groupID,
-		Group:   &service.Group{ID: groupID, Platform: service.PlatformOpenAI},
+		Group:   group,
 	})
 
 	handler.CodexModels(c)

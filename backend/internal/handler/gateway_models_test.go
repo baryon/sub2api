@@ -227,6 +227,96 @@ func TestGatewayCodexModels_CompositeUsesCompleteManifest(t *testing.T) {
 	require.NotEmpty(t, got.Models[0].ModelMessages.InstructionsTemplate)
 }
 
+// Scenario: 混合分组账号映射不启用 Auto Review。
+func TestGatewayCodexModels_CompositeFiltersAccountMappedAutoReviewByDefault(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	const groupID int64 = 65
+	h := newGatewayModelsHandlerForTest(
+		&gatewayModelsAccountRepoStub{
+			byGroup: map[int64][]service.Account{
+				groupID: {
+					{
+						ID:       1,
+						Platform: service.PlatformOpenAI,
+						Credentials: map[string]any{
+							"model_mapping": map[string]any{
+								"codex-auto-review": "codex-auto-review",
+								"gpt-image-2":       "gpt-image-2",
+								"gpt-5.5":           "gpt-5.5",
+							},
+						},
+					},
+				},
+			},
+		},
+	)
+	group := &service.Group{
+		ID:       groupID,
+		Platform: service.PlatformComposite,
+		ModelsListConfig: service.GroupModelsListConfig{
+			Enabled: false,
+			Models:  []string{"codex-auto-review", "gpt-image-2", "gpt-5.5"},
+		},
+	}
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodGet, "/models?client_version=0.148.0", nil)
+	c.Set(string(middleware2.ContextKeyAPIKey), &service.APIKey{Group: group})
+
+	h.CodexModels(c)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	var got codexModelsResponseForTest
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
+	require.Equal(t, []string{"gpt-5.5"}, codexModelSlugsForTest(got.Models))
+}
+
+// Scenario: 启用的分组自定义列表允许 Auto Review。
+func TestGatewayCodexModels_CompositeKeepsExplicitlySelectedAutoReview(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	const groupID int64 = 66
+	h := newGatewayModelsHandlerForTest(
+		&gatewayModelsAccountRepoStub{
+			byGroup: map[int64][]service.Account{
+				groupID: {
+					{
+						ID:       1,
+						Platform: service.PlatformOpenAI,
+						Credentials: map[string]any{
+							"model_mapping": map[string]any{
+								"codex-auto-review": "codex-auto-review",
+								"gpt-image-2":       "gpt-image-2",
+								"gpt-5.5":           "gpt-5.5",
+							},
+						},
+					},
+				},
+			},
+		},
+	)
+	group := &service.Group{
+		ID:       groupID,
+		Platform: service.PlatformComposite,
+		ModelsListConfig: service.GroupModelsListConfig{
+			Enabled: true,
+			Models:  []string{"codex-auto-review", "gpt-image-2", "gpt-5.5"},
+		},
+	}
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodGet, "/models?client_version=0.148.0", nil)
+	c.Set(string(middleware2.ContextKeyAPIKey), &service.APIKey{Group: group})
+
+	h.CodexModels(c)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	var got codexModelsResponseForTest
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
+	require.Equal(t, []string{"codex-auto-review", "gpt-5.5"}, codexModelSlugsForTest(got.Models))
+}
+
 func TestGatewayCodexModels_CompositeAdvertisesGPTReasoningLevels(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
