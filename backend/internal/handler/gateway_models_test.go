@@ -42,12 +42,13 @@ type gatewayReasoningEffortOptionForTest struct {
 }
 
 type codexModelForTest struct {
-	Slug                     string `json:"slug"`
-	DisplayName              string `json:"display_name"`
-	Visibility               string `json:"visibility"`
-	SupportedInAPI           bool   `json:"supported_in_api"`
-	ContextWindow            int64  `json:"context_window"`
-	DefaultReasoningLevel    string `json:"default_reasoning_level"`
+	Slug                     string   `json:"slug"`
+	DisplayName              string   `json:"display_name"`
+	Visibility               string   `json:"visibility"`
+	SupportedInAPI           bool     `json:"supported_in_api"`
+	ContextWindow            int64    `json:"context_window"`
+	DefaultReasoningLevel    string   `json:"default_reasoning_level"`
+	InputModalities          []string `json:"input_modalities"`
 	SupportedReasoningLevels []struct {
 		Effort string `json:"effort"`
 	} `json:"supported_reasoning_levels"`
@@ -1266,6 +1267,44 @@ func TestListClientVisibleModelIDsAppliesCustomList(t *testing.T) {
 		},
 	}, "")
 	require.Equal(t, []string{"deepseek-v4-pro"}, got)
+}
+
+func TestGatewayCodexModels_CompositeUsesRouteAwareImageInputModalities(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	const groupID int64 = 64
+	h := newGatewayModelsHandlerForTest(&gatewayModelsAccountRepoStub{byGroup: map[int64][]service.Account{
+		groupID: {
+			{ID: 1, Platform: service.PlatformOpenAI, Type: service.AccountTypeOAuth},
+			{ID: 2, Platform: service.PlatformGrok, Type: service.AccountTypeOAuth},
+			{ID: 3, Platform: service.PlatformDeepSeek, Type: service.AccountTypeAPIKey},
+		},
+	}})
+	group := &service.Group{
+		ID:       groupID,
+		Platform: service.PlatformComposite,
+		ModelsListConfig: service.GroupModelsListConfig{
+			Enabled: true,
+			Models:  []string{"gpt-5.6-sol", "grok-4.5", "deepseek-v4-pro"},
+		},
+	}
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+	c.Set(string(middleware2.ContextKeyAPIKey), &service.APIKey{Group: group})
+
+	h.CodexModels(c)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	var got codexModelsResponseForTest
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
+	modalities := make(map[string][]string, len(got.Models))
+	for _, model := range got.Models {
+		modalities[model.Slug] = model.InputModalities
+	}
+	require.Equal(t, []string{"text", "image"}, modalities["gpt-5.6-sol"])
+	require.Equal(t, []string{"text", "image"}, modalities["grok-4.5"])
+	require.Equal(t, []string{"text"}, modalities["deepseek-v4-pro"])
 }
 
 func modelIDsForTest(models []gatewayModelItemForTest) []string {

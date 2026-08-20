@@ -422,6 +422,58 @@ func claudeCodexDisplayName(modelID string) string {
 // routed through a custom provider. The response is also suitable for saving
 // as model_catalog_json in clients that do not refresh custom-provider catalogs.
 func BuildCodexModelsManifest(modelIDs []string) ([]byte, error) {
+	return buildCodexModelsManifest(modelIDs, nil)
+}
+
+// BuildCodexModelsManifestForGroup derives input capabilities from the
+// concrete Responses route and schedulable accounts behind a group. Unknown or
+// mixed capabilities fail closed to the text-only descriptor used by the
+// standalone builder.
+func (s *GatewayService) BuildCodexModelsManifestForGroup(
+	ctx context.Context,
+	group *Group,
+	platformOverride string,
+	modelIDs []string,
+) ([]byte, error) {
+	if s == nil || s.accountRepo == nil || group == nil {
+		return BuildCodexModelsManifest(modelIDs)
+	}
+	effectivePlatform := strings.TrimSpace(platformOverride)
+	if effectivePlatform == "" {
+		effectivePlatform = group.Platform
+	}
+	if effectivePlatform != PlatformOpenAI && effectivePlatform != PlatformGrok && effectivePlatform != PlatformComposite {
+		return BuildCodexModelsManifest(modelIDs)
+	}
+
+	accounts, err := s.accountRepo.ListSchedulableByGroupID(ctx, group.ID)
+	if err != nil {
+		return BuildCodexModelsManifest(modelIDs)
+	}
+	var compositeRoutes []CompositeModelRoute
+	compositeRoutesAvailable := true
+	if effectivePlatform == PlatformComposite && s.compositeResolver != nil {
+		compositeRoutes, err = s.compositeResolver.ListActiveRoutes(ctx, group.ID)
+		if err != nil {
+			compositeRoutesAvailable = false
+		}
+	}
+	imageInputModels := make(map[string]bool, len(modelIDs))
+	for _, modelID := range modelIDs {
+		if groupCodexModelSupportsImageInput(
+			effectivePlatform,
+			modelID,
+			accounts,
+			compositeRoutes,
+			compositeRoutesAvailable,
+		) {
+			imageInputModels[strings.TrimSpace(modelID)] = true
+		}
+	}
+	return buildCodexModelsManifest(modelIDs, imageInputModels)
+}
+
+func buildCodexModelsManifest(modelIDs []string, imageInputModels map[string]bool) ([]byte, error) {
 	seen := make(map[string]struct{}, len(modelIDs))
 	models := make([]configuredCodexModelDescriptor, 0, len(modelIDs))
 	for _, modelID := range modelIDs {
@@ -436,11 +488,153 @@ func BuildCodexModelsManifest(modelIDs []string) ([]byte, error) {
 			continue
 		}
 		seen[modelID] = struct{}{}
-		models = append(models, newConfiguredCodexModelDescriptor(modelID))
+		descriptor := newConfiguredCodexModelDescriptor(modelID)
+		if imageInputModels[modelID] {
+			descriptor.InputModalities = []string{"text", "image"}
+		}
+		models = append(models, descriptor)
 	}
 	return json.Marshal(struct {
 		Models []configuredCodexModelDescriptor `json:"models"`
 	}{Models: models})
+}
+
+func groupCodexModelSupportsImageInput(
+	platform string,
+	modelID string,
+	accounts []Account,
+	compositeRoutes []CompositeModelRoute,
+	compositeRoutesAvailable bool,
+) bool {
+	modelID = strings.TrimSpace(modelID)
+	if modelID == "" {
+		return false
+	}
+	upstreamModel := modelID
+	if platform == PlatformComposite {
+		var resolved bool
+		platform, upstreamModel, resolved = resolveCodexCompositeModelTarget(
+			modelID,
+			accounts,
+			compositeRoutes,
+			compositeRoutesAvailable,
+		)
+		if !resolved {
+			return false
+		}
+	}
+	if platform != PlatformOpenAI && platform != PlatformGrok {
+		return false
+	}
+
+	candidates := 0
+	for i := range accounts {
+		account := &accounts[i]
+		if account.Platform != platform || !account.IsModelSupported(upstreamModel) {
+			continue
+		}
+		candidates++
+		if !accountCodexModelSupportsImageInput(account, account.GetMappedModel(upstreamModel)) {
+			return false
+		}
+	}
+	return candidates > 0
+}
+
+func resolveCodexCompositeModelTarget(
+	modelID string,
+	accounts []Account,
+	routes []CompositeModelRoute,
+	routesAvailable bool,
+) (string, string, bool) {
+	if !routesAvailable {
+		return "", "", false
+	}
+	if route, supported, matched := matchCompositeRoute(routes, modelID, CompositeRouteEndpointResponses); matched {
+		if !supported {
+			return "", "", false
+		}
+		upstreamModel := strings.TrimSpace(route.UpstreamModel)
+		if upstreamModel == "" {
+			upstreamModel = modelID
+		}
+		return route.TargetPlatform, upstreamModel, true
+	}
+
+	claimedPlatforms := make(map[string]struct{})
+	for _, account := range accounts {
+		platform := strings.TrimSpace(account.Platform)
+		if !isConcreteRequestPlatform(platform) || !explicitModelMappingClaims(account, modelID) {
+			continue
+		}
+		claimedPlatforms[platform] = struct{}{}
+	}
+	if len(claimedPlatforms) > 1 {
+		return "", "", false
+	}
+	for platform := range claimedPlatforms {
+		if !CompositeRouteEndpointSupported(platform, CompositeRouteEndpointResponses) {
+			return "", "", false
+		}
+		return platform, modelID, true
+	}
+
+	platform, detected := DetectModelPlatform(modelID)
+	if !detected || !CompositeRouteEndpointSupported(platform, CompositeRouteEndpointResponses) {
+		return "", "", false
+	}
+	return platform, modelID, true
+}
+
+func accountCodexModelSupportsImageInput(account *Account, upstreamModel string) bool {
+	if account == nil {
+		return false
+	}
+	switch account.Platform {
+	case PlatformOpenAI:
+		if !isOpenAICodexGPTModel(upstreamModel) {
+			return false
+		}
+		if account.IsOpenAIOAuth() {
+			return true
+		}
+		if !account.IsOpenAIApiKey() {
+			return false
+		}
+		baseURL := strings.TrimSpace(account.GetCredential("base_url"))
+		return baseURL == "" || isOfficialOpenAIModelsBaseURL(baseURL)
+	case PlatformGrok:
+		if !isOfficialGrokCodexBaseURL(account.GetGrokBaseURL()) {
+			return false
+		}
+		canonical := xai.ResolveGrokTextResponsesModelID(upstreamModel)
+		return isGrokCodexImageInputModel(canonical)
+	default:
+		return false
+	}
+}
+
+func isGrokCodexImageInputModel(model string) bool {
+	switch strings.ToLower(strings.TrimSpace(model)) {
+	case "grok-4.3",
+		"grok-4.5",
+		"grok-4.6",
+		"grok-build-0.1",
+		"grok-4.20-0309-reasoning",
+		"grok-4.20-0309-non-reasoning",
+		"grok-4.20-multi-agent-0309":
+		return true
+	default:
+		return false
+	}
+}
+
+func isOfficialGrokCodexBaseURL(raw string) bool {
+	parsed, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil || parsed.Host == "" {
+		return false
+	}
+	return xai.IsOfficialBaseURLHost(strings.TrimSuffix(parsed.Hostname(), "."))
 }
 
 // BuildDeepSeekCodexModelsManifest preserves the historical entry point for

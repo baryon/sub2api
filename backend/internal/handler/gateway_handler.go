@@ -1183,7 +1183,12 @@ func (h *GatewayHandler) CodexModels(c *gin.Context) {
 	}
 	modelIDs := listClientVisibleModelIDs(c.Request.Context(), h.gatewayService, apiKey.Group, forcedPlatform)
 	if platform == service.PlatformDeepSeek || platform == service.PlatformComposite || platform == service.PlatformGrok || platform == service.PlatformAnthropic {
-		manifest, err := service.BuildCodexModelsManifest(modelIDs)
+		manifest, err := h.gatewayService.BuildCodexModelsManifestForGroup(
+			c.Request.Context(),
+			apiKey.Group,
+			forcedPlatform,
+			modelIDs,
+		)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{
 				"error": gin.H{

@@ -38,6 +38,21 @@ func (r codexModelsVisibilityAccountRepo) ListSchedulableByGroupID(_ context.Con
 	return append([]Account(nil), accounts...), nil
 }
 
+type countingCodexModelsAccountRepo struct {
+	AccountRepository
+	accounts []Account
+	err      error
+	calls    atomic.Int32
+}
+
+func (r *countingCodexModelsAccountRepo) ListSchedulableByGroupID(_ context.Context, _ int64) ([]Account, error) {
+	r.calls.Add(1)
+	if r.err != nil {
+		return nil, r.err
+	}
+	return append([]Account(nil), r.accounts...), nil
+}
+
 func decodeCodexManifestModels(t *testing.T, body []byte) []map[string]any {
 	t.Helper()
 
@@ -85,6 +100,7 @@ func TestNewConfiguredCodexModelDescriptorUsesProviderMetadataAndSafeFallback(t 
 		{Effort: "max", Description: "Maximum reasoning depth for complex tasks"},
 	}, deepSeek.SupportedReasoningLevels)
 	require.True(t, deepSeek.SupportsParallelToolCalls)
+	require.Equal(t, []string{"text"}, deepSeek.InputModalities)
 
 	grok := newConfiguredCodexModelDescriptor("grok-4.6")
 	require.Equal(t, "Grok 4.6", grok.DisplayName)
@@ -94,6 +110,7 @@ func TestNewConfiguredCodexModelDescriptorUsesProviderMetadataAndSafeFallback(t 
 	require.Equal(t, "high", *grok.DefaultReasoningLevel)
 	require.Equal(t, configuredCodexGrokReasoningLevels(), grok.SupportedReasoningLevels)
 	require.True(t, grok.SupportsParallelToolCalls)
+	require.Equal(t, []string{"text"}, grok.InputModalities)
 	require.NotContains(t, grok.SupportedReasoningLevels, configuredCodexReasoningLevel{Effort: "none"})
 	require.NotContains(t, grok.SupportedReasoningLevels, configuredCodexReasoningLevel{Effort: "max"})
 
@@ -134,6 +151,7 @@ func TestNewConfiguredCodexModelDescriptorUsesProviderMetadataAndSafeFallback(t 
 	require.Equal(t, []string{"low", "medium", "high", "xhigh", "max"}, effortsFromConfiguredCodexLevels(gpt56.SupportedReasoningLevels))
 	require.True(t, gpt56.SupportsParallelToolCalls)
 	require.True(t, gpt56.SupportVerbosity)
+	require.Equal(t, []string{"text"}, gpt56.InputModalities)
 	require.NotNil(t, gpt56.DefaultVerbosity)
 	require.Equal(t, "medium", *gpt56.DefaultVerbosity)
 
@@ -184,6 +202,322 @@ func TestBuildCodexModelsManifestOmitsGrokImagineModels(t *testing.T) {
 		slugs = append(slugs, slug)
 	}
 	require.Equal(t, []string{"grok-4.6", "grok-4.5"}, slugs)
+}
+
+func TestBuildCodexModelsManifestForGroupAdvertisesOfficialGrokResponsesImageInput(t *testing.T) {
+	t.Parallel()
+
+	const groupID int64 = 701
+	svc := &GatewayService{
+		accountRepo: codexModelsVisibilityAccountRepo{byGroup: map[int64][]Account{
+			groupID: {{
+				ID:       1,
+				Platform: PlatformGrok,
+				Type:     AccountTypeOAuth,
+				Credentials: map[string]any{
+					"access_token": "token",
+				},
+			}},
+		}},
+	}
+
+	body, err := svc.BuildCodexModelsManifestForGroup(
+		context.Background(),
+		&Group{ID: groupID, Platform: PlatformComposite},
+		"",
+		[]string{"grok-4.5"},
+	)
+	require.NoError(t, err)
+
+	models := decodeCodexManifestModels(t, body)
+	require.Len(t, models, 1)
+	require.Equal(t, []any{"text", "image"}, models[0]["input_modalities"])
+}
+
+func TestBuildCodexModelsManifestForGroupAdvertisesOfficialOpenAIResponsesImageInput(t *testing.T) {
+	t.Parallel()
+
+	const groupID int64 = 702
+	svc := &GatewayService{
+		accountRepo: codexModelsVisibilityAccountRepo{byGroup: map[int64][]Account{
+			groupID: {{
+				ID:       2,
+				Platform: PlatformOpenAI,
+				Type:     AccountTypeOAuth,
+			}},
+		}},
+	}
+
+	body, err := svc.BuildCodexModelsManifestForGroup(
+		context.Background(),
+		&Group{ID: groupID, Platform: PlatformComposite},
+		"",
+		[]string{"gpt-5.6-sol"},
+	)
+	require.NoError(t, err)
+
+	models := decodeCodexManifestModels(t, body)
+	require.Len(t, models, 1)
+	require.Equal(t, []any{"text", "image"}, models[0]["input_modalities"])
+}
+
+func TestBuildCodexModelsManifestForGroupUsesConservativeProviderImageCapabilities(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		model      string
+		accounts   []Account
+		modalities []any
+	}{
+		{
+			name:  "official Grok 4.6",
+			model: "grok-4.6",
+			accounts: []Account{{
+				ID: 10, Platform: PlatformGrok, Type: AccountTypeOAuth,
+			}},
+			modalities: []any{"text", "image"},
+		},
+		{
+			name:  "official Grok Build vision host",
+			model: "grok-build-0.1",
+			accounts: []Account{{
+				ID: 11, Platform: PlatformGrok, Type: AccountTypeOAuth,
+			}},
+			modalities: []any{"text", "image"},
+		},
+		{
+			name:  "official Grok 4.20 vision model",
+			model: "grok-4.20-0309-reasoning",
+			accounts: []Account{{
+				ID: 23, Platform: PlatformGrok, Type: AccountTypeOAuth,
+			}},
+			modalities: []any{"text", "image"},
+		},
+		{
+			name:  "Grok 3 Mini is text only",
+			model: "grok-3-mini",
+			accounts: []Account{{
+				ID: 24, Platform: PlatformGrok, Type: AccountTypeOAuth,
+			}},
+			modalities: []any{"text"},
+		},
+		{
+			name:  "Grok Composer has only Chat image bridge",
+			model: "grok-composer-2.5-fast",
+			accounts: []Account{{
+				ID: 12, Platform: PlatformGrok, Type: AccountTypeOAuth,
+			}},
+			modalities: []any{"text"},
+		},
+		{
+			name:  "custom Grok host",
+			model: "grok-4.5",
+			accounts: []Account{{
+				ID: 13, Platform: PlatformGrok, Type: AccountTypeAPIKey,
+				Credentials: map[string]any{"base_url": "https://relay.example.test/v1"},
+			}},
+			modalities: []any{"text"},
+		},
+		{
+			name:  "malformed Grok host",
+			model: "grok-4.5",
+			accounts: []Account{{
+				ID: 19, Platform: PlatformGrok, Type: AccountTypeAPIKey,
+				Credentials: map[string]any{"base_url": "::invalid::url"},
+			}},
+			modalities: []any{"text"},
+		},
+		{
+			name:  "mixed official and custom Grok candidates",
+			model: "grok-4.5",
+			accounts: []Account{
+				{ID: 14, Platform: PlatformGrok, Type: AccountTypeOAuth},
+				{
+					ID: 15, Platform: PlatformGrok, Type: AccountTypeAPIKey,
+					Credentials: map[string]any{"base_url": "https://relay.example.test/v1"},
+				},
+			},
+			modalities: []any{"text"},
+		},
+		{
+			name:  "DeepSeek V4",
+			model: "deepseek-v4-pro",
+			accounts: []Account{{
+				ID: 16, Platform: PlatformDeepSeek, Type: AccountTypeAPIKey,
+			}},
+			modalities: []any{"text"},
+		},
+		{
+			name:  "official OpenAI API key",
+			model: "gpt-5.6-sol",
+			accounts: []Account{{
+				ID: 17, Platform: PlatformOpenAI, Type: AccountTypeAPIKey,
+			}},
+			modalities: []any{"text", "image"},
+		},
+		{
+			name:  "custom OpenAI-compatible host",
+			model: "gpt-5.6-sol",
+			accounts: []Account{{
+				ID: 18, Platform: PlatformOpenAI, Type: AccountTypeAPIKey,
+				Credentials: map[string]any{"base_url": "https://openai-compatible.example.test/v1"},
+			}},
+			modalities: []any{"text"},
+		},
+	}
+
+	for i, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			groupID := int64(710 + i)
+			svc := &GatewayService{accountRepo: codexModelsVisibilityAccountRepo{byGroup: map[int64][]Account{
+				groupID: tt.accounts,
+			}}}
+			body, err := svc.BuildCodexModelsManifestForGroup(
+				context.Background(),
+				&Group{ID: groupID, Platform: PlatformComposite},
+				"",
+				[]string{tt.model},
+			)
+			require.NoError(t, err)
+			models := decodeCodexManifestModels(t, body)
+			require.Len(t, models, 1)
+			require.Equal(t, tt.modalities, models[0]["input_modalities"])
+		})
+	}
+}
+
+func TestBuildCodexModelsManifestForGroupUsesExplicitCompositeResponsesRouteModel(t *testing.T) {
+	t.Parallel()
+
+	const groupID int64 = 730
+	routeRepo := compositeRouteRepoStub{routes: []CompositeModelRoute{{
+		ID:             1,
+		GroupID:        groupID,
+		PublicModel:    "vision-alias",
+		MatchType:      CompositeRouteMatchExact,
+		TargetPlatform: PlatformGrok,
+		UpstreamModel:  "grok-4.5",
+		Endpoint:       CompositeRouteEndpointResponses,
+		Enabled:        true,
+	}}}
+	svc := &GatewayService{
+		accountRepo: codexModelsVisibilityAccountRepo{byGroup: map[int64][]Account{
+			groupID: {{ID: 20, Platform: PlatformGrok, Type: AccountTypeOAuth}},
+		}},
+		compositeResolver: NewCompositeRouteResolver(routeRepo),
+	}
+
+	body, err := svc.BuildCodexModelsManifestForGroup(
+		context.Background(),
+		&Group{ID: groupID, Platform: PlatformComposite},
+		"",
+		[]string{"vision-alias"},
+	)
+	require.NoError(t, err)
+
+	models := decodeCodexManifestModels(t, body)
+	require.Len(t, models, 1)
+	require.Equal(t, []any{"text", "image"}, models[0]["input_modalities"])
+}
+
+func TestBuildCodexModelsManifestForGroupUsesAccountMappingOwnershipAndMappedModel(t *testing.T) {
+	t.Parallel()
+
+	const groupID int64 = 731
+	svc := &GatewayService{accountRepo: codexModelsVisibilityAccountRepo{byGroup: map[int64][]Account{
+		groupID: {{
+			ID:       21,
+			Platform: PlatformGrok,
+			Type:     AccountTypeOAuth,
+			Credentials: map[string]any{
+				"model_mapping": map[string]any{"vision-alias": "grok-4.5"},
+			},
+		}},
+	}}}
+
+	body, err := svc.BuildCodexModelsManifestForGroup(
+		context.Background(),
+		&Group{ID: groupID, Platform: PlatformComposite},
+		"",
+		[]string{"vision-alias"},
+	)
+	require.NoError(t, err)
+
+	models := decodeCodexManifestModels(t, body)
+	require.Len(t, models, 1)
+	require.Equal(t, []any{"text", "image"}, models[0]["input_modalities"])
+}
+
+func TestBuildCodexModelsManifestForGroupLoadsAccountsOnce(t *testing.T) {
+	t.Parallel()
+
+	const groupID int64 = 732
+	repo := &countingCodexModelsAccountRepo{accounts: []Account{{
+		ID:       22,
+		Platform: PlatformGrok,
+		Type:     AccountTypeOAuth,
+		Credentials: map[string]any{
+			"model_mapping": map[string]any{
+				"vision-alias-a": "grok-4.5",
+				"vision-alias-b": "grok-4.6",
+			},
+		},
+	}}}
+	svc := &GatewayService{accountRepo: repo}
+	resolver := NewCompositeRouteResolver(nil)
+	resolver.SetModelOwnershipResolver(svc.resolveCompositeModelOwnership)
+	svc.compositeResolver = resolver
+
+	_, err := svc.BuildCodexModelsManifestForGroup(
+		context.Background(),
+		&Group{ID: groupID, Platform: PlatformComposite},
+		"",
+		[]string{"vision-alias-a", "vision-alias-b", "deepseek-v4-pro"},
+	)
+	require.NoError(t, err)
+	require.Equal(t, int32(1), repo.calls.Load())
+}
+
+func TestBuildCodexModelsManifestForGroupSkipsCapabilityLookupForTextOnlyPlatform(t *testing.T) {
+	t.Parallel()
+
+	repo := &countingCodexModelsAccountRepo{}
+	svc := &GatewayService{accountRepo: repo}
+	body, err := svc.BuildCodexModelsManifestForGroup(
+		context.Background(),
+		&Group{ID: 733, Platform: PlatformDeepSeek},
+		"",
+		[]string{"deepseek-v4-pro"},
+	)
+	require.NoError(t, err)
+	require.Equal(t, int32(0), repo.calls.Load())
+
+	models := decodeCodexManifestModels(t, body)
+	require.Len(t, models, 1)
+	require.Equal(t, []any{"text"}, models[0]["input_modalities"])
+}
+
+func TestBuildCodexModelsManifestForGroupFallsBackWhenCapabilityLookupFails(t *testing.T) {
+	t.Parallel()
+
+	repo := &countingCodexModelsAccountRepo{err: errors.New("account repository unavailable")}
+	svc := &GatewayService{accountRepo: repo}
+	body, err := svc.BuildCodexModelsManifestForGroup(
+		context.Background(),
+		&Group{ID: 734, Platform: PlatformComposite},
+		"",
+		[]string{"gpt-5.6-sol", "grok-4.5"},
+	)
+	require.NoError(t, err)
+	require.Equal(t, int32(1), repo.calls.Load())
+
+	models := decodeCodexManifestModels(t, body)
+	require.Len(t, models, 2)
+	require.Equal(t, []any{"text"}, models[0]["input_modalities"])
+	require.Equal(t, []any{"text"}, models[1]["input_modalities"])
 }
 
 func TestMergeGroupConfiguredCodexModelsInjectsCurrentGroupAliases(t *testing.T) {
