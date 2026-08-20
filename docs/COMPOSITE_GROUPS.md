@@ -1,5 +1,7 @@
 # Composite Groups
 
+<!-- last-verified: 2026-08-20 -->
+
 Composite groups are an admin routing layer for API keys that should choose a
 concrete provider from the requested model instead of binding the key to a
 single provider group. They support both built-in model detection and an
@@ -14,6 +16,8 @@ Composite groups can route to these concrete account platforms:
 - OpenAI
 - Antigravity
 - Grok
+- Kimi
+- Zhipu GLM
 - DeepSeek
 
 The selected concrete platform is used for account selection, user platform
@@ -53,6 +57,12 @@ For JSON-body endpoints, the gateway rewrites the request `model` field to the
 route's `upstream_model` before dispatch. For Gemini native paths such as
 `/v1beta/models/{model}:generateContent`, the gateway resolves `{model}` and
 the handler forwards the resolved upstream model.
+
+Codex Alpha Search and Live requests use the `responses` route domain. Live
+requests resolve the model from `session.model`, including multipart `session`
+payloads, and apply the configured `upstream_model` before dispatch.
+Codex model manifest requests reuse the existing OpenAI account selection and
+failover path within the Composite group.
 
 ## Built-In Detection
 

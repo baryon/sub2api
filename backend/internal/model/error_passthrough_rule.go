@@ -1,7 +1,11 @@
 // Package model 定义服务层使用的数据模型。
 package model
 
-import "time"
+import (
+	"time"
+
+	"github.com/Wei-Shaw/sub2api/internal/domain"
+)
 
 // ErrorPassthroughRule 全局错误透传规则
 // 用于控制上游错误如何返回给客户端
@@ -32,14 +36,15 @@ const MatchModeAll = "all"
 
 // 支持的平台常量
 const (
-	PlatformAnthropic   = "anthropic"
-	PlatformOpenAI      = "openai"
-	PlatformGemini      = "gemini"
-	PlatformAntigravity = "antigravity"
-	PlatformGrok        = "grok"
-	PlatformDeepSeek    = "deepseek"
-	PlatformKimi        = "kimi"
-	PlatformZhipu       = "zhipu"
+	PlatformAnthropic   = domain.PlatformAnthropic
+	PlatformOpenAI      = domain.PlatformOpenAI
+	PlatformGemini      = domain.PlatformGemini
+	PlatformAntigravity = domain.PlatformAntigravity
+	PlatformGrok        = domain.PlatformGrok
+	PlatformKimi        = domain.PlatformKimi
+	PlatformZhipu       = domain.PlatformZhipu
+	PlatformDeepSeek    = domain.PlatformDeepSeek
+	PlatformDeepseek    = PlatformDeepSeek
 )
 
 // AllPlatforms 返回所有支持的平台列表
@@ -50,9 +55,9 @@ func AllPlatforms() []string {
 		PlatformGemini,
 		PlatformAntigravity,
 		PlatformGrok,
-		PlatformDeepSeek,
 		PlatformKimi,
 		PlatformZhipu,
+		PlatformDeepSeek,
 	}
 }
 

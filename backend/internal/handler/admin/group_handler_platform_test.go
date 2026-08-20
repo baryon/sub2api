@@ -72,7 +72,7 @@ func TestGroupPlatformBinding_RejectsInvalidPlatforms(t *testing.T) {
 }
 
 // 本 fork 允许 kimi/zhipu/deepseek 作为 composite 路由目标（迁移 227 +
-// isConcreteRequestPlatform 已包含三平台）。官方 0.1.178 仍排除 CN。
+// isConcreteRequestPlatform 已包含三平台）。
 func TestCompositeRouteTargetPlatform_AllowsCNProviders(t *testing.T) {
 	for _, platform := range []string{"kimi", "zhipu", "deepseek"} {
 		var req CompositeRouteRequest

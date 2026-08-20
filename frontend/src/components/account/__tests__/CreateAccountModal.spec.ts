@@ -1,6 +1,7 @@
 import { defineComponent } from 'vue'
 import { flushPromises, mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import type { AdminGroup } from '@/types'
 
 const {
   createAccountMock,
@@ -8,12 +9,14 @@ const {
   importCodexSessionMock,
   createOpenAICodexPATMock,
   deepSeekBridgeEnabled,
+  authIsSimpleMode,
 } = vi.hoisted(() => ({
   createAccountMock: vi.fn(),
   probeUpstreamBillingMock: vi.fn(),
   importCodexSessionMock: vi.fn(),
   createOpenAICodexPATMock: vi.fn(),
   deepSeekBridgeEnabled: { value: false },
+  authIsSimpleMode: { value: true },
 }))
 
 vi.mock('@/stores/app', () => ({
@@ -30,7 +33,11 @@ vi.mock('@/stores/app', () => ({
 }))
 
 vi.mock('@/stores/auth', () => ({
-  useAuthStore: () => ({ isSimpleMode: true }),
+  useAuthStore: () => ({
+    get isSimpleMode() {
+      return authIsSimpleMode.value
+    },
+  }),
 }))
 
 vi.mock('@/api/admin', () => ({
@@ -117,9 +124,43 @@ const SelectStub = defineComponent({
   `,
 })
 
-function mountModal() {
+const GroupSelectorStub = defineComponent({
+  name: 'GroupSelector',
+  props: {
+    modelValue: {
+      type: Array,
+      default: () => [],
+    },
+  },
+  emits: ['update:modelValue'],
+  template: `
+    <button
+      type="button"
+      data-testid="select-pricing-groups"
+      @click="$emit('update:modelValue', [1, 2])"
+    >
+      groups
+    </button>
+  `,
+})
+
+const ModelWhitelistSelectorStub = defineComponent({
+  name: 'ModelWhitelistSelector',
+  props: {
+    modelValue: {
+      type: Array,
+      default: () => [],
+    },
+    platform: String,
+    syncCredentials: Object,
+  },
+  emits: ['update:modelValue'],
+  template: '<div data-testid="model-whitelist-selector" />',
+})
+
+function mountModal(groups: AdminGroup[] = []) {
   return mount(CreateAccountModal, {
-    props: { show: true, proxies: [], groups: [] },
+    props: { show: true, proxies: [], groups },
     global: {
       stubs: {
         BaseDialog: BaseDialogStub,
@@ -130,8 +171,8 @@ function mountModal() {
         PlatformIcon: true,
         ProxySelector: true,
         ProxyAdBanner: true,
-        GroupSelector: true,
-        ModelWhitelistSelector: true,
+        GroupSelector: GroupSelectorStub,
+        ModelWhitelistSelector: ModelWhitelistSelectorStub,
         QuotaLimitCard: true,
       },
     },
@@ -216,8 +257,12 @@ describe('CreateAccountModal DeepSeek API key accounts', () => {
       'http_bridge',
     ])
 
-    const baseUrlInput = wrapper.get('input[placeholder="https://api.deepseek.com"]')
-    expect((baseUrlInput.element as HTMLInputElement).value).toBe('https://api.deepseek.com')
+    expect((wrapper.get('[data-testid="cn-adaptive-base-url-chat_completions"]').element as HTMLInputElement).value)
+      .toBe('https://api.deepseek.com')
+    expect((wrapper.get('[data-testid="cn-adaptive-base-url-anthropic"]').element as HTMLInputElement).value)
+      .toBe('https://api.deepseek.com/anthropic')
+    expect((wrapper.get('[data-testid="cn-adaptive-base-url-responses"]').element as HTMLInputElement).value)
+      .toBe('https://api.deepseek.com')
 
     await wrapper.get('form#create-account-form input[type="text"]').setValue('DeepSeek account')
     await wrapper.get('form#create-account-form input[type="password"]').setValue('sk-deepseek-test')
@@ -231,6 +276,12 @@ describe('CreateAccountModal DeepSeek API key accounts', () => {
       credentials: expect.objectContaining({
         base_url: 'https://api.deepseek.com',
         api_key: 'sk-deepseek-test',
+        api_protocol: 'adaptive',
+        api_base_urls: {
+          chat_completions: 'https://api.deepseek.com',
+          anthropic: 'https://api.deepseek.com/anthropic',
+          responses: 'https://api.deepseek.com',
+        },
       }),
       extra: expect.objectContaining({
         deepseek_user_isolation_mode: 'authenticated_user',
@@ -276,6 +327,7 @@ describe('CreateAccountModal DeepSeek API key accounts', () => {
 
 describe('CreateAccountModal OpenAI long-context billing', () => {
   beforeEach(() => {
+    authIsSimpleMode.value = true
     createAccountMock.mockReset().mockResolvedValue({ id: 42, platform: 'openai', type: 'apikey' })
     probeUpstreamBillingMock.mockReset().mockResolvedValue({})
     importCodexSessionMock.mockReset().mockResolvedValue({
@@ -341,6 +393,43 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
 
     expect(createAccountMock.mock.calls[0]?.[0]?.upstream_billing_probe_enabled).toBe(false)
     expect(probeUpstreamBillingMock).not.toHaveBeenCalled()
+  })
+
+  it('submits adaptive Kimi protocol endpoints', async () => {
+    const wrapper = mountModal()
+    await selectButtonByText(wrapper, 'Kimi')
+    await wrapper.get('form#create-account-form input[type="text"]').setValue('Kimi adaptive')
+    await wrapper.get('form#create-account-form input[type="password"]').setValue('sk-kimi')
+
+    await wrapper.get('form#create-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(createAccountMock).toHaveBeenCalledTimes(1)
+    expect(createAccountMock.mock.calls[0]?.[0]?.credentials).toMatchObject({
+      account_mode: 'payg',
+      api_protocol: 'adaptive',
+      base_url: 'https://api.moonshot.cn/v1',
+      api_base_urls: {
+        chat_completions: 'https://api.moonshot.cn/v1',
+        anthropic: 'https://api.moonshot.cn/anthropic'
+      }
+    })
+  })
+
+  it('uses the edited adaptive Chat endpoint when previewing upstream models', async () => {
+    const wrapper = mountModal()
+    await selectButtonByText(wrapper, 'Kimi')
+    await wrapper
+      .get('[data-testid="cn-adaptive-base-url-chat_completions"]')
+      .setValue('https://relay.example.com/v1')
+    await wrapper.get('form#create-account-form input[type="password"]').setValue('sk-relay')
+
+    expect(wrapper.getComponent(ModelWhitelistSelectorStub).props('syncCredentials')).toMatchObject({
+      platform: 'kimi',
+      type: 'apikey',
+      base_url: 'https://relay.example.com/v1',
+      api_key: 'sk-relay'
+    })
   })
 
   it('exposes Agent Identity in the OpenAI authorization methods', async () => {

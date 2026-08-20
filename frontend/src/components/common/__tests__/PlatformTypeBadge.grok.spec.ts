@@ -123,6 +123,6 @@ describe('PlatformTypeBadge DeepSeek', () => {
 
     expect(wrapper.text()).toContain('DeepSeek')
     expect(wrapper.text()).toContain('Key')
-    expect(wrapper.html()).toContain('bg-indigo-100')
+    expect(wrapper.html()).toContain('bg-teal-100')
   })
 })

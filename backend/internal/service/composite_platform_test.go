@@ -111,8 +111,11 @@ func TestDetectModelPlatform(t *testing.T) {
 		{name: "grok", model: "grok-4", platform: PlatformGrok, ok: true},
 		{name: "xai prefix", model: "xai/grok-4", platform: PlatformGrok, ok: true},
 		{name: "kimi", model: "kimi-k2", platform: PlatformKimi, ok: true},
+		{name: "kimi thinking", model: "kimi-k2-thinking", platform: PlatformKimi, ok: true},
 		{name: "moonshot prefix", model: "moonshot/kimi-k2", platform: PlatformKimi, ok: true},
+		{name: "moonshot model prefix", model: "moonshot/moonshot-v1-32k", platform: PlatformKimi, ok: true},
 		{name: "glm", model: "glm-4.6", platform: PlatformZhipu, ok: true},
+		{name: "zhipu latest", model: "glm-5.2", platform: PlatformZhipu, ok: true},
 		{name: "zhipu prefix", model: "zhipu/glm-4.5", platform: PlatformZhipu, ok: true},
 		{name: "deepseek", model: "deepseek-v4-pro", platform: PlatformDeepSeek, ok: true},
 		{name: "deepseek prefix", model: "deepseek/deepseek-v4-flash", platform: PlatformDeepSeek, ok: true},
@@ -190,5 +193,12 @@ func TestResolveCompositeRouteDecisionExplicitRouteOverridesDetectorContext(t *t
 			require.Equal(t, route.UpstreamModel, decision.UpstreamModel)
 			require.Equal(t, route.Endpoint, decision.Endpoint)
 		})
+	}
+}
+
+func TestCompositeConcretePlatformsIncludeCNProviders(t *testing.T) {
+	for _, platform := range []string{PlatformKimi, PlatformZhipu, PlatformDeepSeek} {
+		require.True(t, isConcreteRequestPlatform(platform))
+		require.True(t, canCopyAccountsFromGroupPlatform(PlatformComposite, platform))
 	}
 }
