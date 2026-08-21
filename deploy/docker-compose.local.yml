@@ -17,6 +17,11 @@
 # Upgrade:
 #   git pull && docker compose -f docker-compose.local.yml up -d --build
 #
+# NOT for baryon/chainbow production (akiba / sub2api.chainbow.io).
+# That host uses docker-compose.yml + untracked docker-compose.override.yml.
+# `docker compose -f docker-compose.local.yml` there stops the live stack.
+# See .cursor/skills/sub2api-production-release/SKILL.md
+#
 # Migration of data directories:
 #   1. docker compose -f docker-compose.local.yml down
 #   2. tar czf sub2api-data.tar.gz data postgres_data redis_data .env

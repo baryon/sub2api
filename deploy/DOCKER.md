@@ -1,10 +1,29 @@
 # Sub2API Docker Image
 
-This fork does **not** publish `weishaw/sub2api`. Build the application image from the repository `Dockerfile` on the server (see `deploy/docker-compose.local.yml`).
+This fork does **not** publish `weishaw/sub2api`. Build the application image from the repository `Dockerfile`.
 
 Postgres and Redis still use public images (`postgres:18-alpine`, `redis:8-alpine`).
 
-Example:
+## This fork's production (akiba / sub2api.chainbow.io)
+
+Do **not** use `docker-compose.local.yml` on that host. Production is `docker-compose.yml` plus untracked `docker-compose.override.yml`.
+
+Follow [`.cursor/skills/sub2api-production-release/SKILL.md`](../.cursor/skills/sub2api-production-release/SKILL.md). Short form:
+
+```bash
+ssh -p 220 -o BatchMode=yes deploy@122.208.117.197 'bash -s' << 'REMOTE'
+set -euo pipefail
+unset COMPOSE_FILE
+cd /home/deploy/sub2api
+git pull --ff-only origin main
+cd deploy
+docker compose up -d --build
+REMOTE
+```
+
+## Generic self-host (not akiba)
+
+`docker-compose.local.yml` is for a fresh checkout with `./data`, `./postgres_data`, `./redis_data`. It shares container names with production but **not** data dirs or networks. Never point it at akiba.
 
 ```bash
 cd deploy
