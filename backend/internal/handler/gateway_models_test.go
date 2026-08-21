@@ -227,6 +227,73 @@ func TestGatewayCodexModels_CompositeUsesCompleteManifest(t *testing.T) {
 	require.NotEmpty(t, got.Models[0].ModelMessages.InstructionsTemplate)
 }
 
+// Scenario: Composite 分组暴露完整有效模型集合。
+func TestGatewayCodexModels_CompositeAggregatesNativeDeepSeekGrokAndClaude(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	const groupID int64 = 77
+	h := newGatewayModelsHandlerForTest(
+		&gatewayModelsAccountRepoStub{
+			byGroup: map[int64][]service.Account{
+				groupID: {
+					{ID: 1, Platform: service.PlatformAnthropic},
+					{
+						ID:       2,
+						Platform: service.PlatformGrok,
+						Credentials: map[string]any{
+							"model_mapping": map[string]any{
+								"grok-4.5":     "grok-4.5",
+								"grok-imagine": "grok-imagine",
+							},
+						},
+					},
+					{
+						ID:       3,
+						Platform: service.PlatformDeepSeek,
+						Credentials: map[string]any{
+							"model_mapping": map[string]any{
+								"deepseek-v4-flash": "deepseek-v4-flash",
+								"deepseek-v4-pro":   "deepseek-v4-pro",
+							},
+						},
+					},
+					{
+						ID:       4,
+						Platform: service.PlatformOpenAI,
+						Credentials: map[string]any{
+							"model_mapping": map[string]any{
+								"gpt-5.5":     "gpt-5.5",
+								"gpt-image-2": "gpt-image-2",
+							},
+						},
+					},
+				},
+			},
+		},
+	)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodGet, "/models?client_version=0.147.0", nil)
+	c.Set(string(middleware2.ContextKeyAPIKey), &service.APIKey{
+		Group: &service.Group{ID: groupID, Platform: service.PlatformComposite},
+	})
+
+	h.CodexModels(c)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	var got codexModelsResponseForTest
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
+	slugs := codexModelSlugsForTest(got.Models)
+	require.Contains(t, slugs, "deepseek-v4-flash")
+	require.Contains(t, slugs, "deepseek-v4-pro")
+	require.Contains(t, slugs, "grok-4.5")
+	require.Contains(t, slugs, "gpt-5.5")
+	require.Subset(t, slugs, defaultModelIDsForPlatform(service.PlatformAnthropic))
+	require.NotContains(t, slugs, "grok-imagine")
+	require.NotContains(t, slugs, "gpt-image-2")
+}
+
 // Scenario: 混合分组账号映射不启用 Auto Review。
 func TestGatewayCodexModels_CompositeFiltersAccountMappedAutoReviewByDefault(t *testing.T) {
 	gin.SetMode(gin.TestMode)

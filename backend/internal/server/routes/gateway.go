@@ -86,8 +86,12 @@ func RegisterGatewayRoutes(
 		}
 	}
 	codexModelsHandler := func(c *gin.Context) {
-		switch getGroupPlatform(c) {
-		case service.PlatformOpenAI, service.PlatformComposite:
+		// Official OpenAI groups proxy ChatGPT's live Codex manifest from a
+		// single scheduled account. Composite groups must aggregate every
+		// schedulable platform (Claude, Grok, native DeepSeek, GPT, …)
+		// instead of inheriting whichever OpenAI-compatible account happens
+		// to win selection.
+		if getGroupPlatform(c) == service.PlatformOpenAI {
 			h.OpenAIGateway.CodexModels(c)
 			return
 		}
@@ -231,8 +235,10 @@ func RegisterGatewayRoutes(
 		// locally, and Anthropic-compatible platforms retain their existing path.
 		gateway.POST("/messages/count_tokens", countTokensHandler)
 		// Codex CLI / Codex app refresh their model picker from the provider's
-		// /models endpoint with a client_version query and expect the ChatGPT
-		// Codex manifest format; other clients keep the OpenAI-style list.
+		// /models endpoint with a client_version query. Official OpenAI groups
+		// proxy ChatGPT's live manifest; Composite and other routed groups
+		// synthesize the same Codex format from the group's schedulable
+		// platforms. Other clients keep the OpenAI-style list.
 		gateway.GET("/models", modelsHandler)
 		gateway.GET("/usage", h.Gateway.Usage)
 		gateway.POST("/live", rejectDeepSeekFeature("Live API", h.OpenAIGateway.Live))

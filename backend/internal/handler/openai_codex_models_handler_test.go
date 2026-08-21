@@ -185,16 +185,19 @@ func TestCodexModelsAppliesLocalFiltersBeforeClientETag(t *testing.T) {
 	}
 }
 
-func TestCompositeCodexModelsReusesExistingManifestSelection(t *testing.T) {
+func TestCompositeCodexModelsDoesNotUseOpenAIUpstreamManifest(t *testing.T) {
 	handler, upstream, groupID := newCodexModelsFailoverTestHandler(http.StatusServiceUnavailable)
 
 	recorder := performCodexModelsRequestForPlatform(t, handler, groupID, service.PlatformComposite)
 
-	if got, want := upstream.calls(), []int64{1, 2}; !equalInt64Slices(got, want) {
-		t.Fatalf("upstream account calls: got %v, want %v", got, want)
+	if got := upstream.calls(); len(got) != 0 {
+		t.Fatalf("upstream account calls: got %v, want none", got)
 	}
-	if recorder.Code != http.StatusOK {
-		t.Fatalf("status: got %d, want %d; body=%s", recorder.Code, http.StatusOK, recorder.Body.String())
+	if recorder.Code != http.StatusNotFound {
+		t.Fatalf("status: got %d, want %d; body=%s", recorder.Code, http.StatusNotFound, recorder.Body.String())
+	}
+	if body := recorder.Body.String(); !strings.Contains(body, "only available for OpenAI groups") {
+		t.Fatalf("body: got %q, want an OpenAI-only Codex models error", body)
 	}
 }
 

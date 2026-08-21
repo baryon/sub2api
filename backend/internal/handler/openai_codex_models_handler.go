@@ -10,14 +10,16 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/service"
 )
 
-// CodexModels serves the Codex models manifest for Codex clients.
+// CodexModels serves the Codex models manifest for official OpenAI groups.
 //
 // Codex CLI and the Codex desktop app refresh their model picker from
 // GET {base_url}/models?client_version=... (custom provider mode) or
-// GET /backend-api/codex/models (chatgpt_base_url mode). Both routes land
-// here. ChatGPT manifests are proxied verbatim; custom API key manifests receive
-// provider-compatibility normalization and use a short-lived, asynchronously
-// revalidated cache to tolerate canceled client requests.
+// GET /backend-api/codex/models (chatgpt_base_url mode). Official OpenAI
+// groups land here. ChatGPT manifests are proxied verbatim; custom API key
+// manifests receive provider-compatibility normalization and use a
+// short-lived, asynchronously revalidated cache to tolerate canceled client
+// requests. Composite and other routed groups use GatewayHandler.CodexModels
+// so the picker lists every schedulable platform instead of one OpenAI account.
 func (h *OpenAIGatewayHandler) CodexModels(c *gin.Context) {
 	if c.Request.Context().Err() != nil {
 		return
@@ -27,8 +29,8 @@ func (h *OpenAIGatewayHandler) CodexModels(c *gin.Context) {
 		h.errorResponse(c, http.StatusUnauthorized, "invalid_request_error", "API key group is required")
 		return
 	}
-	if apiKey.Group.Platform != service.PlatformOpenAI && apiKey.Group.Platform != service.PlatformComposite {
-		h.errorResponse(c, http.StatusNotFound, "not_found_error", "Codex models manifest is only available for OpenAI and Composite groups")
+	if apiKey.Group.Platform != service.PlatformOpenAI {
+		h.errorResponse(c, http.StatusNotFound, "not_found_error", "Codex models manifest is only available for OpenAI groups")
 		return
 	}
 
