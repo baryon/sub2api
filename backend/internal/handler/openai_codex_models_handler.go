@@ -15,11 +15,11 @@ import (
 // Codex CLI and the Codex desktop app refresh their model picker from
 // GET {base_url}/models?client_version=... (custom provider mode) or
 // GET /backend-api/codex/models (chatgpt_base_url mode). Official OpenAI
-// groups land here. ChatGPT manifests are proxied verbatim; custom API key
-// manifests receive provider-compatibility normalization and use a
-// short-lived, asynchronously revalidated cache to tolerate canceled client
-// requests. Composite and other routed groups use GatewayHandler.CodexModels
-// so the picker lists every schedulable platform instead of one OpenAI account.
+// groups land here. Groups with explicit account model mappings are generated
+// locally; otherwise ChatGPT manifests are proxied verbatim and custom API key
+// manifests receive provider-compatibility normalization plus short-lived
+// caching. Composite and other routed groups use GatewayHandler.CodexModels so
+// the picker lists every schedulable platform instead of one OpenAI account.
 func (h *OpenAIGatewayHandler) CodexModels(c *gin.Context) {
 	if c.Request.Context().Err() != nil {
 		return
@@ -31,6 +31,24 @@ func (h *OpenAIGatewayHandler) CodexModels(c *gin.Context) {
 	}
 	if apiKey.Group.Platform != service.PlatformOpenAI {
 		h.errorResponse(c, http.StatusNotFound, "not_found_error", "Codex models manifest is only available for OpenAI groups")
+		return
+	}
+
+	ifNoneMatch := c.GetHeader("If-None-Match")
+	configuredManifest, configured, err := h.gatewayService.BuildGroupConfiguredCodexModelsManifest(
+		c.Request.Context(),
+		apiKey.Group,
+		ifNoneMatch,
+	)
+	if err != nil {
+		if c.Request.Context().Err() != nil {
+			return
+		}
+		h.errorResponse(c, http.StatusInternalServerError, "api_error", "Failed to build Codex models manifest")
+		return
+	}
+	if configured {
+		writeCodexModelsManifestResponse(c, configuredManifest)
 		return
 	}
 
@@ -58,7 +76,6 @@ func (h *OpenAIGatewayHandler) CodexModels(c *gin.Context) {
 		// 让 ops 错误日志携带实际选中的上游账号，便于定位失效账号（#4544）。
 		setOpsSelectedAccount(c, account.ID, account.Platform)
 
-		ifNoneMatch := c.GetHeader("If-None-Match")
 		// The client ETag identifies the final group-specific manifest. Fetch the
 		// source body first so filtering and alias merging run before conditional
 		// response handling for both OAuth and API key accounts.
@@ -84,14 +101,18 @@ func (h *OpenAIGatewayHandler) CodexModels(c *gin.Context) {
 			return
 		}
 
-		if manifest.ETag != "" {
-			c.Header("ETag", manifest.ETag)
-		}
-		if manifest.NotModified {
-			c.Status(http.StatusNotModified)
-			return
-		}
-		c.Data(http.StatusOK, "application/json", manifest.Body)
+		writeCodexModelsManifestResponse(c, manifest)
 		return
 	}
+}
+
+func writeCodexModelsManifestResponse(c *gin.Context, manifest *service.CodexModelsManifest) {
+	if manifest.ETag != "" {
+		c.Header("ETag", manifest.ETag)
+	}
+	if manifest.NotModified {
+		c.Status(http.StatusNotModified)
+		return
+	}
+	c.Data(http.StatusOK, "application/json", manifest.Body)
 }
