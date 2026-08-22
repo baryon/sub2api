@@ -140,6 +140,7 @@ func prepareOpenAIWSHTTPBridgeBody(account *Account, payload []byte) ([]byte, er
 	if !shouldPreserveOpenAIResponsesOptionalFields(account) {
 		deleteOpenAIResponsesOptionalFieldsFromObject(body)
 	}
+	deleteOpenAIResponsesNoneReasoningEffortFromObject(account, body)
 	body["stream"] = true
 	return json.Marshal(body)
 }

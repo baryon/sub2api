@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
@@ -12,6 +13,19 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/stretchr/testify/require"
 )
+
+type upstreamModelMetadataRepoStub struct {
+	AccountRepository
+	accountID int64
+	updates   map[string]any
+	err       error
+}
+
+func (r *upstreamModelMetadataRepoStub) UpdateExtra(_ context.Context, id int64, updates map[string]any) error {
+	r.accountID = id
+	r.updates = updates
+	return r.err
+}
 
 func upstreamModelSyncTestConfig() *config.Config {
 	return &config.Config{
@@ -340,6 +354,215 @@ func TestFetchUpstreamSupportedModelsParsesOpenAIResponse(t *testing.T) {
 	require.Equal(t, []string{"gpt-5", "o3"}, models)
 	require.Equal(t, "https://openai.example.com/v1/models", upstream.lastReq.URL.String())
 	require.Equal(t, "Bearer openai-key", upstream.lastReq.Header.Get("Authorization"))
+}
+
+// Scenario: ID-only 模型列表从 Models.dev 补齐能力。
+func TestSyncUpstreamModelCatalogEnrichesOpenCodeIDOnlyListAndPersistsSnapshot(t *testing.T) {
+	upstream := &httpUpstreamRecorder{responses: []*http.Response{
+		{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Body:       io.NopCloser(strings.NewReader(`{"object":"list","data":[{"id":"x-preview-f-free","object":"model"}]}`)),
+		},
+		{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Body: io.NopCloser(strings.NewReader(`{
+				"opencode": {
+					"id": "opencode",
+					"name": "OpenCode Zen",
+					"api": "https://opencode.ai/zen/v1",
+					"models": {
+						"x-preview-f-free": {
+							"id": "x-preview-f-free",
+							"name": "Ox Alpha Free (Unlimited)",
+							"description": "Stealth reasoning model for coding, agentic tasks, and tool use",
+							"reasoning": true,
+							"reasoning_options": [{"type":"effort","values":["low","high","max"]}],
+							"modalities": {"input":["text","image","video"],"output":["text"]},
+							"limit": {"context":1000000,"output":131072}
+						}
+					}
+				}
+			}`)),
+		},
+	}}
+	repo := &upstreamModelMetadataRepoStub{}
+	svc := &AccountTestService{
+		accountRepo:  repo,
+		httpUpstream: upstream,
+		cfg:          upstreamModelSyncTestConfig(),
+	}
+	account := &Account{
+		ID:       91,
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"api_key":  "opencode-key",
+			"base_url": "https://opencode.ai/zen/v1",
+		},
+	}
+
+	catalog, err := svc.SyncUpstreamModelCatalog(context.Background(), account)
+	require.NoError(t, err)
+	require.Equal(t, []string{"x-preview-f-free"}, catalog.Models)
+	require.Len(t, upstream.requests, 2)
+	require.Equal(t, "https://opencode.ai/zen/v1/models", upstream.requests[0].URL.String())
+	require.Equal(t, modelsDevRegistryURL, upstream.requests[1].URL.String())
+
+	metadata := catalog.Metadata["x-preview-f-free"]
+	require.Equal(t, "Ox Alpha Free (Unlimited)", metadata.DisplayName)
+	require.NotNil(t, metadata.Reasoning)
+	require.True(t, *metadata.Reasoning)
+	require.Equal(t, []string{"low", "high", "max"}, metadata.SupportedReasoningLevels)
+	require.Equal(t, []string{"text", "image"}, metadata.InputModalities)
+	require.Equal(t, int64(1_000_000), metadata.ContextWindow)
+	require.Equal(t, int64(131_072), metadata.MaxOutputTokens)
+	require.Equal(t, int64(91), repo.accountID)
+
+	rawSnapshot, ok := repo.updates[UpstreamModelMetadataExtraKey]
+	require.True(t, ok)
+	encoded, err := json.Marshal(rawSnapshot)
+	require.NoError(t, err)
+	var snapshot UpstreamModelMetadataSnapshot
+	require.NoError(t, json.Unmarshal(encoded, &snapshot))
+	require.Equal(t, "models.dev", snapshot.Source)
+	require.Equal(t, metadata, snapshot.Models["x-preview-f-free"])
+}
+
+// Scenario: 完整上游模型清单优先保存能力。
+func TestSyncUpstreamModelCatalogPrefersDirectUpstreamMetadata(t *testing.T) {
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body: io.NopCloser(strings.NewReader(`{"models":[{
+			"slug":"custom-thinking-model",
+			"display_name":"Upstream Display",
+			"description":"Upstream description",
+			"default_reasoning_level":"high",
+			"supported_reasoning_levels":[{"effort":"low"},{"effort":"high"}],
+			"input_modalities":["text","image"],
+			"context_window":256000
+		}]}`)),
+	}}
+	repo := &upstreamModelMetadataRepoStub{}
+	svc := &AccountTestService{accountRepo: repo, httpUpstream: upstream, cfg: upstreamModelSyncTestConfig()}
+
+	catalog, err := svc.SyncUpstreamModelCatalog(context.Background(), &Account{
+		ID: 92, Platform: PlatformOpenAI, Type: AccountTypeAPIKey,
+		Credentials: map[string]any{"api_key": "key", "base_url": "https://provider.example/v1"},
+	})
+	require.NoError(t, err)
+	require.Len(t, upstream.requests, 1, "complete upstream metadata must not be replaced by a registry fetch")
+	metadata := catalog.Metadata["custom-thinking-model"]
+	require.Equal(t, "Upstream Display", metadata.DisplayName)
+	require.Equal(t, "high", metadata.DefaultReasoningLevel)
+	require.Equal(t, []string{"low", "high"}, metadata.SupportedReasoningLevels)
+	require.Equal(t, []string{"text", "image"}, metadata.InputModalities)
+	require.Equal(t, int64(256_000), metadata.ContextWindow)
+}
+
+// Scenario: 上游明确声明无推理能力时保存 false。
+func TestSyncUpstreamModelCatalogPersistsExplicitNonReasoningCapability(t *testing.T) {
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body: io.NopCloser(strings.NewReader(`{"models":[{
+			"id":"company-coding-model",
+			"display_name":"Company Coding Model",
+			"reasoning":false,
+			"input_modalities":["text"],
+			"context_window":64000
+		}]}`)),
+	}}
+	repo := &upstreamModelMetadataRepoStub{}
+	svc := &AccountTestService{accountRepo: repo, httpUpstream: upstream, cfg: upstreamModelSyncTestConfig()}
+
+	catalog, err := svc.SyncUpstreamModelCatalog(context.Background(), &Account{
+		ID: 94, Platform: PlatformOpenAI, Type: AccountTypeAPIKey,
+		Credentials: map[string]any{"api_key": "key", "base_url": "https://provider.example/v1"},
+	})
+	require.NoError(t, err)
+	require.Len(t, upstream.requests, 1)
+	metadata := catalog.Metadata["company-coding-model"]
+	require.NotNil(t, metadata.Reasoning)
+	require.False(t, *metadata.Reasoning)
+	require.Empty(t, metadata.SupportedReasoningLevels)
+	require.Equal(t, []string{"text"}, metadata.InputModalities)
+	require.Equal(t, int64(64_000), metadata.ContextWindow)
+	require.NotNil(t, repo.updates)
+}
+
+func TestSyncUpstreamModelCatalogClassifiesSnapshotPersistenceFailureAsInternal(t *testing.T) {
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body: io.NopCloser(strings.NewReader(`{"models":[{
+			"id":"company-coding-model",
+			"reasoning":false,
+			"input_modalities":["text"],
+			"context_window":64000
+		}]}`)),
+	}}
+	repo := &upstreamModelMetadataRepoStub{err: errors.New("database unavailable")}
+	svc := &AccountTestService{accountRepo: repo, httpUpstream: upstream, cfg: upstreamModelSyncTestConfig()}
+
+	_, err := svc.SyncUpstreamModelCatalog(context.Background(), &Account{
+		ID: 95, Platform: PlatformOpenAI, Type: AccountTypeAPIKey,
+		Credentials: map[string]any{"api_key": "key", "base_url": "https://provider.example/v1"},
+	})
+	require.Error(t, err)
+	var syncErr *UpstreamModelSyncError
+	require.ErrorAs(t, err, &syncErr)
+	require.Equal(t, UpstreamModelSyncErrorInternal, syncErr.Kind)
+}
+
+// Scenario: 元数据源失败时保留已有快照。
+func TestSyncUpstreamModelCatalogDoesNotOverwriteSnapshotWhenRegistryFails(t *testing.T) {
+	upstream := &httpUpstreamRecorder{responses: []*http.Response{
+		{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{"data":[{"id":"x-preview-f-free"}]}`))},
+		{StatusCode: http.StatusBadGateway, Body: io.NopCloser(strings.NewReader(`{"error":"unavailable"}`))},
+	}}
+	repo := &upstreamModelMetadataRepoStub{}
+	svc := &AccountTestService{accountRepo: repo, httpUpstream: upstream, cfg: upstreamModelSyncTestConfig()}
+
+	catalog, err := svc.SyncUpstreamModelCatalog(context.Background(), &Account{
+		ID: 93, Platform: PlatformOpenAI, Type: AccountTypeAPIKey,
+		Credentials: map[string]any{"api_key": "key", "base_url": "https://opencode.ai/zen/v1"},
+		Extra: map[string]any{UpstreamModelMetadataExtraKey: map[string]any{
+			"source": "models.dev", "models": map[string]any{"x-preview-f-free": map[string]any{"reasoning": true}},
+		}},
+	})
+	require.NoError(t, err)
+	require.Equal(t, []string{"x-preview-f-free"}, catalog.Models)
+	require.Empty(t, catalog.Metadata)
+	require.Nil(t, repo.updates, "a failed metadata enrichment must not erase a previously saved snapshot")
+}
+
+func TestSyncUpstreamModelCatalogDoesNotPersistPartialMetadataWhenRegistryFails(t *testing.T) {
+	upstream := &httpUpstreamRecorder{responses: []*http.Response{
+		{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{"models":[{
+			"id":"partially-described-model",
+			"display_name":"Partial Model"
+		}]}`))},
+		{StatusCode: http.StatusBadGateway, Body: io.NopCloser(strings.NewReader(`{"error":"unavailable"}`))},
+	}}
+	repo := &upstreamModelMetadataRepoStub{}
+	svc := &AccountTestService{accountRepo: repo, httpUpstream: upstream, cfg: upstreamModelSyncTestConfig()}
+
+	catalog, err := svc.SyncUpstreamModelCatalog(context.Background(), &Account{
+		ID: 96, Platform: PlatformOpenAI, Type: AccountTypeAPIKey,
+		Credentials: map[string]any{"api_key": "key", "base_url": "https://provider.example/v1"},
+		Extra: map[string]any{UpstreamModelMetadataExtraKey: map[string]any{
+			"source": "upstream", "models": map[string]any{"partially-described-model": map[string]any{
+				"reasoning": true, "supported_reasoning_levels": []any{"low", "high"},
+			}},
+		}},
+	})
+	require.NoError(t, err)
+	require.Equal(t, []string{"partially-described-model"}, catalog.Models)
+	require.Equal(t, "Partial Model", catalog.Metadata["partially-described-model"].DisplayName)
+	require.Nil(t, repo.updates, "partial metadata must not replace a more complete persisted snapshot")
 }
 
 func TestFetchUpstreamSupportedModelsParsesGrokAPIKeyResponse(t *testing.T) {

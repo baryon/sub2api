@@ -260,13 +260,23 @@ type configuredCodexModelDescriptor struct {
 	UseResponsesLite                  bool                            `json:"use_responses_lite"`
 }
 
+type codexModelMetadataOverride struct {
+	UpstreamModelMetadata
+	reasoningConflict       bool
+	inputModalitiesConflict bool
+}
+
 func newConfiguredCodexModelDescriptor(modelID string) configuredCodexModelDescriptor {
 	modelID = strings.TrimSpace(modelID)
+	noReasoningLevel := "none"
 	descriptor := configuredCodexModelDescriptor{
-		Slug:                          modelID,
-		DisplayName:                   modelID,
-		Description:                   "Custom model routed through Sub2API.",
-		SupportedReasoningLevels:      []configuredCodexReasoningLevel{},
+		Slug:                  modelID,
+		DisplayName:           modelID,
+		Description:           "Custom model routed through Sub2API.",
+		DefaultReasoningLevel: &noReasoningLevel,
+		SupportedReasoningLevels: []configuredCodexReasoningLevel{
+			{Effort: "none", Description: "Use the model's default reasoning behavior"},
+		},
 		ShellType:                     "shell_command",
 		Visibility:                    "list",
 		SupportedInAPI:                true,
@@ -515,7 +525,7 @@ func claudeCodexDisplayName(modelID string) string {
 // routed through a custom provider. The response is also suitable for saving
 // as model_catalog_json in clients that do not refresh custom-provider catalogs.
 func BuildCodexModelsManifest(modelIDs []string) ([]byte, error) {
-	return buildCodexModelsManifest(modelIDs, nil)
+	return buildCodexModelsManifest(modelIDs, nil, nil)
 }
 
 // BuildCodexModelsManifestForGroup derives input capabilities from the
@@ -535,7 +545,7 @@ func (s *GatewayService) BuildCodexModelsManifestForGroup(
 	if effectivePlatform == "" {
 		effectivePlatform = group.Platform
 	}
-	if effectivePlatform != PlatformOpenAI && effectivePlatform != PlatformGrok && effectivePlatform != PlatformComposite {
+	if effectivePlatform != PlatformComposite && !isConcreteRequestPlatform(effectivePlatform) {
 		return BuildCodexModelsManifest(modelIDs)
 	}
 
@@ -552,7 +562,9 @@ func (s *GatewayService) BuildCodexModelsManifestForGroup(
 		}
 	}
 	imageInputModels := make(map[string]bool, len(modelIDs))
+	modelMetadata := make(map[string]codexModelMetadataOverride, len(modelIDs))
 	for _, modelID := range modelIDs {
+		modelID = strings.TrimSpace(modelID)
 		if groupCodexModelSupportsImageInput(
 			effectivePlatform,
 			modelID,
@@ -560,13 +572,26 @@ func (s *GatewayService) BuildCodexModelsManifestForGroup(
 			compositeRoutes,
 			compositeRoutesAvailable,
 		) {
-			imageInputModels[strings.TrimSpace(modelID)] = true
+			imageInputModels[modelID] = true
+		}
+		if metadata, ok := groupCodexModelMetadata(
+			effectivePlatform,
+			modelID,
+			accounts,
+			compositeRoutes,
+			compositeRoutesAvailable,
+		); ok {
+			modelMetadata[modelID] = metadata
 		}
 	}
-	return buildCodexModelsManifest(modelIDs, imageInputModels)
+	return buildCodexModelsManifest(modelIDs, imageInputModels, modelMetadata)
 }
 
-func buildCodexModelsManifest(modelIDs []string, imageInputModels map[string]bool) ([]byte, error) {
+func buildCodexModelsManifest(
+	modelIDs []string,
+	imageInputModels map[string]bool,
+	modelMetadata map[string]codexModelMetadataOverride,
+) ([]byte, error) {
 	seen := make(map[string]struct{}, len(modelIDs))
 	models := make([]configuredCodexModelDescriptor, 0, len(modelIDs))
 	for _, modelID := range modelIDs {
@@ -585,11 +610,273 @@ func buildCodexModelsManifest(modelIDs []string, imageInputModels map[string]boo
 		if imageInputModels[modelID] {
 			descriptor.InputModalities = []string{"text", "image"}
 		}
+		if metadata, ok := modelMetadata[modelID]; ok {
+			applyUpstreamModelMetadataToCodexDescriptor(&descriptor, metadata)
+		}
 		models = append(models, descriptor)
 	}
 	return json.Marshal(struct {
 		Models []configuredCodexModelDescriptor `json:"models"`
 	}{Models: models})
+}
+
+func groupCodexModelMetadata(
+	platform string,
+	modelID string,
+	accounts []Account,
+	compositeRoutes []CompositeModelRoute,
+	compositeRoutesAvailable bool,
+) (codexModelMetadataOverride, bool) {
+	modelID = strings.TrimSpace(modelID)
+	if modelID == "" {
+		return codexModelMetadataOverride{}, false
+	}
+	upstreamModel := modelID
+	if platform == PlatformComposite {
+		var resolved bool
+		platform, upstreamModel, resolved = resolveCodexCompositeModelTarget(
+			modelID,
+			accounts,
+			compositeRoutes,
+			compositeRoutesAvailable,
+		)
+		if !resolved {
+			return codexModelMetadataOverride{}, false
+		}
+	}
+	if !isConcreteRequestPlatform(platform) {
+		return codexModelMetadataOverride{}, false
+	}
+
+	explicitClaims := false
+	if upstreamModel == modelID {
+		for _, account := range accounts {
+			if account.Platform == platform && explicitModelMappingClaims(account, modelID) {
+				explicitClaims = true
+				break
+			}
+		}
+	}
+
+	candidates := make([]UpstreamModelMetadata, 0)
+	for i := range accounts {
+		account := &accounts[i]
+		if account.Platform != platform {
+			continue
+		}
+		lookupModel := upstreamModel
+		if explicitClaims {
+			if !explicitModelMappingClaims(*account, modelID) {
+				continue
+			}
+			lookupModel = account.GetMappedModel(modelID)
+		} else {
+			if !account.IsModelSupported(upstreamModel) {
+				continue
+			}
+			lookupModel = account.GetMappedModel(upstreamModel)
+		}
+		metadata, ok := account.GetUpstreamModelMetadata(lookupModel)
+		if !ok {
+			return codexModelMetadataOverride{}, false
+		}
+		candidates = append(candidates, metadata)
+	}
+	if len(candidates) == 0 {
+		return codexModelMetadataOverride{}, false
+	}
+	return intersectUpstreamModelMetadata(modelID, candidates), true
+}
+
+func intersectUpstreamModelMetadata(modelID string, candidates []UpstreamModelMetadata) codexModelMetadataOverride {
+	result := codexModelMetadataOverride{UpstreamModelMetadata: UpstreamModelMetadata{ID: strings.TrimSpace(modelID)}}
+	for _, candidate := range candidates {
+		if result.DisplayName == "" && strings.TrimSpace(candidate.DisplayName) != "" {
+			result.DisplayName = strings.TrimSpace(candidate.DisplayName)
+		}
+		if result.Description == "" && strings.TrimSpace(candidate.Description) != "" {
+			result.Description = strings.TrimSpace(candidate.Description)
+		}
+	}
+
+	reasoningKnown := true
+	reasoningValue := false
+	for i, candidate := range candidates {
+		if candidate.Reasoning == nil {
+			reasoningKnown = false
+			break
+		}
+		if i == 0 {
+			reasoningValue = *candidate.Reasoning
+			continue
+		}
+		if reasoningValue != *candidate.Reasoning {
+			reasoningKnown = false
+			result.reasoningConflict = true
+			break
+		}
+	}
+	if reasoningKnown {
+		result.Reasoning = &reasoningValue
+		if reasoningValue {
+			levels := normalizeReasoningLevels(candidates[0].SupportedReasoningLevels)
+			for _, candidate := range candidates[1:] {
+				levels = intersectOrderedStrings(levels, normalizeReasoningLevels(candidate.SupportedReasoningLevels))
+			}
+			result.SupportedReasoningLevels = levels
+			if len(levels) == 0 {
+				result.reasoningConflict = true
+			}
+			if len(levels) > 0 {
+				sharedDefault := normalizeReasoningLevel(candidates[0].DefaultReasoningLevel)
+				for _, candidate := range candidates[1:] {
+					if normalizeReasoningLevel(candidate.DefaultReasoningLevel) != sharedDefault {
+						sharedDefault = ""
+						break
+					}
+				}
+				if !stringSliceContains(levels, sharedDefault) {
+					sharedDefault = levels[0]
+				}
+				result.DefaultReasoningLevel = sharedDefault
+			}
+		}
+	}
+
+	modalitiesKnown := true
+	modalities := normalizeCodexInputModalities(candidates[0].InputModalities)
+	if len(modalities) == 0 {
+		modalitiesKnown = false
+	}
+	for _, candidate := range candidates[1:] {
+		candidateModalities := normalizeCodexInputModalities(candidate.InputModalities)
+		if len(candidateModalities) == 0 {
+			modalitiesKnown = false
+			break
+		}
+		modalities = intersectOrderedStrings(modalities, candidateModalities)
+	}
+	if modalitiesKnown && len(modalities) > 0 {
+		result.InputModalities = modalities
+	} else if modalitiesKnown {
+		result.inputModalitiesConflict = true
+	}
+
+	contextKnown := true
+	for i, candidate := range candidates {
+		if candidate.ContextWindow <= 0 {
+			contextKnown = false
+			break
+		}
+		if i == 0 || candidate.ContextWindow < result.ContextWindow {
+			result.ContextWindow = candidate.ContextWindow
+		}
+	}
+	if !contextKnown {
+		result.ContextWindow = 0
+	}
+	return result
+}
+
+func applyUpstreamModelMetadataToCodexDescriptor(
+	descriptor *configuredCodexModelDescriptor,
+	metadata codexModelMetadataOverride,
+) {
+	if descriptor == nil {
+		return
+	}
+	if strings.TrimSpace(metadata.DisplayName) != "" {
+		descriptor.DisplayName = strings.TrimSpace(metadata.DisplayName)
+	}
+	if strings.TrimSpace(metadata.Description) != "" {
+		descriptor.Description = strings.TrimSpace(metadata.Description)
+	}
+	if metadata.reasoningConflict {
+		descriptor.DefaultReasoningLevel = nil
+		descriptor.SupportedReasoningLevels = []configuredCodexReasoningLevel{}
+	} else if metadata.Reasoning != nil && !*metadata.Reasoning {
+		none := "none"
+		descriptor.DefaultReasoningLevel = &none
+		descriptor.SupportedReasoningLevels = []configuredCodexReasoningLevel{{
+			Effort:      "none",
+			Description: configuredCodexReasoningLevelDescription("none"),
+		}}
+	} else if metadata.Reasoning != nil && *metadata.Reasoning {
+		levels := normalizeReasoningLevels(metadata.SupportedReasoningLevels)
+		if len(levels) == 0 {
+			descriptor.DefaultReasoningLevel = nil
+			descriptor.SupportedReasoningLevels = []configuredCodexReasoningLevel{}
+		} else {
+			defaultLevel := normalizeReasoningLevel(metadata.DefaultReasoningLevel)
+			if !stringSliceContains(levels, defaultLevel) {
+				defaultLevel = levels[0]
+			}
+			descriptor.DefaultReasoningLevel = &defaultLevel
+			descriptor.SupportedReasoningLevels = make([]configuredCodexReasoningLevel, 0, len(levels))
+			for _, level := range levels {
+				descriptor.SupportedReasoningLevels = append(descriptor.SupportedReasoningLevels, configuredCodexReasoningLevel{
+					Effort:      level,
+					Description: configuredCodexReasoningLevelDescription(level),
+				})
+			}
+		}
+	}
+	if metadata.inputModalitiesConflict {
+		descriptor.InputModalities = []string{"text"}
+	} else if modalities := normalizeCodexInputModalities(metadata.InputModalities); len(modalities) > 0 {
+		descriptor.InputModalities = modalities
+	}
+	if metadata.ContextWindow > 0 {
+		descriptor.ContextWindow = metadata.ContextWindow
+		descriptor.MaxContextWindow = metadata.ContextWindow
+	}
+}
+
+func configuredCodexReasoningLevelDescription(level string) string {
+	switch level {
+	case "none":
+		return "Use the model's default behavior without configurable reasoning"
+	case "minimal":
+		return "Minimal reasoning for the fastest responses"
+	case "low":
+		return "Fast responses with lighter reasoning"
+	case "medium":
+		return "Balanced reasoning for most coding tasks"
+	case "high":
+		return "Greater reasoning depth for coding and agent tasks"
+	case "xhigh":
+		return "Extra-high reasoning depth for difficult tasks"
+	case "max":
+		return "Maximum reasoning depth for complex tasks"
+	default:
+		return "Reasoning effort supported by the upstream model"
+	}
+}
+
+func intersectOrderedStrings(left, right []string) []string {
+	rightSet := make(map[string]struct{}, len(right))
+	for _, value := range right {
+		rightSet[value] = struct{}{}
+	}
+	intersection := make([]string, 0, len(left))
+	for _, value := range left {
+		if _, ok := rightSet[value]; ok {
+			intersection = append(intersection, value)
+		}
+	}
+	return intersection
+}
+
+func stringSliceContains(values []string, target string) bool {
+	if target == "" {
+		return false
+	}
+	for _, value := range values {
+		if value == target {
+			return true
+		}
+	}
+	return false
 }
 
 func groupCodexModelSupportsImageInput(

@@ -25,6 +25,11 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		return nil, filterErr
 	}
 	body = filteredBody
+	filteredBody, filterErr = filterOpenAIResponsesNoneReasoningEffortForAccount(account, body)
+	if filterErr != nil {
+		return nil, filterErr
+	}
+	body = filteredBody
 	if account != nil && account.IsDeepSeek() {
 		return s.forwardDeepSeekResponses(ctx, c, account, body)
 	}

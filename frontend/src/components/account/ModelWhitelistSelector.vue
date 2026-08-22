@@ -172,6 +172,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   'update:modelValue': [value: string[]]
+  'upstream-synced': []
 }>()
 
 const appStore = useAppStore()
@@ -310,6 +311,10 @@ const syncUpstreamModels = async () => {
     if (upstreamModels.length === 0) {
       appStore.showInfo(t('admin.accounts.syncUpstreamModelsEmpty'))
       return
+    }
+
+    if (!props.accountId) {
+      emit('upstream-synced')
     }
 
     const newModels = [...props.modelValue]
