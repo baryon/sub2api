@@ -76,6 +76,22 @@ func codexManifestModelSlugs(t *testing.T, body []byte) []string {
 	return slugs
 }
 
+func codexManifestReasoningEfforts(t *testing.T, model map[string]any) []string {
+	t.Helper()
+
+	rawLevels, ok := model["supported_reasoning_levels"].([]any)
+	require.True(t, ok)
+	efforts := make([]string, 0, len(rawLevels))
+	for _, rawLevel := range rawLevels {
+		level, ok := rawLevel.(map[string]any)
+		require.True(t, ok)
+		effort, ok := level["effort"].(string)
+		require.True(t, ok)
+		efforts = append(efforts, effort)
+	}
+	return efforts
+}
+
 func requireCompleteConfiguredCodexModel(t *testing.T, model map[string]any, slug string) {
 	t.Helper()
 
@@ -649,6 +665,107 @@ func TestBuildCodexModelsManifestForGroupIntersectsSyncedAccountMetadata(t *test
 	require.EqualValues(t, 128_000, models[0]["context_window"])
 }
 
+// Scenario: 同一公开别名映射到同平台不同上游模型时取安全交集，并保持公开身份。
+func TestBuildCodexModelsManifestForGroupIntersectsDifferentMappedTargetsWithoutLeakingAlias(t *testing.T) {
+	t.Parallel()
+
+	const groupID int64 = 739
+	reasoning := true
+	newAccount := func(id int64, target, displayName, description string, levels, modalities []string, contextWindow int64) Account {
+		account := Account{
+			ID: id, Platform: PlatformOpenAI, Type: AccountTypeAPIKey,
+			Credentials: map[string]any{
+				"base_url":      fmt.Sprintf("https://provider-%d.example/v1", id),
+				"model_mapping": map[string]any{"my-coder": target},
+			},
+		}
+		account.SetUpstreamModelMetadataSnapshot(UpstreamModelMetadataSnapshot{Models: map[string]UpstreamModelMetadata{
+			target: {
+				ID: target, DisplayName: displayName, Description: description, Reasoning: &reasoning,
+				SupportedReasoningLevels: levels,
+				InputModalities:          modalities,
+				ContextWindow:            contextWindow,
+			},
+		}})
+		return account
+	}
+	openAIAccount := newAccount(
+		31,
+		"gpt-5.6-sol",
+		"GPT-5.6 Sol",
+		"OpenAI upstream model",
+		[]string{"low", "medium", "high", "xhigh"},
+		[]string{"text", "image"},
+		272_000,
+	)
+	arkAccount := newAccount(
+		32,
+		"glm-5.3",
+		"GLM 5.3",
+		"Ark upstream model",
+		[]string{"low", "medium", "high"},
+		[]string{"text"},
+		1_000_000,
+	)
+
+	for _, accounts := range [][]Account{{openAIAccount, arkAccount}, {arkAccount, openAIAccount}} {
+		svc := &GatewayService{accountRepo: codexModelsVisibilityAccountRepo{byGroup: map[int64][]Account{
+			groupID: accounts,
+		}}}
+		body, err := svc.BuildCodexModelsManifestForGroup(
+			context.Background(), &Group{ID: groupID, Platform: PlatformOpenAI}, "", []string{"my-coder"},
+		)
+		require.NoError(t, err)
+		models := decodeCodexManifestModels(t, body)
+		require.Len(t, models, 1)
+		require.Equal(t, "my-coder", models[0]["slug"])
+		require.Equal(t, "my-coder", models[0]["display_name"])
+		require.Equal(t, "Custom model routed through Sub2API.", models[0]["description"])
+		require.Equal(t, []string{"low", "medium", "high"}, codexManifestReasoningEfforts(t, models[0]))
+		require.Equal(t, []any{"text"}, models[0]["input_modalities"])
+		require.EqualValues(t, 272_000, models[0]["context_window"])
+	}
+}
+
+// Scenario: Composite 跨平台公开别名仍不猜测任一平台能力。
+func TestBuildCodexModelsManifestForGroupKeepsCrossPlatformAliasAmbiguityClosed(t *testing.T) {
+	t.Parallel()
+
+	const groupID int64 = 740
+	reasoning := true
+	newAccount := func(id int64, platform, target string) Account {
+		account := Account{
+			ID: id, Platform: platform, Type: AccountTypeAPIKey,
+			Credentials: map[string]any{"model_mapping": map[string]any{"shared-alias": target}},
+		}
+		account.SetUpstreamModelMetadataSnapshot(UpstreamModelMetadataSnapshot{Models: map[string]UpstreamModelMetadata{
+			target: {
+				ID: target, DisplayName: target, Reasoning: &reasoning,
+				SupportedReasoningLevels: []string{"low", "high"},
+				InputModalities:          []string{"text", "image"},
+				ContextWindow:            128_000,
+			},
+		}})
+		return account
+	}
+	svc := &GatewayService{accountRepo: codexModelsVisibilityAccountRepo{byGroup: map[int64][]Account{
+		groupID: {
+			newAccount(33, PlatformOpenAI, "gpt-5.6-sol"),
+			newAccount(34, PlatformGrok, "grok-4.6"),
+		},
+	}}}
+
+	body, err := svc.BuildCodexModelsManifestForGroup(
+		context.Background(), &Group{ID: groupID, Platform: PlatformComposite}, "", []string{"shared-alias"},
+	)
+	require.NoError(t, err)
+	models := decodeCodexManifestModels(t, body)
+	require.Len(t, models, 1)
+	require.Equal(t, "shared-alias", models[0]["display_name"])
+	require.Equal(t, []string{"none"}, codexManifestReasoningEfforts(t, models[0]))
+	require.Equal(t, []any{"text"}, models[0]["input_modalities"])
+}
+
 func TestBuildCodexModelsManifestForGroupDoesNotAdvertiseNoneWhenAccountReasoningConflicts(t *testing.T) {
 	t.Parallel()
 
@@ -892,6 +1009,29 @@ func TestBuildGroupConfiguredCodexModelsManifestUsesAdministratorConfiguration(t
 	t.Parallel()
 
 	const groupID int64 = 77
+	reasoning := true
+	arkAccount := Account{
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"model_mapping": map[string]any{
+				"glm-5.3":     "glm-5.3",
+				"gpt-image-2": "gpt-image-2",
+			},
+		},
+	}
+	arkAccount.SetUpstreamModelMetadataSnapshot(UpstreamModelMetadataSnapshot{Models: map[string]UpstreamModelMetadata{
+		"glm-5.3": {
+			ID:                       "glm-5.3",
+			DisplayName:              "GLM 5.3",
+			Description:              "Ark coding model",
+			Reasoning:                &reasoning,
+			DefaultReasoningLevel:    "medium",
+			SupportedReasoningLevels: []string{"low", "medium", "high"},
+			InputModalities:          []string{"text"},
+			ContextWindow:            1_000_000,
+		},
+	}})
 	svc := &OpenAIGatewayService{accountRepo: codexModelsVisibilityAccountRepo{
 		byGroup: map[int64][]Account{
 			groupID: {
@@ -899,15 +1039,7 @@ func TestBuildGroupConfiguredCodexModelsManifestUsesAdministratorConfiguration(t
 					Platform: PlatformOpenAI,
 					Type:     AccountTypeOAuth,
 				},
-				{
-					Platform: PlatformOpenAI,
-					Type:     AccountTypeAPIKey,
-					Credentials: map[string]any{
-						"model_mapping": map[string]any{
-							"glm-5.3": "glm-5.3",
-						},
-					},
-				},
+				arkAccount,
 			},
 		},
 	}}
@@ -916,7 +1048,14 @@ func TestBuildGroupConfiguredCodexModelsManifestUsesAdministratorConfiguration(t
 	manifest, configured, err := svc.BuildGroupConfiguredCodexModelsManifest(context.Background(), group, "")
 	require.NoError(t, err)
 	require.True(t, configured)
-	require.Equal(t, []string{"glm-5.3"}, codexManifestModelSlugs(t, manifest.Body))
+	models := decodeCodexManifestModels(t, manifest.Body)
+	require.Len(t, models, 1)
+	require.Equal(t, "glm-5.3", models[0]["slug"])
+	require.Equal(t, "GLM 5.3", models[0]["display_name"])
+	require.Equal(t, []string{"low", "medium", "high"}, codexManifestReasoningEfforts(t, models[0]))
+	require.Equal(t, "medium", models[0]["default_reasoning_level"])
+	require.Equal(t, []any{"text"}, models[0]["input_modalities"])
+	require.EqualValues(t, 1_000_000, models[0]["context_window"])
 	require.Equal(t, codexModelsManifestBodyETag(manifest.Body), manifest.ETag)
 
 	notModified, configured, err := svc.BuildGroupConfiguredCodexModelsManifest(
@@ -1086,6 +1225,35 @@ func TestIsRetryableCodexModelsManifestTransportError(t *testing.T) {
 			if got := isRetryableCodexModelsManifestTransportError(tt.err); got != tt.retryable {
 				t.Fatalf("retryable = %v, want %v", got, tt.retryable)
 			}
+		})
+	}
+}
+
+func TestIsRetryableCodexModelsManifestStatus(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name              string
+		statusCode        int
+		useAPIKeyUpstream bool
+		retryable         bool
+	}{
+		{name: "api key 404", statusCode: http.StatusNotFound, useAPIKeyUpstream: true, retryable: true},
+		{name: "api key 405", statusCode: http.StatusMethodNotAllowed, useAPIKeyUpstream: true, retryable: true},
+		{name: "oauth 404", statusCode: http.StatusNotFound},
+		{name: "oauth 405", statusCode: http.StatusMethodNotAllowed},
+		{name: "api key 401", statusCode: http.StatusUnauthorized, useAPIKeyUpstream: true},
+		{name: "oauth 401", statusCode: http.StatusUnauthorized, retryable: true},
+		{name: "api key 400", statusCode: http.StatusBadRequest, useAPIKeyUpstream: true},
+		{name: "api key 403", statusCode: http.StatusForbidden, useAPIKeyUpstream: true},
+		{name: "rate limited", statusCode: http.StatusTooManyRequests, retryable: true},
+		{name: "server error", statusCode: http.StatusServiceUnavailable, retryable: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tt.retryable, isRetryableCodexModelsManifestStatus(tt.statusCode, tt.useAPIKeyUpstream))
 		})
 	}
 }

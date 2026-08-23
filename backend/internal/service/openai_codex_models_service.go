@@ -100,21 +100,28 @@ func (s *OpenAIGatewayService) BuildGroupConfiguredCodexModelsManifest(
 		return nil, false, nil
 	}
 
-	configuredModels, err := s.groupConfiguredCodexModelIDs(ctx, group.ID)
+	accounts, err := s.accountRepo.ListSchedulableByGroupID(ctx, group.ID)
 	if err != nil {
 		return nil, false, fmt.Errorf("load group configured Codex models: %w", err)
 	}
+	configuredModels := openAIConfiguredCodexModelIDs(accounts)
 	if len(configuredModels) == 0 {
 		return nil, false, nil
 	}
 
-	body, err := BuildCodexModelsManifest(nil)
+	body, err := buildCodexModelsManifestForAccounts(
+		PlatformOpenAI,
+		configuredModels,
+		accounts,
+		nil,
+		true,
+	)
 	if err != nil {
 		return nil, false, fmt.Errorf("initialize group configured Codex models: %w", err)
 	}
 	body, _, err = mergeConfiguredCodexModelsManifest(
 		body,
-		configuredModels,
+		nil,
 		group.ModelsListConfig.Models,
 		group.CustomModelsListEnabled(),
 	)
@@ -178,7 +185,10 @@ func (s *OpenAIGatewayService) groupConfiguredCodexModelIDs(ctx context.Context,
 	if err != nil {
 		return nil, err
 	}
+	return openAIConfiguredCodexModelIDs(accounts), nil
+}
 
+func openAIConfiguredCodexModelIDs(accounts []Account) []string {
 	seen := make(map[string]struct{})
 	models := make([]string, 0)
 	for i := range accounts {
@@ -199,11 +209,12 @@ func (s *OpenAIGatewayService) groupConfiguredCodexModelIDs(ctx context.Context,
 		}
 	}
 	sort.Strings(models)
-	return models, nil
+	return models
 }
 
 const (
 	configuredCodexModelPriority       = 50
+	configuredCodexCustomDescription   = "Custom model routed through Sub2API."
 	configuredCodexFallbackContext     = 272_000
 	configuredCodexDeepSeekV4Context   = 1_000_000
 	configuredCodexGrokContext         = 500_000
@@ -272,7 +283,7 @@ func newConfiguredCodexModelDescriptor(modelID string) configuredCodexModelDescr
 	descriptor := configuredCodexModelDescriptor{
 		Slug:                  modelID,
 		DisplayName:           modelID,
-		Description:           "Custom model routed through Sub2API.",
+		Description:           configuredCodexCustomDescription,
 		DefaultReasoningLevel: &noReasoningLevel,
 		SupportedReasoningLevels: []configuredCodexReasoningLevel{
 			{Effort: "none", Description: "Use the model's default reasoning behavior"},
@@ -561,6 +572,22 @@ func (s *GatewayService) BuildCodexModelsManifestForGroup(
 			compositeRoutesAvailable = false
 		}
 	}
+	return buildCodexModelsManifestForAccounts(
+		effectivePlatform,
+		modelIDs,
+		accounts,
+		compositeRoutes,
+		compositeRoutesAvailable,
+	)
+}
+
+func buildCodexModelsManifestForAccounts(
+	effectivePlatform string,
+	modelIDs []string,
+	accounts []Account,
+	compositeRoutes []CompositeModelRoute,
+	compositeRoutesAvailable bool,
+) ([]byte, error) {
 	imageInputModels := make(map[string]bool, len(modelIDs))
 	modelMetadata := make(map[string]codexModelMetadataOverride, len(modelIDs))
 	for _, modelID := range modelIDs {
@@ -649,6 +676,7 @@ func groupCodexModelMetadata(
 	}
 
 	explicitClaims := false
+	publicAlias := upstreamModel != modelID
 	if upstreamModel == modelID {
 		for _, account := range accounts {
 			if account.Platform == platform && explicitModelMappingClaims(account, modelID) {
@@ -664,7 +692,7 @@ func groupCodexModelMetadata(
 		if account.Platform != platform {
 			continue
 		}
-		lookupModel := upstreamModel
+		var lookupModel string
 		if explicitClaims {
 			if !explicitModelMappingClaims(*account, modelID) {
 				continue
@@ -676,6 +704,9 @@ func groupCodexModelMetadata(
 			}
 			lookupModel = account.GetMappedModel(upstreamModel)
 		}
+		if strings.TrimSpace(lookupModel) != modelID {
+			publicAlias = true
+		}
 		metadata, ok := account.GetUpstreamModelMetadata(lookupModel)
 		if !ok {
 			return codexModelMetadataOverride{}, false
@@ -685,7 +716,12 @@ func groupCodexModelMetadata(
 	if len(candidates) == 0 {
 		return codexModelMetadataOverride{}, false
 	}
-	return intersectUpstreamModelMetadata(modelID, candidates), true
+	metadata := intersectUpstreamModelMetadata(modelID, candidates)
+	if publicAlias {
+		metadata.DisplayName = modelID
+		metadata.Description = configuredCodexCustomDescription
+	}
+	return metadata, true
 }
 
 func intersectUpstreamModelMetadata(modelID string, candidates []UpstreamModelMetadata) codexModelMetadataOverride {
@@ -1166,17 +1202,26 @@ func (e *codexModelsManifestUpstreamError) Error() string { return e.err.Error()
 func (e *codexModelsManifestUpstreamError) Unwrap() error { return e.err }
 
 // IsRetryableCodexModelsManifestError reports whether another selected account
-// may succeed without changing the request. Configuration and upstream 4xx
-// responses, except 429 and ChatGPT-backend 401, are intentionally not
-// retried. A manifest 401 from the ChatGPT Codex backend reflects the selected
-// OAuth account's upstream token rather than the client request (the client's
-// own API key was already validated locally), so a different account may still
-// serve the manifest. Custom API key upstreams keep the old no-failover 401
+// may succeed without changing the request. API key upstream 404/405 responses
+// mean that the selected account does not expose a model-discovery endpoint, so
+// another account may still serve the manifest. Other upstream 4xx responses,
+// except 429 and ChatGPT-backend 401, are intentionally not retried. A manifest
+// 401 from the ChatGPT Codex backend reflects the selected OAuth account's
+// upstream token rather than the client request (the client's own API key was
+// already validated locally). Custom API key upstreams keep the no-failover 401
 // behavior because their /models auth semantics are not authoritative for the
 // account.
 func IsRetryableCodexModelsManifestError(err error) bool {
 	var upstreamErr *codexModelsManifestUpstreamError
 	return errors.As(err, &upstreamErr) && upstreamErr.retryable
+}
+
+func isRetryableCodexModelsManifestStatus(statusCode int, useAPIKeyUpstream bool) bool {
+	return (useAPIKeyUpstream &&
+		(statusCode == http.StatusNotFound || statusCode == http.StatusMethodNotAllowed)) ||
+		(statusCode == http.StatusUnauthorized && !useAPIKeyUpstream) ||
+		statusCode == http.StatusTooManyRequests ||
+		(statusCode >= http.StatusInternalServerError && statusCode < 600)
 }
 
 func isRetryableCodexModelsManifestTransportError(err error) bool {
@@ -1613,9 +1658,7 @@ func (s *OpenAIGatewayService) fetchCodexModelsManifestUpstream(ctx context.Cont
 			statusCode: resp.StatusCode,
 			headers:    resp.Header.Clone(),
 			body:       body,
-			retryable: (resp.StatusCode == http.StatusUnauthorized && !request.useAPIKeyUpstream) ||
-				resp.StatusCode == http.StatusTooManyRequests ||
-				(resp.StatusCode >= http.StatusInternalServerError && resp.StatusCode < 600),
+			retryable:  isRetryableCodexModelsManifestStatus(resp.StatusCode, request.useAPIKeyUpstream),
 		}
 	}
 
