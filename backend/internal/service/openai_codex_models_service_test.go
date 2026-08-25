@@ -39,11 +39,17 @@ func (r codexModelsVisibilityAccountRepo) ListSchedulableByGroupID(_ context.Con
 	return append([]Account(nil), accounts...), nil
 }
 
+func (r codexModelsVisibilityAccountRepo) ListByGroup(_ context.Context, groupID int64) ([]Account, error) {
+	accounts := r.byGroup[groupID]
+	return append([]Account(nil), accounts...), nil
+}
+
 type countingCodexModelsAccountRepo struct {
 	AccountRepository
-	accounts []Account
-	err      error
-	calls    atomic.Int32
+	accounts       []Account
+	err            error
+	listByGroupErr error
+	calls          atomic.Int32
 }
 
 func (r *countingCodexModelsAccountRepo) ListSchedulableByGroupID(_ context.Context, _ int64) ([]Account, error) {
@@ -52,6 +58,83 @@ func (r *countingCodexModelsAccountRepo) ListSchedulableByGroupID(_ context.Cont
 		return nil, r.err
 	}
 	return append([]Account(nil), r.accounts...), nil
+}
+
+func (r *countingCodexModelsAccountRepo) ListByGroup(_ context.Context, _ int64) ([]Account, error) {
+	if r.listByGroupErr != nil {
+		return nil, r.listByGroupErr
+	}
+	return append([]Account(nil), r.accounts...), nil
+}
+
+type splitCodexModelsAccountRepo struct {
+	AccountRepository
+	schedulable map[int64][]Account
+	catalog     map[int64][]Account
+}
+
+func (r splitCodexModelsAccountRepo) ListSchedulableByGroupID(_ context.Context, groupID int64) ([]Account, error) {
+	return append([]Account(nil), r.schedulable[groupID]...), nil
+}
+
+func (r splitCodexModelsAccountRepo) ListByGroup(_ context.Context, groupID int64) ([]Account, error) {
+	return append([]Account(nil), r.catalog[groupID]...), nil
+}
+
+func newCodexCatalogMappedAccount(
+	id int64,
+	target string,
+	displayName string,
+	levels []string,
+	modalities []string,
+	contextWindow int64,
+	schedulable bool,
+	extraMapping map[string]any,
+) Account {
+	reasoning := true
+	mapping := map[string]any{"my-coder": target}
+	for key, value := range extraMapping {
+		mapping[key] = value
+	}
+	account := Account{
+		ID:          id,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Status:      StatusActive,
+		Schedulable: schedulable,
+		Credentials: map[string]any{
+			"base_url":      fmt.Sprintf("https://provider-%d.example/v1", id),
+			"model_mapping": mapping,
+		},
+	}
+	models := map[string]UpstreamModelMetadata{
+		target: {
+			ID:                       target,
+			DisplayName:              displayName,
+			Description:              displayName + " upstream",
+			Reasoning:                &reasoning,
+			SupportedReasoningLevels: levels,
+			InputModalities:          modalities,
+			ContextWindow:            contextWindow,
+		},
+	}
+	for _, value := range extraMapping {
+		exclusive, _ := value.(string)
+		if exclusive == "" || exclusive == target {
+			continue
+		}
+		models[exclusive] = UpstreamModelMetadata{
+			ID:                       exclusive,
+			DisplayName:              "Exclusive Model",
+			Description:              "Only mapped on the unschedulable account",
+			Reasoning:                &reasoning,
+			SupportedReasoningLevels: []string{"high"},
+			InputModalities:          []string{"text", "image"},
+			ContextWindow:            1_000_000,
+		}
+	}
+	account.SetUpstreamModelMetadataSnapshot(UpstreamModelMetadataSnapshot{Models: models})
+	return account
 }
 
 func decodeCodexManifestModels(t *testing.T, body []byte) []map[string]any {
@@ -728,6 +811,109 @@ func TestBuildCodexModelsManifestForGroupIntersectsDifferentMappedTargetsWithout
 	}
 }
 
+// Scenario: 暂时不可调度的映射账号仍参与能力交集。
+func TestBuildCodexModelsManifestForGroupIntersectsUnschedulableMappedAccounts(t *testing.T) {
+	t.Parallel()
+
+	const groupID int64 = 741
+	schedulable := newCodexCatalogMappedAccount(
+		41,
+		"gpt-5.6-sol",
+		"GPT-5.6 Sol",
+		[]string{"low", "medium", "high", "xhigh"},
+		[]string{"text", "image"},
+		1_000_000,
+		true,
+		nil,
+	)
+	unschedulable := newCodexCatalogMappedAccount(
+		42,
+		"glm-5.3",
+		"GLM 5.3",
+		[]string{"low", "medium", "high"},
+		[]string{"text"},
+		272_000,
+		false,
+		map[string]any{"exclusive-model": "exclusive-upstream"},
+	)
+	svc := &GatewayService{accountRepo: splitCodexModelsAccountRepo{
+		schedulable: map[int64][]Account{groupID: {schedulable}},
+		catalog:     map[int64][]Account{groupID: {schedulable, unschedulable}},
+	}}
+
+	body, err := svc.BuildCodexModelsManifestForGroup(
+		context.Background(), &Group{ID: groupID, Platform: PlatformOpenAI}, "", []string{"my-coder"},
+	)
+	require.NoError(t, err)
+	models := decodeCodexManifestModels(t, body)
+	require.Len(t, models, 1)
+	require.Equal(t, "my-coder", models[0]["slug"])
+	require.Equal(t, "my-coder", models[0]["display_name"])
+	require.Equal(t, []string{"low", "medium", "high"}, codexManifestReasoningEfforts(t, models[0]))
+	require.Equal(t, []any{"text"}, models[0]["input_modalities"])
+	require.EqualValues(t, 272_000, models[0]["context_window"])
+}
+
+// Scenario: 账号删除后契约可以变宽。
+func TestBuildCodexModelsManifestForGroupWidensAfterUnschedulableAccountIsRemoved(t *testing.T) {
+	t.Parallel()
+
+	const groupID int64 = 742
+	remaining := newCodexCatalogMappedAccount(
+		41,
+		"gpt-5.6-sol",
+		"GPT-5.6 Sol",
+		[]string{"low", "medium", "high", "xhigh"},
+		[]string{"text", "image"},
+		1_000_000,
+		true,
+		nil,
+	)
+	svc := &GatewayService{accountRepo: splitCodexModelsAccountRepo{
+		schedulable: map[int64][]Account{groupID: {remaining}},
+		catalog:     map[int64][]Account{groupID: {remaining}},
+	}}
+
+	body, err := svc.BuildCodexModelsManifestForGroup(
+		context.Background(), &Group{ID: groupID, Platform: PlatformOpenAI}, "", []string{"my-coder"},
+	)
+	require.NoError(t, err)
+	models := decodeCodexManifestModels(t, body)
+	require.Len(t, models, 1)
+	require.Equal(t, []any{"text", "image"}, models[0]["input_modalities"])
+	require.EqualValues(t, 1_000_000, models[0]["context_window"])
+}
+
+func TestBuildCodexModelsManifestForGroupFallsBackToSchedulableWhenListByGroupFails(t *testing.T) {
+	t.Parallel()
+
+	const groupID int64 = 743
+	repo := &countingCodexModelsAccountRepo{
+		accounts: []Account{newCodexCatalogMappedAccount(
+			41,
+			"gpt-5.6-sol",
+			"GPT-5.6 Sol",
+			[]string{"low", "medium", "high", "xhigh"},
+			[]string{"text", "image"},
+			1_000_000,
+			true,
+			nil,
+		)},
+		listByGroupErr: errors.New("group listing unavailable"),
+	}
+	svc := &GatewayService{accountRepo: repo}
+
+	body, err := svc.BuildCodexModelsManifestForGroup(
+		context.Background(), &Group{ID: groupID, Platform: PlatformOpenAI}, "", []string{"my-coder"},
+	)
+	require.NoError(t, err)
+	require.Equal(t, int32(1), repo.calls.Load())
+	models := decodeCodexManifestModels(t, body)
+	require.Len(t, models, 1)
+	require.Equal(t, []any{"text", "image"}, models[0]["input_modalities"])
+	require.EqualValues(t, 1_000_000, models[0]["context_window"])
+}
+
 // Scenario: Composite 跨平台公开别名仍不猜测任一平台能力。
 func TestBuildCodexModelsManifestForGroupKeepsCrossPlatformAliasAmbiguityClosed(t *testing.T) {
 	t.Parallel()
@@ -1069,6 +1255,52 @@ func TestBuildGroupConfiguredCodexModelsManifestUsesAdministratorConfiguration(t
 	require.True(t, notModified.NotModified)
 	require.Empty(t, notModified.Body)
 	require.Equal(t, manifest.ETag, notModified.ETag)
+}
+
+// Scenario: OpenAI 配置目录对暂时不可调度账号取能力交集，且不发布其独有模型。
+func TestBuildGroupConfiguredCodexModelsManifestIntersectsUnschedulableMappedAccounts(t *testing.T) {
+	t.Parallel()
+
+	const groupID int64 = 79
+	schedulable := newCodexCatalogMappedAccount(
+		41,
+		"gpt-5.6-sol",
+		"GPT-5.6 Sol",
+		[]string{"low", "medium", "high", "xhigh"},
+		[]string{"text", "image"},
+		1_000_000,
+		true,
+		nil,
+	)
+	unschedulable := newCodexCatalogMappedAccount(
+		42,
+		"glm-5.3",
+		"GLM 5.3",
+		[]string{"low", "medium", "high"},
+		[]string{"text"},
+		272_000,
+		false,
+		map[string]any{"exclusive-model": "exclusive-upstream"},
+	)
+	svc := &OpenAIGatewayService{accountRepo: splitCodexModelsAccountRepo{
+		schedulable: map[int64][]Account{groupID: {schedulable}},
+		catalog:     map[int64][]Account{groupID: {schedulable, unschedulable}},
+	}}
+
+	manifest, configured, err := svc.BuildGroupConfiguredCodexModelsManifest(
+		context.Background(),
+		&Group{ID: groupID, Platform: PlatformOpenAI},
+		"",
+	)
+	require.NoError(t, err)
+	require.True(t, configured)
+	models := decodeCodexManifestModels(t, manifest.Body)
+	require.Len(t, models, 1)
+	require.Equal(t, "my-coder", models[0]["slug"])
+	require.Equal(t, "my-coder", models[0]["display_name"])
+	require.Equal(t, []string{"low", "medium", "high"}, codexManifestReasoningEfforts(t, models[0]))
+	require.Equal(t, []any{"text"}, models[0]["input_modalities"])
+	require.EqualValues(t, 272_000, models[0]["context_window"])
 }
 
 // Scenario: 没有管理员模型配置时保留现有上游发现路径。
