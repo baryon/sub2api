@@ -22,7 +22,7 @@ type deepSeekResponsesWSTurnState struct {
 	upstreamModel   string
 	channelMapping  service.ChannelMappingResult
 	requestBodyHash string
-	cyberBlockKey   string
+	cyberBlockBody  []byte
 	compositeRoute  service.CompositeRouteDecision
 }
 
@@ -165,8 +165,7 @@ func (h *OpenAIGatewayHandler) responsesDeepSeekWebSocket(
 			if cyberBlockedThisConn {
 				return nil, service.NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, cyberSessionBlockedClientMsg, nil)
 			}
-			cyberBlockKey := service.CyberSessionBlockKey(apiKey.ID, c, restoredPayload)
-			if cyberBlockKey != "" && h.gatewayService.IsCyberSessionBlocked(connectionCtx, cyberBlockKey) {
+			if blockedKey := findBlockedCyberSessionKey(connectionCtx, h.gatewayService, apiKey.ID, c, restoredPayload); blockedKey != "" {
 				writeCyberSessionBlockedWSError(connectionCtx, wsConn)
 				return nil, service.NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "session blocked by cyber-security policy", nil)
 			}
@@ -180,7 +179,7 @@ func (h *OpenAIGatewayHandler) responsesDeepSeekWebSocket(
 				upstreamModel:   upstreamModel,
 				channelMapping:  channelMapping,
 				requestBodyHash: service.HashUsageRequestPayload(restoredPayload),
-				cyberBlockKey:   cyberBlockKey,
+				cyberBlockBody:  append([]byte(nil), restoredPayload...),
 				compositeRoute:  decision,
 			})
 			return classificationPayload, nil
@@ -316,7 +315,7 @@ func (h *OpenAIGatewayHandler) responsesDeepSeekWebSocket(
 					var failoverErr *service.UpstreamFailoverError
 					if errors.As(credentialErr, &failoverErr) && failoverErr.ShouldRetryNextAccount() && switchCount < maxSwitches {
 						if failoverErr.ShouldReportAccountScheduleFailure() {
-							h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, account.GetMappedModel(state.upstreamModel), false, nil)
+							h.gatewayService.ReportOpenAIAccountScheduleResult(account, account.GetMappedModel(state.upstreamModel), false, nil, failoverErr)
 						}
 						h.gatewayService.RecordOpenAIAccountSwitch()
 						failedAccountIDs[account.ID] = struct{}{}
@@ -342,7 +341,7 @@ func (h *OpenAIGatewayHandler) responsesDeepSeekWebSocket(
 				var failoverErr *service.UpstreamFailoverError
 				if !service.IsDeepSeekWSAccountNeutralError(forwardErr) && errors.As(forwardErr, &failoverErr) {
 					if failoverErr.ShouldReportAccountScheduleFailure() {
-						h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, account.GetMappedModel(state.upstreamModel), false, nil)
+						h.gatewayService.ReportOpenAIAccountScheduleResult(account, account.GetMappedModel(state.upstreamModel), false, nil, failoverErr)
 					}
 					if failoverErr.ShouldRetryNextAccount() && switchCount < maxSwitches && effectiveTurnCtx.Err() == nil {
 						h.gatewayService.RecordOpenAIAccountSwitch()
@@ -363,7 +362,7 @@ func (h *OpenAIGatewayHandler) responsesDeepSeekWebSocket(
 				}
 				quotaPlatform := service.QuotaPlatform(admissionCtx, apiKey)
 				turnUsageFields := state.channelMapping.ToUsageFields(state.requestedModel, actualUpstreamModel)
-				h.recordCyberPolicyIfMarkedWithUsage(c, apiKey, account, subscription, state.requestedModel, forwardErr != nil, state.cyberBlockKey, turnUsageFields, state.requestBodyHash, result, quotaPlatform, pricingAt)
+				h.recordCyberPolicyIfMarkedWithUsage(c, apiKey, account, subscription, state.requestedModel, forwardErr != nil, state.cyberBlockBody, turnUsageFields, state.requestBodyHash, result, quotaPlatform, pricingAt)
 				if service.GetOpsCyberPolicy(c) != nil {
 					cyberBlockedThisConn = true
 				}
@@ -373,7 +372,7 @@ func (h *OpenAIGatewayHandler) responsesDeepSeekWebSocket(
 					if scheduleSucceeded && result != nil {
 						firstTokenMs = result.FirstTokenMs
 					}
-					h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, actualUpstreamModel, scheduleSucceeded, firstTokenMs)
+					h.gatewayService.ReportOpenAIAccountScheduleResult(account, actualUpstreamModel, scheduleSucceeded, firstTokenMs)
 				}
 
 				if result != nil && result.HasBillableTokenUsage() && service.GetOpsCyberPolicy(c) == nil {

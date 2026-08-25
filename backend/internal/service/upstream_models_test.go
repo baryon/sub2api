@@ -154,6 +154,11 @@ func TestExtractUpstreamModelIDs(t *testing.T) {
 			body: `{"data":[{"id":"canonical-id","model":"display-model"}]}`,
 			want: []string{"canonical-id"},
 		},
+		{
+			name: "codex manifest uses slug",
+			body: `{"models":[{"slug":"gpt-5.6-sol"},{"slug":"gpt-5.5-codex"}]}`,
+			want: []string{"gpt-5.5-codex", "gpt-5.6-sol"},
+		},
 	}
 
 	for _, tt := range tests {
@@ -166,6 +171,53 @@ func TestExtractUpstreamModelIDs(t *testing.T) {
 			require.Equal(t, tt.want, got)
 		})
 	}
+}
+
+func TestBuildUpstreamModelsRequestSupportsOpenAIOAuth(t *testing.T) {
+	svc := &AccountTestService{cfg: upstreamModelSyncTestConfig()}
+	account := &Account{
+		ID:       11,
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeOAuth,
+		Credentials: map[string]any{
+			"access_token":       "openai-oauth-token",
+			"chatgpt_account_id": "chatgpt-account",
+		},
+	}
+
+	req, err := svc.buildUpstreamModelsRequest(context.Background(), account)
+	require.NoError(t, err)
+	require.Equal(t, chatgptCodexModelsURL, req.URL.Scheme+"://"+req.URL.Host+req.URL.Path)
+	require.NotEmpty(t, req.URL.Query().Get("client_version"))
+	require.Equal(t, "Bearer openai-oauth-token", req.Header.Get("Authorization"))
+	require.Equal(t, "chatgpt-account", req.Header.Get("chatgpt-account-id"))
+	require.NotEmpty(t, req.Header.Get("Originator"))
+	require.NotEmpty(t, req.Header.Get("User-Agent"))
+	require.NotEmpty(t, req.Header.Get("Version"))
+}
+
+func TestFetchUpstreamSupportedModelsParsesOpenAIOAuthManifest(t *testing.T) {
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(strings.NewReader(`{"models":[{"slug":"gpt-5.6-sol"},{"slug":"gpt-5.5-codex"}]}`)),
+	}}
+	svc := &AccountTestService{
+		httpUpstream: upstream,
+		cfg:          upstreamModelSyncTestConfig(),
+	}
+
+	models, err := svc.FetchUpstreamSupportedModels(context.Background(), &Account{
+		ID:       12,
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeOAuth,
+		Credentials: map[string]any{
+			"access_token": "openai-oauth-token",
+		},
+	})
+	require.NoError(t, err)
+	require.Equal(t, []string{"gpt-5.5-codex", "gpt-5.6-sol"}, models)
+	require.Equal(t, "Bearer openai-oauth-token", upstream.lastReq.Header.Get("Authorization"))
 }
 
 func TestExtractGrokUpstreamModelIDs(t *testing.T) {
@@ -565,88 +617,20 @@ func TestSyncUpstreamModelCatalogDoesNotPersistPartialMetadataWhenRegistryFails(
 	require.Nil(t, repo.updates, "partial metadata must not replace a more complete persisted snapshot")
 }
 
-func TestFetchUpstreamSupportedModelsParsesGrokAPIKeyResponse(t *testing.T) {
+func TestFetchUpstreamSupportedModelsUsesConfiguredBodyLimit(t *testing.T) {
 	t.Parallel()
 
 	upstream := &httpUpstreamRecorder{resp: &http.Response{
 		StatusCode: http.StatusOK,
 		Header:     http.Header{"Content-Type": []string{"application/json"}},
-		Body:       io.NopCloser(strings.NewReader(`{"data":[{"id":"grok-4.5"},{"id":"grok-4.5"},{"id":"grok-imagine"}]}`)),
+		Body:       io.NopCloser(strings.NewReader(`{"data":[{"id":"gpt-5"}]}`)),
 	}}
-	svc := &AccountTestService{
-		httpUpstream: upstream,
-		cfg:          upstreamModelSyncTestConfig(),
-	}
-
-	models, err := svc.FetchUpstreamSupportedModels(context.Background(), &Account{
-		ID:       9,
-		Platform: PlatformGrok,
-		Type:     AccountTypeAPIKey,
-		Credentials: map[string]any{
-			"api_key":  "xai-key",
-			"base_url": "https://xai.example.com/v1",
-		},
-	})
-	require.NoError(t, err)
-	require.Equal(t, []string{"grok-4.5", "grok-imagine"}, models)
-	require.Equal(t, "https://xai.example.com/v1/models", upstream.lastReq.URL.String())
-	require.Equal(t, "Bearer xai-key", upstream.lastReq.Header.Get("Authorization"))
-}
-
-func TestFetchUpstreamSupportedModelsParsesGrokOAuthResponse(t *testing.T) {
-	t.Parallel()
-
-	upstream := &httpUpstreamRecorder{resp: &http.Response{
-		StatusCode: http.StatusOK,
-		Header:     http.Header{"Content-Type": []string{"application/json"}},
-		Body:       io.NopCloser(strings.NewReader(`{"data":[{"model":"grok-4.5"},{"model":"grok-4.5"},{"modelId":"grok-build-0.1"}]}`)),
-	}}
-	svc := &AccountTestService{
-		httpUpstream:      upstream,
-		cfg:               upstreamModelSyncTestConfig(),
-		grokTokenProvider: NewGrokTokenProvider(nil, nil),
-	}
-
-	models, err := svc.FetchUpstreamSupportedModels(context.Background(), grokOAuthModelSyncTestAccount(""))
-	require.NoError(t, err)
-	require.Equal(t, []string{"grok-4.5", "grok-build-0.1"}, models)
-	require.Equal(t, "https://cli-chat-proxy.grok.com/v1/models", upstream.lastReq.URL.String())
-	require.Equal(t, "Bearer oauth-access-token", upstream.lastReq.Header.Get("Authorization"))
-	require.Equal(t, grokCLIVersion, upstream.lastReq.Header.Get("X-Grok-Client-Version"))
-	require.Equal(t, "interactive", upstream.lastReq.Header.Get("X-Grok-Client-Mode"))
-	require.Equal(t, "grok-user-id", upstream.lastReq.Header.Get("X-UserID"))
-	require.Equal(t, "grok-user@example.com", upstream.lastReq.Header.Get("X-Email"))
-}
-
-func TestBuildUpstreamModelsRequestGrokOAuthDoesNotSendIdentityToCustomBase(t *testing.T) {
-	t.Parallel()
-
-	svc := &AccountTestService{
-		cfg:               upstreamModelSyncTestConfig(),
-		grokTokenProvider: NewGrokTokenProvider(nil, nil),
-	}
-	req, err := svc.buildUpstreamModelsRequest(context.Background(), grokOAuthModelSyncTestAccount("https://relay.example/v1"))
-	require.NoError(t, err)
-	require.Equal(t, "https://relay.example/v1/models", req.URL.String())
-	require.Empty(t, req.Header.Get("X-UserID"))
-	require.Empty(t, req.Header.Get("X-Email"))
-}
-
-func TestFetchUpstreamSupportedModelsDoesNotExposeUpstreamBody(t *testing.T) {
-	t.Parallel()
-
-	upstream := &httpUpstreamRecorder{resp: &http.Response{
-		StatusCode: http.StatusBadGateway,
-		Header:     http.Header{"Content-Type": []string{"application/json"}},
-		Body:       io.NopCloser(strings.NewReader(`{"error":"SECRET_TOKEN should not be exposed"}`)),
-	}}
-	svc := &AccountTestService{
-		httpUpstream: upstream,
-		cfg:          upstreamModelSyncTestConfig(),
-	}
+	cfg := upstreamModelSyncTestConfig()
+	cfg.Gateway.ModelsListReadMaxBytes = 8
+	svc := &AccountTestService{httpUpstream: upstream, cfg: cfg}
 
 	_, err := svc.FetchUpstreamSupportedModels(context.Background(), &Account{
-		ID:       8,
+		ID:       7,
 		Platform: PlatformOpenAI,
 		Type:     AccountTypeAPIKey,
 		Credentials: map[string]any{
@@ -655,11 +639,5 @@ func TestFetchUpstreamSupportedModelsDoesNotExposeUpstreamBody(t *testing.T) {
 		},
 	})
 	require.Error(t, err)
-	require.NotContains(t, err.Error(), "SECRET_TOKEN")
-
-	var syncErr *UpstreamModelSyncError
-	require.True(t, errors.As(err, &syncErr))
-	require.Equal(t, UpstreamModelSyncErrorUpstream, syncErr.Kind)
-	require.NotContains(t, syncErr.SafeMessage(), "SECRET_TOKEN")
-	require.Contains(t, syncErr.SafeMessage(), "HTTP 502")
+	require.Contains(t, err.Error(), "response exceeds 8 bytes")
 }

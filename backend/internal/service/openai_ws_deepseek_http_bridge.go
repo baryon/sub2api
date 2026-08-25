@@ -1178,7 +1178,7 @@ func (s *OpenAIGatewayService) readDeepSeekWSResponsesSSE(
 		if openAIWSEventShouldParseUsage(eventType) {
 			parseOpenAIWSResponseUsageFromCompletedEvent(message, &state.usage)
 		}
-		if openAIStreamEventTypeIsTerminal(eventType) {
+		if eventType != "error" && openAIStreamEventTypeIsTerminal(eventType) {
 			state.terminalEvent = eventType
 			state.terminalData = append([]byte(nil), message...)
 			if !deepSeekWSTerminalStatusMatches(eventType, gjson.GetBytes(message, "response.status").String()) {

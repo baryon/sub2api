@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
@@ -331,6 +332,19 @@ func TestOpenAIGatewayService_PassthroughFailoverDoesNotPoisonTurnStateProvenanc
 	require.Len(t, upstream.requests, 3)
 	require.Equal(t, "turn-state-account-b", upstream.requests[2].Header.Get(openAICodexTurnStateHeader),
 		"failed account A must not replace the provenance of state already minted by account B")
+}
+
+func TestWriteOpenAIPassthroughResponseHeaders_RelaysReasoningIncluded(t *testing.T) {
+	dst := http.Header{}
+	src := http.Header{}
+	src.Set("X-Reasoning-Included", "1")
+
+	writeOpenAIPassthroughResponseHeaders(
+		dst,
+		src,
+		responseheaders.CompileHeaderFilter(config.ResponseHeaderConfig{}),
+	)
+	require.Equal(t, "1", dst.Get("X-Reasoning-Included"))
 }
 
 func TestEnsureOpenAIRemoteCompactionV2BetaFeature(t *testing.T) {

@@ -4,6 +4,7 @@ import { mount } from '@vue/test-utils'
 
 import PlanEditDialog from '../PlanEditDialog.vue'
 import type { AdminGroup } from '@/types'
+import { formatPaymentAmount } from '@/components/payment/currency'
 
 vi.mock('vue-i18n', () => ({
   useI18n: () => ({
@@ -150,9 +151,9 @@ describe('PlanEditDialog', () => {
     await wrapper.find('input[type="number"]').setValue('9.99')
 
     expect(wrapper.text()).toContain('preview')
-    expect(wrapper.text()).toContain('¥71.43')
+    expect(wrapper.text()).toContain(formatPaymentAmount(71.43, 'CNY'))
     expect(wrapper.text()).toContain('fee 2.5')
-    expect(wrapper.text()).toContain('¥73.22')
+    expect(wrapper.text()).toContain(formatPaymentAmount(73.22, 'CNY'))
   })
 
   it('hides the preview when the subscription rate is not configured', async () => {
@@ -166,7 +167,7 @@ describe('PlanEditDialog', () => {
     await wrapper.find('input[type="number"]').setValue('9.99')
 
     expect(wrapper.text()).not.toContain('preview')
-    expect(wrapper.text()).not.toContain('¥71.43')
+    expect(wrapper.text()).not.toContain(formatPaymentAmount(71.43, 'CNY'))
   })
 
   it('allows composite subscription groups for payment plans', () => {

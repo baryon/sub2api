@@ -16,8 +16,9 @@ import (
 )
 
 const (
-	deepSeekChatCompletionsEndpoint = "/chat/completions"
-	deepSeekResponsesEndpoint       = "/responses"
+	deepSeekChatCompletionsEndpoint  = "/chat/completions"
+	deepSeekResponsesEndpoint        = "/responses"
+	deepSeekResponsesCompactEndpoint = "/responses/compact"
 )
 
 // buildDeepSeekEndpointURL appends a native DeepSeek endpoint to the configured
@@ -65,6 +66,8 @@ func (s *OpenAIGatewayService) deepSeekEndpointURL(account *Account, endpoint st
 		return buildDeepSeekChatCompletionsURL(root), nil
 	case deepSeekResponsesEndpoint:
 		return buildDeepSeekResponsesURL(root), nil
+	case deepSeekResponsesCompactEndpoint:
+		return buildDeepSeekEndpointURL(root, deepSeekResponsesCompactEndpoint), nil
 	default:
 		return "", fmt.Errorf("unsupported deepseek endpoint: %s", endpoint)
 	}
@@ -181,8 +184,15 @@ func (s *OpenAIGatewayService) handleDeepSeekResponsesJSON(
 		return nil, newDeepSeekMissingUsageFailoverError(c, account, openAICompatibleUpstreamRequestID(resp.Header))
 	}
 
+	writeBody := body
+	if restored, restoreErr := restoreOpenAIResponsesClientToolPayload(c, body); restoreErr != nil {
+		return nil, fmt.Errorf("restore DeepSeek Responses client tools: %w", restoreErr)
+	} else {
+		writeBody = restored
+	}
+
 	s.writeDeepSeekResponsesHeaders(c, resp, false)
-	c.Data(resp.StatusCode, c.Writer.Header().Get("Content-Type"), body)
+	c.Data(resp.StatusCode, c.Writer.Header().Get("Content-Type"), writeBody)
 	result := &deepSeekResponsesRelayResult{
 		usage:         usage,
 		responseID:    extractOpenAIResponseIDFromJSONBytes(body),
@@ -548,6 +558,19 @@ func (s *OpenAIGatewayService) forwardDeepSeekResponses(
 		body = restoredBody
 	}
 
+	clearOpenAIResponsesClientToolMapping(c)
+	compactPath := isOpenAIResponsesCompactPath(c)
+	if !compactPath &&
+		(account.GetAPIProtocol() == APIProtocolResponses || account.IsAdaptiveAPIProtocol()) &&
+		needsOpenAIResponsesClientToolAdaptation(body) {
+		adaptedBody, mapping, adaptErr := adaptOpenAIResponsesClientTools(body)
+		if adaptErr != nil {
+			return nil, fmt.Errorf("adapt DeepSeek Responses client tools: %w", adaptErr)
+		}
+		body = adaptedBody
+		setOpenAIResponsesClientToolMapping(c, mapping)
+	}
+
 	originalModel := strings.TrimSpace(gjson.GetBytes(body, "model").String())
 	if originalModel == "" {
 		return nil, fmt.Errorf("parse DeepSeek Responses request: model is required")
@@ -567,11 +590,15 @@ func (s *OpenAIGatewayService) forwardDeepSeekResponses(
 	if token == "" {
 		return nil, fmt.Errorf("account %d missing api_key", account.ID)
 	}
-	targetURL, err := s.deepSeekEndpointURL(account, deepSeekResponsesEndpoint)
+	endpoint := deepSeekResponsesEndpoint
+	if compactPath {
+		endpoint = deepSeekResponsesCompactEndpoint
+	}
+	targetURL, err := s.deepSeekEndpointURL(account, endpoint)
 	if err != nil {
 		return nil, err
 	}
-	SetActualOpenAIUpstreamEndpoint(c, deepSeekResponsesEndpoint)
+	SetActualOpenAIUpstreamEndpoint(c, endpoint)
 
 	upstreamStart := time.Now()
 	resp, err := s.sendCCUpstreamRequest(ctx, c, account, targetURL, upstreamBody, clientStream, token, "", "")
@@ -581,6 +608,13 @@ func (s *OpenAIGatewayService) forwardDeepSeekResponses(
 	}
 	defer func() { _ = resp.Body.Close() }()
 	sanitizeDeepSeekResponseHeadersInPlace(account, resp.Header)
+	if mapping, ok := openAIResponsesClientToolMapping(c); ok && isEventStreamResponse(resp.Header) {
+		maxLineSize := defaultMaxLineSize
+		if s.cfg != nil && s.cfg.Gateway.MaxLineSize > 0 {
+			maxLineSize = s.cfg.Gateway.MaxLineSize
+		}
+		resp.Body = newGrokResponsesClientToolStreamBody(resp.Body, mapping, maxLineSize)
+	}
 
 	if resp.StatusCode >= http.StatusBadRequest {
 		respBody, upstreamMsg := s.readOpenAIUpstreamError(resp)

@@ -1,10 +1,11 @@
 package handler
 
 // CN 分组 /v1/messages 调度闸门回归（修复:正常途径创建的 CN 分组曾恒 403）：
-// sanitizeGroupMessagesDispatchFields 对非 openai 平台强制 AllowMessagesDispatch
+// sanitizeGroupMessagesDispatchFields 对非 openai/composite 平台强制 AllowMessagesDispatch
 // =false，故 CN 分组必须与 grok 一样在闸门处豁免，否则原生 Anthropic 直通
-//（Claude Code 主用例）永远不可达。composite 分组同理：sanitize 对 composite
-// 恒置 false，解析到 OpenAI/Grok/CN 目标时必须按目标平台豁免。
+//（Claude Code 主用例）永远不可达。composite 分组解析到 grok/CN 目标时按
+// 目标平台豁免；解析到 openai 目标同样放行，避免历史 AllowMessagesDispatch=false
+// 阻断 Claude Code 经 Composite 访问 OpenAI。
 
 import (
 	"net/http/httptest"
@@ -34,22 +35,22 @@ func TestAllowOpenAICompatibleMessagesDispatch_CNProvidersExempt(t *testing.T) {
 func TestAllowOpenAICompatibleMessagesDispatch_CompositeResolvedTargets(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	newCompositeCtx := func(model string) (*gin.Context, *service.APIKey) {
+	newCompositeCtx := func(model string, allow bool) (*gin.Context, *service.APIKey) {
 		c, _ := gin.CreateTestContext(httptest.NewRecorder())
 		c.Request = httptest.NewRequest("POST", "/v1/messages", nil)
-		apiKey := &service.APIKey{Group: &service.Group{Platform: service.PlatformComposite, AllowMessagesDispatch: false}}
+		apiKey := &service.APIKey{Group: &service.Group{Platform: service.PlatformComposite, AllowMessagesDispatch: allow}}
 		ensureCompositeTargetPlatform(c, apiKey, model)
 		return c, apiKey
 	}
 
 	// 解析到 grok/CN 目标：与对应独立分组同语义豁免。
 	for _, model := range []string{"grok-4.3", "kimi-k2-thinking", "glm-5.2", "deepseek-v3.2"} {
-		c, apiKey := newCompositeCtx(model)
+		c, apiKey := newCompositeCtx(model, false)
 		require.True(t, allowOpenAICompatibleMessagesDispatch(c, apiKey), "model=%s", model)
 	}
 
-	// 解析到 openai 目标：Composite 自身无法持久化开关，也必须按目标放行。
-	c, apiKey := newCompositeCtx("gpt-5.5")
+	// 解析到 openai 目标：Composite 无法依赖分组开关（历史数据多为 false），按目标放行。
+	c, apiKey := newCompositeCtx("gpt-5.5", false)
 	require.True(t, allowOpenAICompatibleMessagesDispatch(c, apiKey))
 
 	// 未解析出目标平台：保持拒绝，不放宽。

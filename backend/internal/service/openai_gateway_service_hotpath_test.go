@@ -808,7 +808,7 @@ func TestOpenAIGatewayService_Forward_CodexBridgeInjectionSetsImageBilling(t *te
 	require.Equal(t, "gpt-image-2", result.BillingModel)
 }
 
-func TestOpenAIGatewayService_Forward_HTTPDeletesPreviousResponseIDWhenPresent(t *testing.T) {
+func TestOpenAIGatewayService_Forward_HTTPPreservesPreviousResponseIDForAPIKey(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	cfg := &config.Config{}
 	cfg.Security.URLAllowlist.Enabled = false
@@ -845,7 +845,7 @@ func TestOpenAIGatewayService_Forward_HTTPDeletesPreviousResponseIDWhenPresent(t
 		result, err := svc.Forward(context.Background(), c, account, body)
 		require.NoError(t, err)
 		require.NotNil(t, result)
-		require.False(t, gjson.GetBytes(upstream.lastBody, "previous_response_id").Exists())
+		require.True(t, gjson.GetBytes(upstream.lastBody, "previous_response_id").Exists())
 	}
 }
 
@@ -1009,9 +1009,23 @@ func TestExtractOpenAIReasoningEffortFromBody(t *testing.T) {
 			wantValue: "xhigh",
 		},
 		{
+			name:      "DeepSeek V4 保留 max",
+			body:      []byte(`{"reasoning_effort":"max"}`),
+			model:     "deepseek-v4-pro",
+			wantNil:   false,
+			wantValue: "max",
+		},
+		{
 			name:      "非 GPT-5.6 max 归一化为 xhigh",
 			body:      []byte(`{"reasoning_effort":"max"}`),
 			model:     "gpt-5.4",
+			wantNil:   false,
+			wantValue: "xhigh",
+		},
+		{
+			name:      "旧模型仍将 max 归一化为 xhigh",
+			body:      []byte(`{"reasoning_effort":"max"}`),
+			model:     "gpt-5.5",
 			wantNil:   false,
 			wantValue: "xhigh",
 		},
