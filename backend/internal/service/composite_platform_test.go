@@ -111,7 +111,11 @@ func TestDetectModelPlatform(t *testing.T) {
 		{name: "grok", model: "grok-4", platform: PlatformGrok, ok: true},
 		{name: "xai prefix", model: "xai/grok-4", platform: PlatformGrok, ok: true},
 		{name: "kimi", model: "kimi-k2", platform: PlatformKimi, ok: true},
+		{name: "kimi exact", model: "kimi", platform: PlatformKimi, ok: true},
 		{name: "kimi thinking", model: "kimi-k2-thinking", platform: PlatformKimi, ok: true},
+		{name: "kimi code bare k3", model: "K3", platform: PlatformKimi, ok: true},
+		{name: "kimi code bare k3 256k", model: "k3-256k", platform: PlatformKimi, ok: true},
+		{name: "kimi code provider prefix", model: "kimi-code/k3", platform: PlatformKimi, ok: true},
 		{name: "moonshot prefix", model: "moonshot/kimi-k2", platform: PlatformKimi, ok: true},
 		{name: "moonshot model prefix", model: "moonshot/moonshot-v1-32k", platform: PlatformKimi, ok: true},
 		{name: "glm", model: "glm-4.6", platform: PlatformZhipu, ok: true},
@@ -119,6 +123,7 @@ func TestDetectModelPlatform(t *testing.T) {
 		{name: "zhipu prefix", model: "zhipu/glm-4.5", platform: PlatformZhipu, ok: true},
 		{name: "deepseek", model: "deepseek-v4-pro", platform: PlatformDeepSeek, ok: true},
 		{name: "deepseek prefix", model: "deepseek/deepseek-v4-flash", platform: PlatformDeepSeek, ok: true},
+		{name: "unknown k3 alias", model: "k3-preview", ok: false},
 		{name: "unknown", model: "llama-4-maverick", ok: false},
 	}
 
