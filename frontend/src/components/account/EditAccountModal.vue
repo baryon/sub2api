@@ -487,6 +487,26 @@
 
       </div>
 
+      <!-- Grok media routing override for user-key image/video generation -->
+      <div
+        v-if="account.platform === 'grok'"
+        class="border-t border-gray-200 pt-4 dark:border-dark-600"
+      >
+        <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div class="min-w-0">
+            <label class="input-label mb-0">{{ t('admin.accounts.grokMediaEligible.title') }}</label>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.accounts.grokMediaEligible.hint') }}
+            </p>
+          </div>
+          <Toggle
+            v-model="grokMediaEligibleEnabled"
+            data-testid="grok-media-eligible-toggle"
+            :aria-label="t('admin.accounts.grokMediaEligible.title')"
+          />
+        </div>
+      </div>
+
       <!-- Grok OAuth client-tool prompt cache opt-in -->
       <div
         v-if="account.platform === 'grok' && account.type === 'oauth'"
@@ -3082,6 +3102,7 @@ const DEFAULT_POOL_MODE_RETRY_COUNT = 3
 const MAX_POOL_MODE_RETRY_COUNT = 10
 const DEFAULT_POOL_MODE_RETRY_STATUS_CODES = [401, 403, 429]
 const GROK_CLIENT_TOOL_CACHE_EXTRA_KEY = 'grok_client_tool_cache_enabled'
+const GROK_MEDIA_ELIGIBLE_EXTRA_KEY = 'grok_media_eligible'
 const poolModeEnabled = ref(false)
 const poolModeRetryCount = ref(DEFAULT_POOL_MODE_RETRY_COUNT)
 const poolModeRetryStatusCodesInput = ref('')
@@ -3133,6 +3154,9 @@ const grokOAuthBaseUrl = ref('')
 // Grok Free OAuth accounts use client-tool prompt caching by default. Keep an
 // explicit false in the account extra as the opt-out signal.
 const grokClientToolCacheEnabled = ref(true)
+// Force-allow Grok image/video scheduling for user API keys. Off restores
+// automatic billing-probe eligibility (null), it does not write false.
+const grokMediaEligibleEnabled = ref(false)
 
 const interceptWarmupRequests = ref(false)
 const autoPauseOnExpired = ref(false)
@@ -3918,6 +3942,8 @@ const syncFormFromAccount = (newAccount: Account | null) => {
     newAccount.platform === 'grok' &&
     newAccount.type === 'oauth' &&
     (grokClientToolCacheSetting === undefined || grokClientToolCacheSetting === true)
+  grokMediaEligibleEnabled.value =
+    newAccount.platform === 'grok' && newAccount.extra?.[GROK_MEDIA_ELIGIBLE_EXTRA_KEY] === true
   if (newAccount.platform === 'grok' && newAccount.type === 'oauth' && newAccount.credentials) {
     const grokCreds = newAccount.credentials as Record<string, unknown>
     if (isCustomGrokBaseUrl(grokCreds.base_url)) {
@@ -5314,6 +5340,16 @@ const handleSubmit = async () => {
       }
       // Quota notify config
       writeQuotaNotifyToExtra(newExtra, 'update')
+      updatePayload.extra = newExtra
+    }
+
+    if (props.account.platform === 'grok') {
+      const currentExtra = (updatePayload.extra as Record<string, unknown>) ||
+        (props.account.extra as Record<string, unknown>) || {}
+      const newExtra: Record<string, unknown> = { ...currentExtra }
+      // null clears the override so OAuth returns to probe-based eligibility.
+      // false would force-disable even xAI API-key accounts.
+      newExtra[GROK_MEDIA_ELIGIBLE_EXTRA_KEY] = grokMediaEligibleEnabled.value ? true : null
       updatePayload.extra = newExtra
     }
 

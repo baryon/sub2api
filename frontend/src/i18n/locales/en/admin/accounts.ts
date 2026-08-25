@@ -826,6 +826,10 @@ export default {
         title: 'Client Tool Cache (May Change Automatic Tool Selection)',
         hint: 'For detected Grok Free OAuth accounts, this is enabled by default for client function tools such as Codex and Trae. Turn it off to opt out if the automatic tool-selection behavior is not acceptable.'
       },
+      grokMediaEligible: {
+        title: 'Allow image and video generation',
+        hint: 'When on, this account can be scheduled for image and video generation for user API keys. When off, eligibility returns to automatic probing: xAI API-key accounts stay eligible; OAuth accounts need paid billing evidence (admin test mode skips this check).'
+      },
       autoPauseOnExpired: 'Auto Pause On Expired',
       autoPauseOnExpiredDesc: 'When enabled, the account will auto pause scheduling after it expires',
 	  autoPause5hThreshold: '5h Usage Threshold (%)',

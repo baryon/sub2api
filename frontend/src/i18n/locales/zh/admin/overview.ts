@@ -972,7 +972,7 @@ export default {
       imagePricing: {
         title: '图片生成计费',
         description: '配置图片生成能力和图片基础单价，留空则使用默认价格',
-        allowImageGeneration: '允许当前分组生图',
+        allowImageGeneration: '允许当前分组生图和视频',
         allowBatchImageGeneration: '允许当前分组批量生图',
         independentMultiplier: '生图倍率独立',
         imageMultiplier: '生图独立倍率',

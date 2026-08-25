@@ -975,7 +975,7 @@ export default {
       imagePricing: {
         title: 'Image Generation Pricing',
         description: 'Configure image generation access and base image prices. Leave empty to use default prices.',
-        allowImageGeneration: 'Allow image generation for this group',
+        allowImageGeneration: 'Allow image and video generation for this group',
         allowBatchImageGeneration: 'Allow batch image generation for this group',
         independentMultiplier: 'Use independent image multiplier',
         imageMultiplier: 'Image multiplier',

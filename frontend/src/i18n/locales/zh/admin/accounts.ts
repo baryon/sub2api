@@ -890,6 +890,10 @@ export default {
         title: '客户端工具缓存（可能改变自动工具选择）',
         hint: '仅对已识别为 Free 的 Grok OAuth 账号生效，默认会为 Codex、Trae 等客户端函数工具请求启用上游提示缓存；如不接受自动工具选择行为，可关闭此开关退出。'
       },
+      grokMediaEligible: {
+        title: '允许生图和视频',
+        hint: '开启后，该账号可被用户 Key 调度用于图像和视频生成。关闭后恢复自动探测：xAI API Key 账号仍可生成；OAuth 账号需计费探测确认付费后才可（后台测试模式不走此检查）。'
+      },
       autoPauseOnExpired: '过期自动暂停调度',
       autoPauseOnExpiredDesc: '启用后，账号过期将自动暂停调度',
 	  autoPause5hThreshold: '5h 用量阈值(%)',
