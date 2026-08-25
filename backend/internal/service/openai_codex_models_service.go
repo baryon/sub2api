@@ -99,11 +99,11 @@ func (s *OpenAIGatewayService) BuildGroupConfiguredCodexModelsManifest(
 		return nil, false, nil
 	}
 
-	visible, catalog, err := loadCodexGroupCatalogAccounts(ctx, s.accountRepo, group.ID)
+	accounts, err := s.accountRepo.ListSchedulableByGroupID(ctx, group.ID)
 	if err != nil {
 		return nil, false, fmt.Errorf("load group configured Codex models: %w", err)
 	}
-	configuredModels := openAIConfiguredCodexModelIDs(visible)
+	configuredModels := openAIConfiguredCodexModelIDs(accounts)
 	if len(configuredModels) == 0 {
 		return nil, false, nil
 	}
@@ -111,7 +111,7 @@ func (s *OpenAIGatewayService) BuildGroupConfiguredCodexModelsManifest(
 	body, err := buildCodexModelsManifestForAccounts(
 		PlatformOpenAI,
 		configuredModels,
-		catalog,
+		accounts,
 		nil,
 		true,
 	)
@@ -185,29 +185,6 @@ func (s *OpenAIGatewayService) groupConfiguredCodexModelIDs(ctx context.Context,
 		return nil, err
 	}
 	return openAIConfiguredCodexModelIDs(accounts), nil
-}
-
-// loadCodexGroupCatalogAccounts separates picker membership from capability
-// intersection. visible accounts are currently schedulable and decide which
-// public aliases appear. catalog accounts are all non-deleted active group
-// members; their snapshots keep advertised capabilities from widening when a
-// mapped account is only temporarily unschedulable. If ListByGroup fails, the
-// catalog falls back to the schedulable set so a listing error does not fail
-// the client request.
-func loadCodexGroupCatalogAccounts(ctx context.Context, repo AccountRepository, groupID int64) (visible []Account, catalog []Account, err error) {
-	if repo == nil {
-		return nil, nil, nil
-	}
-	visible, err = repo.ListSchedulableByGroupID(ctx, groupID)
-	if err != nil {
-		return nil, nil, err
-	}
-	catalog = visible
-	groupAccounts, listErr := repo.ListByGroup(ctx, groupID)
-	if listErr != nil {
-		return visible, catalog, nil
-	}
-	return visible, groupAccounts, nil
 }
 
 func openAIConfiguredCodexModelIDs(accounts []Account) []string {
@@ -562,11 +539,9 @@ func BuildCodexModelsManifest(modelIDs []string) ([]byte, error) {
 }
 
 // BuildCodexModelsManifestForGroup derives input capabilities from the
-// concrete Responses route and group accounts behind a group. Unknown or mixed
-// capabilities fail closed to the text-only descriptor used by the standalone
-// builder. Caller-supplied model IDs still decide which slugs appear; advertised
-// capabilities intersect all active group members that map the alias, including
-// accounts that are not currently schedulable.
+// concrete Responses route and schedulable accounts behind a group. Unknown or
+// mixed capabilities fail closed to the text-only descriptor used by the
+// standalone builder.
 func (s *GatewayService) BuildCodexModelsManifestForGroup(
 	ctx context.Context,
 	group *Group,
@@ -584,7 +559,7 @@ func (s *GatewayService) BuildCodexModelsManifestForGroup(
 		return BuildCodexModelsManifest(modelIDs)
 	}
 
-	_, catalog, err := loadCodexGroupCatalogAccounts(ctx, s.accountRepo, group.ID)
+	accounts, err := s.accountRepo.ListSchedulableByGroupID(ctx, group.ID)
 	if err != nil {
 		return BuildCodexModelsManifest(modelIDs)
 	}
@@ -599,7 +574,7 @@ func (s *GatewayService) BuildCodexModelsManifestForGroup(
 	return buildCodexModelsManifestForAccounts(
 		effectivePlatform,
 		modelIDs,
-		catalog,
+		accounts,
 		compositeRoutes,
 		compositeRoutesAvailable,
 	)

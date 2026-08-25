@@ -48,10 +48,6 @@ func (r codexModelsFailoverAccountRepo) ListSchedulableByGroupID(_ context.Conte
 	return append([]service.Account(nil), r.accounts...), nil
 }
 
-func (r codexModelsFailoverAccountRepo) ListByGroup(_ context.Context, _ int64) ([]service.Account, error) {
-	return append([]service.Account(nil), r.accounts...), nil
-}
-
 type codexModelsFailoverHTTPUpstream struct {
 	service.HTTPUpstream
 	mu          sync.Mutex
