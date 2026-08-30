@@ -252,7 +252,7 @@ func IsGrokModelID(model string) bool {
 }
 
 // IsGrokImagineModel reports whether model is a Grok Imagine image or video
-// id. These are media endpoints, not Responses/Codex text models.
+// model. These media endpoints cannot act as the primary Codex agent model.
 func IsGrokImagineModel(model string) bool {
 	normalized := strings.ToLower(StripGrokProviderPrefix(model))
 	if normalized == "" {

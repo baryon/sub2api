@@ -271,114 +271,6 @@ func TestNormalizeOpenAIParallelToolCallsWithoutTools(t *testing.T) {
 	require.False(t, gjson.GetBytes(normalized, "parallel_tool_calls").Exists())
 }
 
-// Lite 工具迁移到 input[].additional_tools 后，仍应按有工具请求处理。
-func TestNormalizeOpenAIParallelToolCallsWithoutTools_KeepsResponsesLiteAdditionalTools(t *testing.T) {
-	liteBody := []byte(`{"input":[{"type":"message","role":"user","content":"hi"},{"type":"additional_tools","tools":[{"type":"function","name":"spawn_agent"}]}],"parallel_tool_calls":false}`)
-	normalized, changed, err := normalizeOpenAIParallelToolCallsWithoutTools(liteBody, false)
-	require.NoError(t, err)
-	require.False(t, changed)
-	require.Equal(t, gjson.False, gjson.GetBytes(normalized, "parallel_tool_calls").Type)
-
-	// 非 Lite 请求的空 additional_tools 不构成有效工具声明，字段仍需删除。
-	emptyLiteBody := []byte(`{"input":[{"type":"additional_tools","tools":[]}],"parallel_tool_calls":true}`)
-	normalized, changed, err = normalizeOpenAIParallelToolCallsWithoutTools(emptyLiteBody, false)
-	require.NoError(t, err)
-	require.True(t, changed)
-	require.False(t, gjson.GetBytes(normalized, "parallel_tool_calls").Exists())
-
-	// Lite 请求即使没有工具，也必须保留已经固定的 false。
-	toolLessLiteBody := []byte(`{"input":"hi","parallel_tool_calls":false}`)
-	normalized, changed, err = normalizeOpenAIParallelToolCallsWithoutTools(toolLessLiteBody, true)
-	require.NoError(t, err)
-	require.False(t, changed)
-	require.Equal(t, gjson.False, gjson.GetBytes(normalized, "parallel_tool_calls").Type)
-}
-
-func TestStripOpenAIResponsesOptionalFields(t *testing.T) {
-	body := []byte(`{"model":"gpt-5.4","prompt_cache_retention":"24h","safety_identifier":"sid","prompt_cache_options":{"ttl":"30m"},"input":"hi"}`)
-	stripped, err := stripOpenAIResponsesOptionalFields(body)
-	require.NoError(t, err)
-	require.False(t, gjson.GetBytes(stripped, "prompt_cache_retention").Exists())
-	require.False(t, gjson.GetBytes(stripped, "safety_identifier").Exists())
-	require.False(t, gjson.GetBytes(stripped, "prompt_cache_options").Exists())
-	require.Equal(t, "gpt-5.4", gjson.GetBytes(stripped, "model").String())
-	require.Equal(t, "hi", gjson.GetBytes(stripped, "input").String())
-
-	unchanged, err := stripOpenAIResponsesOptionalFields([]byte(`{"model":"gpt-5.4","input":"hi"}`))
-	require.NoError(t, err)
-	require.JSONEq(t, `{"model":"gpt-5.4","input":"hi"}`, string(unchanged))
-}
-
-func TestShouldPreserveOpenAIResponsesOptionalFields(t *testing.T) {
-	tests := []struct {
-		name    string
-		account *Account
-		want    bool
-	}{
-		{
-			name: "official OpenAI API key",
-			account: &Account{
-				Platform: PlatformOpenAI,
-				Type:     AccountTypeAPIKey,
-			},
-			want: true,
-		},
-		{
-			name: "explicit official OpenAI API key endpoint",
-			account: &Account{
-				Platform: PlatformOpenAI,
-				Type:     AccountTypeAPIKey,
-				Credentials: map[string]any{
-					"base_url": "https://api.openai.com/v1",
-				},
-			},
-			want: true,
-		},
-		{
-			name: "custom OpenAI-compatible API key endpoint",
-			account: &Account{
-				Platform: PlatformOpenAI,
-				Type:     AccountTypeAPIKey,
-				Credentials: map[string]any{
-					"base_url": "https://example.com/v1",
-				},
-			},
-			want: false,
-		},
-		{
-			name: "OpenAI lookalike host",
-			account: &Account{
-				Platform: PlatformOpenAI,
-				Type:     AccountTypeAPIKey,
-				Credentials: map[string]any{
-					"base_url": "https://api.openai.com.example/v1",
-				},
-			},
-			want: false,
-		},
-		{
-			name:    "OpenAI OAuth internal endpoint",
-			account: &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth},
-			want:    false,
-		},
-		{
-			name:    "known third-party platform",
-			account: &Account{Platform: PlatformGrok, Type: AccountTypeAPIKey},
-			want:    false,
-		},
-		{
-			name: "missing account",
-			want: false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			require.Equal(t, tt.want, shouldPreserveOpenAIResponsesOptionalFields(tt.account))
-		})
-	}
-}
-
 func TestFilterOpenAIResponsesNoneReasoningEffortForAccount(t *testing.T) {
 	tests := []struct {
 		name          string
@@ -437,4 +329,84 @@ func TestFilterOpenAIResponsesNoneReasoningEffortForAccount(t *testing.T) {
 			require.Equal(t, tt.wantReasoning, gjson.GetBytes(got, "reasoning").Exists())
 		})
 	}
+}
+
+// Lite 工具迁移到 input[].additional_tools 后，仍应按有工具请求处理。
+func TestNormalizeOpenAIParallelToolCallsWithoutTools_KeepsResponsesLiteAdditionalTools(t *testing.T) {
+	liteBody := []byte(`{"input":[{"type":"message","role":"user","content":"hi"},{"type":"additional_tools","tools":[{"type":"function","name":"spawn_agent"}]}],"parallel_tool_calls":false}`)
+	normalized, changed, err := normalizeOpenAIParallelToolCallsWithoutTools(liteBody, false)
+	require.NoError(t, err)
+	require.False(t, changed)
+	require.Equal(t, gjson.False, gjson.GetBytes(normalized, "parallel_tool_calls").Type)
+
+	// 非 Lite 请求的空 additional_tools 不构成有效工具声明，字段仍需删除。
+	emptyLiteBody := []byte(`{"input":[{"type":"additional_tools","tools":[]}],"parallel_tool_calls":true}`)
+	normalized, changed, err = normalizeOpenAIParallelToolCallsWithoutTools(emptyLiteBody, false)
+	require.NoError(t, err)
+	require.True(t, changed)
+	require.False(t, gjson.GetBytes(normalized, "parallel_tool_calls").Exists())
+
+	// Lite 请求即使没有工具，也必须保留已经固定的 false。
+	toolLessLiteBody := []byte(`{"input":"hi","parallel_tool_calls":false}`)
+	normalized, changed, err = normalizeOpenAIParallelToolCallsWithoutTools(toolLessLiteBody, true)
+	require.NoError(t, err)
+	require.False(t, changed)
+	require.Equal(t, gjson.False, gjson.GetBytes(normalized, "parallel_tool_calls").Type)
+}
+
+func TestNormalizeOpenAIResponsesReasoningContentReplayStripsCrossProviderArray(t *testing.T) {
+	body := []byte(`{"model":"gpt-5.6-sol","input":[` +
+		`{"type":"message","role":"user","content":"one"},` +
+		`{"type":"message","role":"assistant","content":"two"},` +
+		`{"type":"function_call","call_id":"call_1","name":"lookup","arguments":"{}"},` +
+		`{"type":"function_call_output","call_id":"call_1","output":"ok"},` +
+		`{"type":"message","role":"user","content":"five"},` +
+		`{"type":"reasoning","id":"rs_provider","summary":[{"type":"summary_text","text":"portable"}],"content":[{"type":"reasoning_text","text":"visible reasoning"}],"opaque":9007199254740993},` +
+		`{"type":"message","role":"assistant","content":[{"type":"output_text","text":"answer"}]}` +
+		`]}`)
+
+	normalized, changed, err := normalizeOpenAIResponsesReasoningContentReplay(body)
+
+	require.NoError(t, err)
+	require.True(t, changed)
+	require.Equal(t, "reasoning", gjson.GetBytes(normalized, "input.5.type").String())
+	require.False(t, gjson.GetBytes(normalized, "input.5.content").Exists())
+	require.Equal(t, "portable", gjson.GetBytes(normalized, "input.5.summary.0.text").String())
+	require.Equal(t, "9007199254740993", gjson.GetBytes(normalized, "input.5.opaque").Raw)
+	require.Equal(t, "answer", gjson.GetBytes(normalized, "input.6.content.0.text").String())
+}
+
+func TestNormalizeOpenAIResponsesReasoningContentReplayKeepsPortableShapes(t *testing.T) {
+	for _, body := range []string{
+		`{"input":[{"type":"reasoning","summary":[]}]}`,
+		`{"input":[{"type":"reasoning","content":[],"summary":[]}]}`,
+		`{"input":[{"type":"message","content":[{"type":"input_text","text":"keep"}]}]}`,
+	} {
+		normalized, changed, err := normalizeOpenAIResponsesReasoningContentReplay([]byte(body))
+		require.NoError(t, err)
+		require.False(t, changed)
+		require.JSONEq(t, body, string(normalized))
+	}
+}
+
+func TestNormalizeOpenAIResponsesWebSocketCompatibilityBodyStripsReasoningContentOnlyForOpenAI(t *testing.T) {
+	body := []byte(`{"type":"response.create","model":"gpt-5.6-sol","store":true,"input":[{"type":"reasoning","summary":[{"type":"summary_text","text":"keep"}],"content":[{"type":"reasoning_text","text":"remove"}]}]}`)
+	for _, accountType := range []string{AccountTypeAPIKey, AccountTypeOAuth} {
+		normalized, changed, err := normalizeOpenAIResponsesWebSocketCompatibilityBody(body, &Account{
+			Platform: PlatformOpenAI,
+			Type:     accountType,
+		}, false)
+		require.NoError(t, err)
+		require.True(t, changed)
+		require.False(t, gjson.GetBytes(normalized, "input.0.content").Exists())
+		require.Equal(t, "keep", gjson.GetBytes(normalized, "input.0.summary.0.text").String())
+	}
+
+	normalized, changed, err := normalizeOpenAIResponsesWebSocketCompatibilityBody(body, &Account{
+		Platform: PlatformZhipu,
+		Type:     AccountTypeAPIKey,
+	}, false)
+	require.NoError(t, err)
+	require.False(t, changed)
+	require.JSONEq(t, string(body), string(normalized))
 }

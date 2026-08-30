@@ -65,7 +65,6 @@ func (r *CompositeRouteResolver) ListActiveRoutesByGroups(ctx context.Context, g
 	}
 	return routesByGroup, nil
 }
-
 func (r *CompositeRouteResolver) Resolve(ctx context.Context, groupID int64, model, endpoint string) (CompositeRouteDecision, error) {
 	model = strings.TrimSpace(model)
 	endpoint = normalizeCompositeRouteEndpoint(endpoint)
@@ -142,6 +141,35 @@ func (r *CompositeRouteResolver) Resolve(ctx context.Context, groupID int64, mod
 				decision.Source = CompositeRouteSourceAccount
 				decision.TargetPlatform = platform
 				decision.Reason = "endpoint is not supported by target platform"
+				return decision, nil
+			}
+			return CompositeRouteDecision{
+				Matched:        true,
+				Source:         CompositeRouteSourceAccount,
+				GroupID:        groupID,
+				PublicModel:    model,
+				TargetPlatform: platform,
+				UpstreamModel:  model,
+				Endpoint:       endpoint,
+			}, nil
+		}
+	}
+
+	if r != nil && r.modelOwnershipResolver != nil && groupID > 0 {
+		ownership, err := r.modelOwnershipResolver(ctx, groupID, model)
+		if err != nil {
+			// A recognizable model can still use the existing detector when the
+			// account catalog is temporarily unavailable. Unknown aliases cannot.
+			if _, detectable := DetectModelPlatform(model); !detectable {
+				return decision, fmt.Errorf("resolve account model ownership: %w", err)
+			}
+		} else if ownership.Ambiguous {
+			decision.Reason = "model is exposed by multiple provider platforms"
+			return decision, nil
+		} else if ownership.Matched {
+			platform := strings.TrimSpace(ownership.TargetPlatform)
+			if !isConcreteRequestPlatform(platform) {
+				decision.Reason = "account model ownership has no concrete target platform"
 				return decision, nil
 			}
 			return CompositeRouteDecision{

@@ -38,10 +38,12 @@ const (
 	codexAutoModelPrefix               = "codex-auto-"
 )
 
-// FilterCodexModelIDsForGroup removes dedicated media-generation models and
-// Codex automatic modes from a client catalog. Automatic modes are retained
-// only when the group's enabled custom model list explicitly selects the exact
-// slug; account model mappings describe routing and are not feature opt-ins.
+// FilterCodexModelIDsForGroup removes dedicated media-generation models,
+// wildcard mapping keys, and Codex automatic modes from a client catalog.
+// Automatic modes are retained only when the group's enabled custom model list
+// explicitly selects the exact slug; account model mappings describe routing
+// and are not feature opt-ins. Wildcard keys such as "foo-*" are routing
+// patterns, not concrete Codex models.
 func FilterCodexModelIDsForGroup(modelIDs []string, group *Group) []string {
 	explicitlyEnabled := make(map[string]struct{})
 	if group != nil && group.CustomModelsListEnabled() {
@@ -62,6 +64,9 @@ func FilterCodexModelIDsForGroup(modelIDs []string, group *Group) []string {
 		if isCodexDedicatedMediaModel(modelID) {
 			continue
 		}
+		if strings.Contains(modelID, "*") {
+			continue
+		}
 		if strings.HasPrefix(modelID, codexAutoModelPrefix) {
 			if _, ok := explicitlyEnabled[modelID]; !ok {
 				continue
@@ -73,17 +78,28 @@ func FilterCodexModelIDsForGroup(modelIDs []string, group *Group) []string {
 }
 
 func isCodexDedicatedMediaModel(modelID string) bool {
-	return IsGPTImageGenerationModel(modelID) ||
-		isImageGenerationModel(modelID) ||
+	canonical := codexProviderQualifiedModelID(modelID)
+	return IsGPTImageGenerationModel(canonical) ||
+		isImageGenerationModel(canonical) ||
 		xai.IsGrokImagineModel(modelID)
+}
+
+func codexProviderQualifiedModelID(modelID string) string {
+	modelID = strings.TrimSpace(modelID)
+	if slash := strings.LastIndexByte(modelID, '/'); slash >= 0 {
+		modelID = strings.TrimSpace(modelID[slash+1:])
+	}
+	return strings.TrimPrefix(modelID, "models/")
 }
 
 // CodexModelsManifest carries the client representation plus caching metadata.
 type CodexModelsManifest struct {
-	Body         []byte
-	ETag         string
-	upstreamETag string
-	NotModified  bool
+	Body                         []byte
+	ETag                         string
+	upstreamETag                 string
+	upstreamSourceBody           []byte
+	convertedFromOpenAIModelList bool
+	NotModified                  bool
 }
 
 // BuildGroupConfiguredCodexModelsManifest builds a Codex catalog exclusively
@@ -103,7 +119,7 @@ func (s *OpenAIGatewayService) BuildGroupConfiguredCodexModelsManifest(
 	if err != nil {
 		return nil, false, fmt.Errorf("load group configured Codex models: %w", err)
 	}
-	configuredModels := openAIConfiguredCodexModelIDs(visible)
+	configuredModels := openAIConfiguredCodexModelIDsForGroup(visible, group)
 	if len(configuredModels) == 0 {
 		return nil, false, nil
 	}
@@ -155,7 +171,7 @@ func (s *OpenAIGatewayService) MergeGroupConfiguredCodexModels(
 		return nil
 	}
 
-	configuredModels, err := s.groupConfiguredCodexModelIDs(ctx, group.ID)
+	configuredModels, err := s.groupConfiguredCodexModelIDs(ctx, group)
 	if err != nil {
 		return fmt.Errorf("load group configured Codex models: %w", err)
 	}
@@ -179,12 +195,15 @@ func (s *OpenAIGatewayService) MergeGroupConfiguredCodexModels(
 	return nil
 }
 
-func (s *OpenAIGatewayService) groupConfiguredCodexModelIDs(ctx context.Context, groupID int64) ([]string, error) {
-	accounts, err := s.accountRepo.ListSchedulableByGroupID(ctx, groupID)
+func (s *OpenAIGatewayService) groupConfiguredCodexModelIDs(ctx context.Context, group *Group) ([]string, error) {
+	if group == nil {
+		return nil, nil
+	}
+	accounts, err := s.accountRepo.ListSchedulableByGroupID(ctx, group.ID)
 	if err != nil {
 		return nil, err
 	}
-	return openAIConfiguredCodexModelIDs(accounts), nil
+	return openAIConfiguredCodexModelIDsForGroup(accounts, group), nil
 }
 
 // loadCodexGroupCatalogAccounts separates picker membership from capability
@@ -234,6 +253,41 @@ func openAIConfiguredCodexModelIDs(accounts []Account) []string {
 	return models
 }
 
+func openAIConfiguredCodexModelIDsForGroup(accounts []Account, group *Group) []string {
+	models := openAIConfiguredCodexModelIDs(accounts)
+	if group == nil || !group.CustomModelsListEnabled() {
+		return models
+	}
+
+	seen := make(map[string]struct{}, len(models)+len(group.ModelsListConfig.Models))
+	for _, modelID := range models {
+		seen[modelID] = struct{}{}
+	}
+	for _, selectedModel := range group.ModelsListConfig.Models {
+		selectedModel = strings.TrimSpace(selectedModel)
+		if selectedModel == "" || strings.Contains(selectedModel, "*") {
+			continue
+		}
+		for i := range accounts {
+			account := &accounts[i]
+			if account.Platform != PlatformOpenAI {
+				continue
+			}
+			mappedModel, matched := account.ResolveMappedModel(selectedModel)
+			if !matched || strings.TrimSpace(mappedModel) == "" {
+				continue
+			}
+			if _, exists := seen[selectedModel]; !exists {
+				seen[selectedModel] = struct{}{}
+				models = append(models, selectedModel)
+			}
+			break
+		}
+	}
+	sort.Strings(models)
+	return models
+}
+
 const (
 	configuredCodexModelPriority       = 50
 	configuredCodexCustomDescription   = "Custom model routed through Sub2API."
@@ -241,6 +295,7 @@ const (
 	configuredCodexDeepSeekV4Context   = 1_000_000
 	configuredCodexGrokContext         = 500_000
 	configuredCodexGrokBuildContext    = 256_000
+	configuredCodexGPT56MaxContext     = 872_000
 	configuredCodexToolOutputMaxTokens = 10_000
 )
 
@@ -255,7 +310,15 @@ type configuredCodexTruncationPolicy struct {
 }
 
 type configuredCodexModelMessages struct {
-	InstructionsTemplate string `json:"instructions_template"`
+	InstructionsTemplate  string `json:"instructions_template"`
+	InstructionsVariables any    `json:"instructions_variables"`
+	Approvals             any    `json:"approvals"`
+	CollaborationModes    any    `json:"collaboration_modes"`
+	AutoReview            any    `json:"auto_review"`
+	Permissions           any    `json:"permissions"`
+	MultiAgent            any    `json:"multi_agent"`
+	TokenBudget           any    `json:"token_budget"`
+	GuardianV2            any    `json:"guardian_v2"`
 }
 
 // configuredCodexModelDescriptor is the minimum complete ModelInfo contract
@@ -272,9 +335,14 @@ type configuredCodexModelDescriptor struct {
 	Visibility                        string                          `json:"visibility"`
 	SupportedInAPI                    bool                            `json:"supported_in_api"`
 	Priority                          int                             `json:"priority"`
+	AdditionalSpeedTiers              []string                        `json:"additional_speed_tiers"`
+	ServiceTiers                      []any                           `json:"service_tiers"`
+	DefaultServiceTier                any                             `json:"default_service_tier"`
 	AvailabilityNUX                   any                             `json:"availability_nux"`
 	Upgrade                           any                             `json:"upgrade"`
 	ModelMessages                     configuredCodexModelMessages    `json:"model_messages"`
+	IncludeSkillsUsageInstructions    bool                            `json:"include_skills_usage_instructions"`
+	IncludePluginUsageInstructions    bool                            `json:"include_plugin_usage_instructions"`
 	IncludeAppsUsageInstructions      bool                            `json:"include_apps_usage_instructions"`
 	SupportsReasoningSummaryParameter bool                            `json:"supports_reasoning_summary_parameter"`
 	DefaultReasoningSummary           string                          `json:"default_reasoning_summary"`
@@ -283,14 +351,23 @@ type configuredCodexModelDescriptor struct {
 	ApplyPatchToolType                *string                         `json:"apply_patch_tool_type"`
 	WebSearchToolType                 string                          `json:"web_search_tool_type"`
 	TruncationPolicy                  configuredCodexTruncationPolicy `json:"truncation_policy"`
+	SupportsImageDetailOriginal       bool                            `json:"supports_image_detail_original"`
 	SupportsParallelToolCalls         bool                            `json:"supports_parallel_tool_calls"`
 	ContextWindow                     int64                           `json:"context_window"`
 	MaxContextWindow                  int64                           `json:"max_context_window"`
+	AutoCompactTokenLimit             any                             `json:"auto_compact_token_limit"`
+	CompHash                          any                             `json:"comp_hash"`
 	EffectiveContextWindowPercent     int64                           `json:"effective_context_window_percent"`
 	ExperimentalSupportedTools        []string                        `json:"experimental_supported_tools"`
 	InputModalities                   []string                        `json:"input_modalities"`
 	SupportsSearchTool                bool                            `json:"supports_search_tool"`
 	UseResponsesLite                  bool                            `json:"use_responses_lite"`
+	NodeREPLAutoReviewRequired        bool                            `json:"node_repl_auto_review_required"`
+	NodeREPLDisabled                  bool                            `json:"node_repl_disabled"`
+	AutoReviewModelOverride           any                             `json:"auto_review_model_override"`
+	ModelSpecialty                    any                             `json:"model_specialty"`
+	ToolMode                          any                             `json:"tool_mode"`
+	MultiAgentVersion                 any                             `json:"multi_agent_version"`
 }
 
 type codexModelMetadataOverride struct {
@@ -308,21 +385,24 @@ func newConfiguredCodexModelDescriptor(modelID string) configuredCodexModelDescr
 		Description:           configuredCodexCustomDescription,
 		DefaultReasoningLevel: &noReasoningLevel,
 		SupportedReasoningLevels: []configuredCodexReasoningLevel{
-			{Effort: "none", Description: "Use the model's default reasoning behavior"},
+			{Effort: "none", Description: configuredCodexReasoningLevelDescription("none")},
 		},
-		ShellType:                     "shell_command",
-		Visibility:                    "list",
-		SupportedInAPI:                true,
-		Priority:                      configuredCodexModelPriority,
-		ModelMessages:                 configuredCodexModelMessages{InstructionsTemplate: openai.CodexBaseInstructionsForModel(modelID)},
-		DefaultReasoningSummary:       "none",
-		WebSearchToolType:             "text",
-		TruncationPolicy:              configuredCodexTruncationPolicy{Mode: "tokens", Limit: configuredCodexToolOutputMaxTokens},
-		ContextWindow:                 configuredCodexFallbackContext,
-		MaxContextWindow:              configuredCodexFallbackContext,
-		EffectiveContextWindowPercent: 95,
-		ExperimentalSupportedTools:    []string{},
-		InputModalities:               []string{"text"},
+		ShellType:                         "unified_exec",
+		Visibility:                        "list",
+		SupportedInAPI:                    true,
+		Priority:                          configuredCodexModelPriority,
+		AdditionalSpeedTiers:              []string{},
+		ServiceTiers:                      []any{},
+		ModelMessages:                     configuredCodexModelMessages{InstructionsTemplate: openai.CodexBaseInstructionsForModel(modelID)},
+		SupportsReasoningSummaryParameter: true,
+		DefaultReasoningSummary:           "auto",
+		WebSearchToolType:                 "text",
+		TruncationPolicy:                  configuredCodexTruncationPolicy{Mode: "bytes", Limit: configuredCodexToolOutputMaxTokens},
+		ContextWindow:                     configuredCodexFallbackContext,
+		MaxContextWindow:                  configuredCodexFallbackContext,
+		EffectiveContextWindowPercent:     95,
+		ExperimentalSupportedTools:        []string{},
+		InputModalities:                   []string{"text"},
 	}
 
 	if isDeepSeekCodexModel(modelID) {
@@ -365,14 +445,24 @@ func newConfiguredCodexModelDescriptor(modelID string) configuredCodexModelDescr
 	}
 
 	if isOpenAICodexGPTModel(modelID) {
-		defaultReasoningLevel := "medium"
 		descriptor.DisplayName = openaiCodexDisplayName(modelID)
 		descriptor.Description = "OpenAI GPT coding model routed through Sub2API."
-		descriptor.DefaultReasoningLevel = &defaultReasoningLevel
-		descriptor.SupportedReasoningLevels = configuredCodexGPTReasoningLevels(modelID)
 		descriptor.SupportsParallelToolCalls = true
+		if isOpenAICodexReasoningGPTModel(modelID) {
+			defaultReasoningLevel := "medium"
+			if getNormalizedCodexModel(modelID) == "gpt-5.6-sol" {
+				defaultReasoningLevel = "low"
+			}
+			descriptor.DefaultReasoningLevel = &defaultReasoningLevel
+			descriptor.SupportedReasoningLevels = configuredCodexGPTReasoningLevels(modelID)
+			descriptor.DefaultReasoningSummary = "none"
+			descriptor.TruncationPolicy = configuredCodexTruncationPolicy{Mode: "tokens", Limit: configuredCodexToolOutputMaxTokens}
+			if isOpenAIGPT56Model(modelID) {
+				descriptor.MaxContextWindow = configuredCodexGPT56MaxContext
+			}
+		}
 		if SupportsVerbosity(modelID) {
-			defaultVerbosity := "medium"
+			defaultVerbosity := "low"
 			descriptor.SupportVerbosity = true
 			descriptor.DefaultVerbosity = &defaultVerbosity
 		}
@@ -387,7 +477,7 @@ func configuredCodexGrokReasoningLevels(modelID string) []configuredCodexReasoni
 		{Effort: "medium", Description: "Balanced reasoning for most coding tasks"},
 		{Effort: "high", Description: "Greater reasoning depth for coding and agent tasks"},
 	}
-	if grokSupportsExtraHighReasoningEffort(modelID) {
+	if GrokSupportsXHighReasoningEffort(modelID) {
 		levels = append(levels, configuredCodexReasoningLevel{
 			Effort:      "xhigh",
 			Description: "Extra-high reasoning depth for difficult tasks",
@@ -436,10 +526,17 @@ func configuredCodexGPTReasoningLevels(modelID string) []configuredCodexReasonin
 		{Effort: "high", Description: "Greater reasoning depth for coding and agent tasks"},
 		{Effort: "xhigh", Description: "Extra-high reasoning depth for difficult tasks"},
 	}
+	normalized := getNormalizedCodexModel(modelID)
 	if isOpenAIGPT56Model(modelID) {
 		levels = append(levels, configuredCodexReasoningLevel{
 			Effort:      "max",
 			Description: "Maximum reasoning depth for complex tasks",
+		})
+	}
+	if normalized == "gpt-5.6-sol" || normalized == "gpt-5.6-terra" {
+		levels = append(levels, configuredCodexReasoningLevel{
+			Effort:      "ultra",
+			Description: "Maximum reasoning with automatic task delegation",
 		})
 	}
 	return levels
@@ -451,6 +548,43 @@ func isOpenAICodexGPTModel(modelID string) bool {
 		return false
 	}
 	return strings.HasPrefix(normalized, "gpt-")
+}
+
+func isOpenAICodexReasoningGPTModel(modelID string) bool {
+	normalized := canonicalizeOpenAIModelAliasSpelling(modelID)
+	return strings.HasPrefix(normalized, "gpt-5")
+}
+
+func isOpenAICodexImageInputModel(modelID string) bool {
+	normalized := canonicalizeOpenAIModelAliasSpelling(modelID)
+	return strings.HasPrefix(normalized, "gpt-5") ||
+		strings.HasPrefix(normalized, "gpt-4o") ||
+		strings.HasPrefix(normalized, "gpt-4.1") ||
+		strings.HasPrefix(normalized, "gpt-4.5") ||
+		strings.HasPrefix(normalized, "gpt-4-turbo") ||
+		strings.HasPrefix(normalized, "gpt-4-vision")
+}
+
+func isOfficialOpenAICodexCatalogModel(modelID string) bool {
+	normalized := strings.ToLower(codexProviderQualifiedModelID(modelID))
+	if normalized == "" || isCodexDedicatedMediaModel(normalized) {
+		return false
+	}
+	if strings.HasPrefix(normalized, "codex-") {
+		return true
+	}
+	if strings.HasPrefix(normalized, "o1") || strings.HasPrefix(normalized, "o3") || strings.HasPrefix(normalized, "o4") {
+		return true
+	}
+	if !strings.HasPrefix(normalized, "gpt-") {
+		return false
+	}
+	for _, incompatibleFamily := range []string{"audio", "realtime", "transcribe", "tts"} {
+		if strings.Contains(normalized, incompatibleFamily) {
+			return false
+		}
+	}
+	return true
 }
 
 func openaiCodexDisplayName(modelID string) string {
@@ -531,11 +665,13 @@ func grokCodexContextWindow(modelID string) int64 {
 }
 
 func isClaudeCodexModel(modelID string) bool {
-	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(modelID)), "claude")
+	platform, detected := DetectModelPlatform(modelID)
+	return detected && platform == PlatformAnthropic
 }
 
 func claudeCodexDisplayName(modelID string) string {
-	normalized := strings.ToLower(strings.TrimSpace(modelID))
+	normalized := strings.ToLower(codexProviderQualifiedModelID(modelID))
+	normalized = strings.TrimPrefix(normalized, "anthropic.")
 	if normalized == "" {
 		return modelID
 	}
@@ -558,7 +694,7 @@ func claudeCodexDisplayName(modelID string) string {
 // routed through a custom provider. The response is also suitable for saving
 // as model_catalog_json in clients that do not refresh custom-provider catalogs.
 func BuildCodexModelsManifest(modelIDs []string) ([]byte, error) {
-	return buildCodexModelsManifest(modelIDs, nil, nil)
+	return buildCodexModelsManifest(modelIDs, nil, nil, nil)
 }
 
 // BuildCodexModelsManifestForGroup derives input capabilities from the
@@ -590,8 +726,8 @@ func (s *GatewayService) BuildCodexModelsManifestForGroup(
 	}
 	var compositeRoutes []CompositeModelRoute
 	compositeRoutesAvailable := true
-	if effectivePlatform == PlatformComposite && s.compositeResolver != nil {
-		compositeRoutes, err = s.compositeResolver.ListActiveRoutes(ctx, group.ID)
+	if effectivePlatform == PlatformComposite && s.compositeResolver != nil && s.compositeResolver.repo != nil {
+		compositeRoutes, err = s.compositeResolver.repo.ListByGroup(ctx, group.ID, false)
 		if err != nil {
 			compositeRoutesAvailable = false
 		}
@@ -613,6 +749,13 @@ func buildCodexModelsManifestForAccounts(
 	compositeRoutesAvailable bool,
 ) ([]byte, error) {
 	imageInputModels := make(map[string]bool, len(modelIDs))
+	metadataModels := codexCatalogMetadataModels(
+		effectivePlatform,
+		modelIDs,
+		accounts,
+		compositeRoutes,
+		compositeRoutesAvailable,
+	)
 	modelMetadata := make(map[string]codexModelMetadataOverride, len(modelIDs))
 	for _, modelID := range modelIDs {
 		modelID = strings.TrimSpace(modelID)
@@ -635,12 +778,13 @@ func buildCodexModelsManifestForAccounts(
 			modelMetadata[modelID] = metadata
 		}
 	}
-	return buildCodexModelsManifest(modelIDs, imageInputModels, modelMetadata)
+	return buildCodexModelsManifest(modelIDs, imageInputModels, metadataModels, modelMetadata)
 }
 
 func buildCodexModelsManifest(
 	modelIDs []string,
 	imageInputModels map[string]bool,
+	metadataModels map[string]string,
 	modelMetadata map[string]codexModelMetadataOverride,
 ) ([]byte, error) {
 	seen := make(map[string]struct{}, len(modelIDs))
@@ -653,16 +797,25 @@ func buildCodexModelsManifest(
 		if _, exists := seen[modelID]; exists {
 			continue
 		}
-		if isCodexDedicatedMediaModel(modelID) {
+		metadataModelID := strings.TrimSpace(metadataModels[modelID])
+		if metadataModelID == "" {
+			metadataModelID = modelID
+		}
+		if isCodexDedicatedMediaModel(modelID) || isCodexDedicatedMediaModel(metadataModelID) {
 			continue
 		}
 		seen[modelID] = struct{}{}
-		descriptor := newConfiguredCodexModelDescriptor(modelID)
+		descriptor := newConfiguredCodexModelDescriptor(metadataModelID)
+		descriptor.Slug = modelID
 		if imageInputModels[modelID] {
 			descriptor.InputModalities = []string{"text", "image"}
 		}
 		if metadata, ok := modelMetadata[modelID]; ok {
 			applyUpstreamModelMetadataToCodexDescriptor(&descriptor, metadata)
+		}
+		if metadataModelID != modelID {
+			descriptor.DisplayName = modelID
+			descriptor.Description = configuredCodexCustomDescription
 		}
 		models = append(models, descriptor)
 	}
@@ -671,272 +824,106 @@ func buildCodexModelsManifest(
 	}{Models: models})
 }
 
-func groupCodexModelMetadata(
+func codexCatalogMetadataModels(
 	platform string,
-	modelID string,
+	modelIDs []string,
 	accounts []Account,
 	compositeRoutes []CompositeModelRoute,
 	compositeRoutesAvailable bool,
-) (codexModelMetadataOverride, bool) {
-	modelID = strings.TrimSpace(modelID)
-	if modelID == "" {
-		return codexModelMetadataOverride{}, false
-	}
-	upstreamModel := modelID
-	if platform == PlatformComposite {
-		var resolved bool
-		platform, upstreamModel, resolved = resolveCodexCompositeModelTarget(
+) map[string]string {
+	metadataModels := make(map[string]string, len(modelIDs))
+	for _, modelID := range modelIDs {
+		modelID = strings.TrimSpace(modelID)
+		if modelID == "" {
+			continue
+		}
+		metadataModelID := resolveCodexCatalogMetadataModel(
+			platform,
 			modelID,
 			accounts,
 			compositeRoutes,
 			compositeRoutesAvailable,
 		)
-		if !resolved {
-			return codexModelMetadataOverride{}, false
+		if metadataModelID != "" && metadataModelID != modelID {
+			metadataModels[modelID] = metadataModelID
 		}
 	}
-	if !isConcreteRequestPlatform(platform) {
-		return codexModelMetadataOverride{}, false
-	}
+	return metadataModels
+}
 
-	explicitClaims := false
-	publicAlias := upstreamModel != modelID
-	if upstreamModel == modelID {
-		for _, account := range accounts {
-			if account.Platform == platform && explicitModelMappingClaims(account, modelID) {
-				explicitClaims = true
-				break
+func resolveCodexCatalogMetadataModel(
+	platform string,
+	modelID string,
+	accounts []Account,
+	compositeRoutes []CompositeModelRoute,
+	compositeRoutesAvailable bool,
+) string {
+	modelID = strings.TrimSpace(modelID)
+	if modelID == "" {
+		return ""
+	}
+	if platform == PlatformComposite {
+		if !compositeRoutesAvailable {
+			return modelID
+		}
+		if route, supported, matched := matchCompositeRoute(compositeRoutes, modelID, CompositeRouteEndpointResponses); matched {
+			if !supported {
+				return modelID
 			}
+			if upstreamModel := strings.TrimSpace(route.UpstreamModel); upstreamModel != "" {
+				return upstreamModel
+			}
+			return modelID
 		}
-	}
+		if codexCompositeRouteMatchesModel(compositeRoutes, modelID) {
+			return modelID
+		}
 
-	candidates := make([]UpstreamModelMetadata, 0)
+		claimedPlatforms := make(map[string]struct{})
+		for _, account := range accounts {
+			accountPlatform := strings.TrimSpace(account.Platform)
+			if !isConcreteRequestPlatform(accountPlatform) || !codexExplicitModelMappingClaims(account, modelID) {
+				continue
+			}
+			claimedPlatforms[accountPlatform] = struct{}{}
+		}
+		if len(claimedPlatforms) > 1 {
+			return modelID
+		}
+		for accountPlatform := range claimedPlatforms {
+			return uniqueCodexMappedModel(accounts, accountPlatform, modelID)
+		}
+
+		detectedPlatform, detected := DetectModelPlatform(modelID)
+		if !detected {
+			return modelID
+		}
+		platform = detectedPlatform
+	}
+	return uniqueCodexMappedModel(accounts, platform, modelID)
+}
+
+func uniqueCodexMappedModel(accounts []Account, platform string, modelID string) string {
+	targets := make(map[string]struct{})
 	for i := range accounts {
 		account := &accounts[i]
 		if account.Platform != platform {
 			continue
 		}
-		var lookupModel string
-		if explicitClaims {
-			if !explicitModelMappingClaims(*account, modelID) {
-				continue
-			}
-			lookupModel = account.GetMappedModel(modelID)
-		} else {
-			if !account.IsModelSupported(upstreamModel) {
-				continue
-			}
-			lookupModel = account.GetMappedModel(upstreamModel)
-		}
-		if strings.TrimSpace(lookupModel) != modelID {
-			publicAlias = true
-		}
-		metadata, ok := account.GetUpstreamModelMetadata(lookupModel)
-		if !ok {
-			return codexModelMetadataOverride{}, false
-		}
-		candidates = append(candidates, metadata)
-	}
-	if len(candidates) == 0 {
-		return codexModelMetadataOverride{}, false
-	}
-	metadata := intersectUpstreamModelMetadata(modelID, candidates)
-	if publicAlias {
-		metadata.DisplayName = modelID
-		metadata.Description = configuredCodexCustomDescription
-	}
-	return metadata, true
-}
-
-func intersectUpstreamModelMetadata(modelID string, candidates []UpstreamModelMetadata) codexModelMetadataOverride {
-	result := codexModelMetadataOverride{UpstreamModelMetadata: UpstreamModelMetadata{ID: strings.TrimSpace(modelID)}}
-	for _, candidate := range candidates {
-		if result.DisplayName == "" && strings.TrimSpace(candidate.DisplayName) != "" {
-			result.DisplayName = strings.TrimSpace(candidate.DisplayName)
-		}
-		if result.Description == "" && strings.TrimSpace(candidate.Description) != "" {
-			result.Description = strings.TrimSpace(candidate.Description)
-		}
-	}
-
-	reasoningKnown := true
-	reasoningValue := false
-	for i, candidate := range candidates {
-		if candidate.Reasoning == nil {
-			reasoningKnown = false
-			break
-		}
-		if i == 0 {
-			reasoningValue = *candidate.Reasoning
+		mappedModel, matched := account.ResolveMappedModel(modelID)
+		mappedModel = strings.TrimSpace(mappedModel)
+		if !matched || mappedModel == "" {
 			continue
 		}
-		if reasoningValue != *candidate.Reasoning {
-			reasoningKnown = false
-			result.reasoningConflict = true
-			break
-		}
+		targets[mappedModel] = struct{}{}
 	}
-	if reasoningKnown {
-		result.Reasoning = &reasoningValue
-		if reasoningValue {
-			levels := normalizeReasoningLevels(candidates[0].SupportedReasoningLevels)
-			for _, candidate := range candidates[1:] {
-				levels = intersectOrderedStrings(levels, normalizeReasoningLevels(candidate.SupportedReasoningLevels))
-			}
-			result.SupportedReasoningLevels = levels
-			if len(levels) == 0 {
-				result.reasoningConflict = true
-			}
-			if len(levels) > 0 {
-				sharedDefault := normalizeReasoningLevel(candidates[0].DefaultReasoningLevel)
-				for _, candidate := range candidates[1:] {
-					if normalizeReasoningLevel(candidate.DefaultReasoningLevel) != sharedDefault {
-						sharedDefault = ""
-						break
-					}
-				}
-				if !stringSliceContains(levels, sharedDefault) {
-					sharedDefault = levels[0]
-				}
-				result.DefaultReasoningLevel = sharedDefault
-			}
-		}
+	if len(targets) != 1 {
+		return modelID
 	}
-
-	modalitiesKnown := true
-	modalities := normalizeCodexInputModalities(candidates[0].InputModalities)
-	if len(modalities) == 0 {
-		modalitiesKnown = false
+	for target := range targets {
+		return target
 	}
-	for _, candidate := range candidates[1:] {
-		candidateModalities := normalizeCodexInputModalities(candidate.InputModalities)
-		if len(candidateModalities) == 0 {
-			modalitiesKnown = false
-			break
-		}
-		modalities = intersectOrderedStrings(modalities, candidateModalities)
-	}
-	if modalitiesKnown && len(modalities) > 0 {
-		result.InputModalities = modalities
-	} else if modalitiesKnown {
-		result.inputModalitiesConflict = true
-	}
-
-	contextKnown := true
-	for i, candidate := range candidates {
-		if candidate.ContextWindow <= 0 {
-			contextKnown = false
-			break
-		}
-		if i == 0 || candidate.ContextWindow < result.ContextWindow {
-			result.ContextWindow = candidate.ContextWindow
-		}
-	}
-	if !contextKnown {
-		result.ContextWindow = 0
-	}
-	return result
-}
-
-func applyUpstreamModelMetadataToCodexDescriptor(
-	descriptor *configuredCodexModelDescriptor,
-	metadata codexModelMetadataOverride,
-) {
-	if descriptor == nil {
-		return
-	}
-	if strings.TrimSpace(metadata.DisplayName) != "" {
-		descriptor.DisplayName = strings.TrimSpace(metadata.DisplayName)
-	}
-	if strings.TrimSpace(metadata.Description) != "" {
-		descriptor.Description = strings.TrimSpace(metadata.Description)
-	}
-	if metadata.reasoningConflict {
-		descriptor.DefaultReasoningLevel = nil
-		descriptor.SupportedReasoningLevels = []configuredCodexReasoningLevel{}
-	} else if metadata.Reasoning != nil && !*metadata.Reasoning {
-		none := "none"
-		descriptor.DefaultReasoningLevel = &none
-		descriptor.SupportedReasoningLevels = []configuredCodexReasoningLevel{{
-			Effort:      "none",
-			Description: configuredCodexReasoningLevelDescription("none"),
-		}}
-	} else if metadata.Reasoning != nil && *metadata.Reasoning {
-		levels := normalizeReasoningLevels(metadata.SupportedReasoningLevels)
-		if len(levels) == 0 {
-			descriptor.DefaultReasoningLevel = nil
-			descriptor.SupportedReasoningLevels = []configuredCodexReasoningLevel{}
-		} else {
-			defaultLevel := normalizeReasoningLevel(metadata.DefaultReasoningLevel)
-			if !stringSliceContains(levels, defaultLevel) {
-				defaultLevel = levels[0]
-			}
-			descriptor.DefaultReasoningLevel = &defaultLevel
-			descriptor.SupportedReasoningLevels = make([]configuredCodexReasoningLevel, 0, len(levels))
-			for _, level := range levels {
-				descriptor.SupportedReasoningLevels = append(descriptor.SupportedReasoningLevels, configuredCodexReasoningLevel{
-					Effort:      level,
-					Description: configuredCodexReasoningLevelDescription(level),
-				})
-			}
-		}
-	}
-	if metadata.inputModalitiesConflict {
-		descriptor.InputModalities = []string{"text"}
-	} else if modalities := normalizeCodexInputModalities(metadata.InputModalities); len(modalities) > 0 {
-		descriptor.InputModalities = modalities
-	}
-	if metadata.ContextWindow > 0 {
-		descriptor.ContextWindow = metadata.ContextWindow
-		descriptor.MaxContextWindow = metadata.ContextWindow
-	}
-}
-
-func configuredCodexReasoningLevelDescription(level string) string {
-	switch level {
-	case "none":
-		return "Use the model's default behavior without configurable reasoning"
-	case "minimal":
-		return "Minimal reasoning for the fastest responses"
-	case "low":
-		return "Fast responses with lighter reasoning"
-	case "medium":
-		return "Balanced reasoning for most coding tasks"
-	case "high":
-		return "Greater reasoning depth for coding and agent tasks"
-	case "xhigh":
-		return "Extra-high reasoning depth for difficult tasks"
-	case "max":
-		return "Maximum reasoning depth for complex tasks"
-	default:
-		return "Reasoning effort supported by the upstream model"
-	}
-}
-
-func intersectOrderedStrings(left, right []string) []string {
-	rightSet := make(map[string]struct{}, len(right))
-	for _, value := range right {
-		rightSet[value] = struct{}{}
-	}
-	intersection := make([]string, 0, len(left))
-	for _, value := range left {
-		if _, ok := rightSet[value]; ok {
-			intersection = append(intersection, value)
-		}
-	}
-	return intersection
-}
-
-func stringSliceContains(values []string, target string) bool {
-	if target == "" {
-		return false
-	}
-	for _, value := range values {
-		if value == target {
-			return true
-		}
-	}
-	return false
+	return modelID
 }
 
 func groupCodexModelSupportsImageInput(
@@ -1000,11 +987,14 @@ func resolveCodexCompositeModelTarget(
 		}
 		return route.TargetPlatform, upstreamModel, true
 	}
+	if codexCompositeRouteMatchesModel(routes, modelID) {
+		return "", "", false
+	}
 
 	claimedPlatforms := make(map[string]struct{})
 	for _, account := range accounts {
 		platform := strings.TrimSpace(account.Platform)
-		if !isConcreteRequestPlatform(platform) || !explicitModelMappingClaims(account, modelID) {
+		if !isConcreteRequestPlatform(platform) || !codexExplicitModelMappingClaims(account, modelID) {
 			continue
 		}
 		claimedPlatforms[platform] = struct{}{}
@@ -1013,17 +1003,42 @@ func resolveCodexCompositeModelTarget(
 		return "", "", false
 	}
 	for platform := range claimedPlatforms {
-		if !CompositeRouteEndpointSupported(platform, CompositeRouteEndpointResponses) {
-			return "", "", false
-		}
 		return platform, modelID, true
 	}
 
 	platform, detected := DetectModelPlatform(modelID)
-	if !detected || !CompositeRouteEndpointSupported(platform, CompositeRouteEndpointResponses) {
+	if !detected {
 		return "", "", false
 	}
 	return platform, modelID, true
+}
+
+func codexCompositeRouteMatchesModel(routes []CompositeModelRoute, modelID string) bool {
+	for _, route := range routes {
+		publicModel := strings.TrimSpace(route.PublicModel)
+		if publicModel == "" {
+			continue
+		}
+		switch normalizeCompositeRouteMatchType(route.MatchType) {
+		case CompositeRouteMatchPrefix:
+			if strings.HasPrefix(modelID, publicModel) {
+				return true
+			}
+		default:
+			if modelID == publicModel {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func codexExplicitModelMappingClaims(account Account, modelID string) bool {
+	if account.Credentials == nil || strings.TrimSpace(modelID) == "" {
+		return false
+	}
+	mapped := strings.TrimSpace(account.GetModelMapping()[modelID])
+	return mapped != ""
 }
 
 func accountCodexModelSupportsImageInput(account *Account, upstreamModel string) bool {
@@ -1032,7 +1047,7 @@ func accountCodexModelSupportsImageInput(account *Account, upstreamModel string)
 	}
 	switch account.Platform {
 	case PlatformOpenAI:
-		if !isOpenAICodexGPTModel(upstreamModel) {
+		if !isOpenAICodexImageInputModel(upstreamModel) {
 			return false
 		}
 		if account.IsOpenAIOAuth() {
@@ -1373,6 +1388,10 @@ func (c *codexModelsManifestCache) set(key string, manifest *CodexModelsManifest
 	if manifest == nil || len(manifest.Body) > codexModelsManifestCacheBodyLimit {
 		return
 	}
+	remainingBodyBudget := codexModelsManifestCacheBodyLimit - len(manifest.Body)
+	if len(manifest.upstreamSourceBody) > remainingBodyBudget {
+		return
+	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.entries == nil {
@@ -1435,14 +1454,7 @@ func (s *OpenAIGatewayService) FetchCodexModelsManifest(ctx context.Context, acc
 			return nil, infraerrors.New(http.StatusBadGateway, "OPENAI_CODEX_MODELS_TOKEN_MISSING", "account has no Codex backend access token")
 		}
 	case credAccount.IsOpenAIApiKey():
-		baseURL := strings.TrimSpace(credAccount.GetCredential("base_url"))
-		if baseURL == "" || isOfficialOpenAIModelsBaseURL(baseURL) {
-			return nil, infraerrors.New(
-				http.StatusBadGateway,
-				"OPENAI_CODEX_MODELS_API_KEY_UPSTREAM_UNSUPPORTED",
-				"Codex models manifest requires a custom API key upstream base URL",
-			)
-		}
+		baseURL := strings.TrimSpace(credAccount.GetOpenAIBaseURL())
 		authToken = strings.TrimSpace(credAccount.GetOpenAIApiKey())
 		if authToken == "" {
 			return nil, infraerrors.New(http.StatusBadGateway, "OPENAI_CODEX_MODELS_API_KEY_MISSING", "account has no API key for the Codex models upstream")
@@ -1707,8 +1719,11 @@ func (s *OpenAIGatewayService) fetchCodexModelsManifestUpstream(ctx context.Cont
 		}
 	}
 	upstreamBody := body
+	convertedFromOpenAIModelList := false
 	if request.useAPIKeyUpstream {
-		body = convertOpenAIModelListToCodexManifest(body)
+		convertedBody := convertOpenAIModelListToCodexManifest(body)
+		convertedFromOpenAIModelList = !bytes.Equal(convertedBody, body)
+		body = convertedBody
 	}
 	if err := validateCodexModelsManifestEnvelope(body); err != nil {
 		return nil, &codexModelsManifestUpstreamError{
@@ -1722,7 +1737,11 @@ func (s *OpenAIGatewayService) fetchCodexModelsManifestUpstream(ctx context.Cont
 		}
 	}
 	if request.useAPIKeyUpstream {
-		body, err = completeAPIKeyCodexModelsManifestMetadata(body)
+		body, err = completeAPIKeyCodexModelsManifestMetadata(
+			body,
+			false,
+			request.credentialAccount != nil && isOfficialOpenAIModelsBaseURL(request.credentialAccount.GetOpenAIBaseURL()),
+		)
 		if err != nil {
 			return nil, &codexModelsManifestUpstreamError{
 				err: infraerrors.Newf(
@@ -1748,7 +1767,12 @@ func (s *OpenAIGatewayService) fetchCodexModelsManifestUpstream(ctx context.Cont
 		}
 	}
 	etag := resp.Header.Get("ETag")
-	manifest := &CodexModelsManifest{Body: body, ETag: etag}
+	manifest := &CodexModelsManifest{
+		Body:                         body,
+		ETag:                         etag,
+		upstreamSourceBody:           append([]byte(nil), upstreamBody...),
+		convertedFromOpenAIModelList: convertedFromOpenAIModelList,
+	}
 	if request.useAPIKeyUpstream {
 		manifest.upstreamETag = etag
 		if !bytes.Equal(body, upstreamBody) {
@@ -1761,6 +1785,12 @@ func (s *OpenAIGatewayService) fetchCodexModelsManifestUpstream(ctx context.Cont
 func codexModelsManifestBodyETag(body []byte) string {
 	sum := sha256.Sum256(body)
 	return fmt.Sprintf(`"%x"`, sum)
+}
+
+// CodexModelsManifestETag returns the strong ETag for a generated client
+// catalog. It is based on the final JSON body after local filtering.
+func CodexModelsManifestETag(body []byte) string {
+	return codexModelsManifestBodyETag(body)
 }
 
 var apiKeyCodexModelsWithoutResponsesLite = map[string]struct{}{
@@ -1869,7 +1899,48 @@ func convertOpenAIModelListToCodexManifest(body []byte) []byte {
 // completeAPIKeyCodexModelsManifestMetadata fills fields omitted by standard
 // OpenAI-compatible /models endpoints. Existing provider metadata always wins;
 // only absent or null values are synthesized.
-func completeAPIKeyCodexModelsManifestMetadata(body []byte) ([]byte, error) {
+// CompleteAPIKeyCodexModelsManifestForClient fills the complete ModelInfo
+// contract immediately before a group-specific API key manifest is returned.
+// The shared upstream cache remains independent from local group policy.
+func (s *OpenAIGatewayService) CompleteAPIKeyCodexModelsManifestForClient(manifest *CodexModelsManifest, account *Account) error {
+	if manifest == nil || account == nil || !account.IsOpenAIApiKey() || manifest.NotModified || len(manifest.Body) == 0 {
+		return nil
+	}
+	body := manifest.Body
+	if len(manifest.upstreamSourceBody) > 0 {
+		body = append([]byte(nil), manifest.upstreamSourceBody...)
+		if manifest.convertedFromOpenAIModelList {
+			body = convertOpenAIModelListToCodexManifest(body)
+		}
+	}
+	var err error
+	body, err = applySyncedAPIKeyCodexModelMetadata(body, account, manifest.convertedFromOpenAIModelList)
+	if err != nil {
+		return err
+	}
+	body, err = completeAPIKeyCodexModelsManifestMetadata(
+		body,
+		true,
+		isOfficialOpenAIModelsBaseURL(account.GetOpenAIBaseURL()),
+	)
+	if err != nil {
+		return err
+	}
+	body, err = adjustAPIKeyCodexModelsManifest(body)
+	if err != nil {
+		return err
+	}
+	manifest.Body = body
+	manifest.ETag = codexModelsManifestBodyETag(manifest.Body)
+	return nil
+}
+
+func applySyncedAPIKeyCodexModelMetadata(body []byte, account *Account, overwriteLocalDefaults bool) ([]byte, error) {
+	snapshot := account.GetUpstreamModelMetadataSnapshot()
+	if snapshot == nil || len(snapshot.Models) == 0 {
+		return body, nil
+	}
+
 	var envelope map[string]json.RawMessage
 	if err := json.Unmarshal(body, &envelope); err != nil {
 		return nil, fmt.Errorf("decode JSON object: %w", err)
@@ -1890,11 +1961,140 @@ func completeAPIKeyCodexModelsManifestMetadata(body []byte) ([]byte, error) {
 			continue
 		}
 		slug = strings.TrimSpace(slug)
-		if slug == "" || !isDeepSeekCodexModel(slug) {
+		metadata, ok := snapshot.Models[slug]
+		if !ok {
 			continue
 		}
 
-		defaultBody, err := json.Marshal(newConfiguredCodexModelDescriptor(slug))
+		descriptor := newConfiguredCodexModelDescriptor(slug)
+		applyUpstreamModelMetadataToCodexDescriptor(
+			&descriptor,
+			codexModelMetadataOverride{UpstreamModelMetadata: metadata},
+		)
+		descriptorBody, err := json.Marshal(descriptor)
+		if err != nil {
+			return nil, fmt.Errorf("encode synced model %q: %w", slug, err)
+		}
+		var syncedFields map[string]json.RawMessage
+		if err := json.Unmarshal(descriptorBody, &syncedFields); err != nil {
+			return nil, fmt.Errorf("decode synced model %q: %w", slug, err)
+		}
+
+		fields := make([]string, 0, 7)
+		if strings.TrimSpace(metadata.DisplayName) != "" {
+			fields = append(fields, "display_name")
+		}
+		if strings.TrimSpace(metadata.Description) != "" {
+			fields = append(fields, "description")
+		}
+		if metadata.Reasoning != nil {
+			fields = append(fields, "default_reasoning_level", "supported_reasoning_levels")
+		}
+		if len(normalizeCodexInputModalities(metadata.InputModalities)) > 0 {
+			fields = append(fields, "input_modalities")
+		}
+		if metadata.ContextWindow > 0 {
+			fields = append(fields, "context_window", "max_context_window")
+		}
+
+		modelChanged := false
+		for _, field := range fields {
+			value, exists := syncedFields[field]
+			if !exists {
+				continue
+			}
+			current, currentExists := model[field]
+			current = bytes.TrimSpace(current)
+			if !overwriteLocalDefaults && currentExists && len(current) > 0 && !bytes.Equal(current, []byte("null")) {
+				continue
+			}
+			if bytes.Equal(current, bytes.TrimSpace(value)) {
+				continue
+			}
+			model[field] = value
+			modelChanged = true
+		}
+		if !modelChanged {
+			continue
+		}
+		encoded, err := json.Marshal(model)
+		if err != nil {
+			return nil, fmt.Errorf("encode model %q with synced metadata: %w", slug, err)
+		}
+		models[i] = encoded
+		changed = true
+	}
+	if !changed {
+		return body, nil
+	}
+
+	encodedModels, err := json.Marshal(models)
+	if err != nil {
+		return nil, fmt.Errorf("encode models with synced metadata: %w", err)
+	}
+	envelope["models"] = encodedModels
+	updated, err := json.Marshal(envelope)
+	if err != nil {
+		return nil, fmt.Errorf("encode manifest with synced metadata: %w", err)
+	}
+	return updated, nil
+}
+
+func completeAPIKeyCodexModelsManifestMetadata(body []byte, completeAll, officialOpenAI bool) ([]byte, error) {
+	var envelope map[string]json.RawMessage
+	if err := json.Unmarshal(body, &envelope); err != nil {
+		return nil, fmt.Errorf("decode JSON object: %w", err)
+	}
+	var models []json.RawMessage
+	if err := json.Unmarshal(envelope["models"], &models); err != nil {
+		return nil, fmt.Errorf("decode top-level models array: %w", err)
+	}
+
+	changed := false
+	if officialOpenAI {
+		filtered := make([]json.RawMessage, 0, len(models))
+		for _, rawModel := range models {
+			var model struct {
+				Slug string `json:"slug"`
+			}
+			if err := json.Unmarshal(rawModel, &model); err != nil || strings.TrimSpace(model.Slug) == "" {
+				filtered = append(filtered, rawModel)
+				continue
+			}
+			if !isOfficialOpenAICodexCatalogModel(model.Slug) {
+				changed = true
+				continue
+			}
+			filtered = append(filtered, rawModel)
+		}
+		models = filtered
+	}
+	for i, rawModel := range models {
+		var model map[string]json.RawMessage
+		if err := json.Unmarshal(rawModel, &model); err != nil || model == nil {
+			continue
+		}
+		var slug string
+		if err := json.Unmarshal(model["slug"], &slug); err != nil {
+			continue
+		}
+		slug = strings.TrimSpace(slug)
+		if slug == "" {
+			continue
+		}
+
+		completeDescriptor := completeAll || isDeepSeekCodexModel(slug)
+		forceOfficialImage := officialOpenAI && isOpenAICodexImageInputModel(slug)
+		if !completeDescriptor && !forceOfficialImage {
+			continue
+		}
+
+		descriptor := newConfiguredCodexModelDescriptor(slug)
+		if forceOfficialImage {
+			descriptor.InputModalities = []string{"text", "image"}
+			descriptor.SupportsImageDetailOriginal = true
+		}
+		defaultBody, err := json.Marshal(descriptor)
 		if err != nil {
 			return nil, fmt.Errorf("encode default model %q: %w", slug, err)
 		}
@@ -1904,14 +2104,27 @@ func completeAPIKeyCodexModelsManifestMetadata(body []byte) ([]byte, error) {
 		}
 
 		modelChanged := false
-		for key, defaultValue := range defaults {
-			currentValue, exists := model[key]
-			if exists && (!bytes.Equal(bytes.TrimSpace(currentValue), []byte("null")) ||
-				bytes.Equal(bytes.TrimSpace(defaultValue), []byte("null"))) {
-				continue
+		if completeDescriptor {
+			merged, err := mergeMissingCodexModelFields(model, defaults)
+			if err != nil {
+				return nil, fmt.Errorf("complete model %q: %w", slug, err)
 			}
-			model[key] = defaultValue
-			modelChanged = true
+			modelChanged = merged
+		}
+		if forceOfficialImage {
+			modalities, err := json.Marshal([]string{"text", "image"})
+			if err != nil {
+				return nil, fmt.Errorf("encode input modalities for model %q: %w", slug, err)
+			}
+			if !bytes.Equal(bytes.TrimSpace(model["input_modalities"]), modalities) {
+				model["input_modalities"] = modalities
+				modelChanged = true
+			}
+			imageDetailOriginal := json.RawMessage("true")
+			if !bytes.Equal(bytes.TrimSpace(model["supports_image_detail_original"]), imageDetailOriginal) {
+				model["supports_image_detail_original"] = imageDetailOriginal
+				modelChanged = true
+			}
 		}
 		if !modelChanged {
 			continue
@@ -1937,6 +2150,42 @@ func completeAPIKeyCodexModelsManifestMetadata(body []byte) ([]byte, error) {
 		return nil, fmt.Errorf("encode JSON object: %w", err)
 	}
 	return completed, nil
+}
+
+func mergeMissingCodexModelFields(current, defaults map[string]json.RawMessage) (bool, error) {
+	changed := false
+	for key, defaultValue := range defaults {
+		currentValue, exists := current[key]
+		if !exists || (bytes.Equal(bytes.TrimSpace(currentValue), []byte("null")) &&
+			!bytes.Equal(bytes.TrimSpace(defaultValue), []byte("null"))) {
+			current[key] = defaultValue
+			changed = true
+			continue
+		}
+
+		var currentObject map[string]json.RawMessage
+		var defaultObject map[string]json.RawMessage
+		if err := json.Unmarshal(currentValue, &currentObject); err != nil || currentObject == nil {
+			continue
+		}
+		if err := json.Unmarshal(defaultValue, &defaultObject); err != nil || defaultObject == nil {
+			continue
+		}
+		nestedChanged, err := mergeMissingCodexModelFields(currentObject, defaultObject)
+		if err != nil {
+			return false, err
+		}
+		if !nestedChanged {
+			continue
+		}
+		mergedValue, err := json.Marshal(currentObject)
+		if err != nil {
+			return false, fmt.Errorf("encode field %q: %w", key, err)
+		}
+		current[key] = mergedValue
+		changed = true
+	}
+	return changed, nil
 }
 
 func validateCodexModelsManifestEnvelope(body []byte) error {
@@ -1979,6 +2228,20 @@ func buildCodexModelsManifestCacheKey(request codexModelsManifestRequest) string
 	return fmt.Sprintf("%x", hasher.Sum(nil))
 }
 
+func cloneCodexModelsManifest(manifest *CodexModelsManifest) *CodexModelsManifest {
+	if manifest == nil {
+		return nil
+	}
+	cloned := *manifest
+	if manifest.Body != nil {
+		cloned.Body = append([]byte(nil), manifest.Body...)
+	}
+	if manifest.upstreamSourceBody != nil {
+		cloned.upstreamSourceBody = append([]byte(nil), manifest.upstreamSourceBody...)
+	}
+	return &cloned
+}
+
 func codexModelsManifestForClient(manifest *CodexModelsManifest, ifNoneMatch string) *CodexModelsManifest {
 	if manifest == nil {
 		return nil
@@ -1986,7 +2249,7 @@ func codexModelsManifestForClient(manifest *CodexModelsManifest, ifNoneMatch str
 	if codexModelsManifestETagMatches(ifNoneMatch, manifest.ETag) {
 		return &CodexModelsManifest{ETag: manifest.ETag, NotModified: true}
 	}
-	return manifest
+	return cloneCodexModelsManifest(manifest)
 }
 
 func codexModelsManifestETagMatches(ifNoneMatch, etag string) bool {
@@ -2009,6 +2272,12 @@ func codexModelsManifestETagMatches(ifNoneMatch, etag string) bool {
 		}
 	}
 	return false
+}
+
+// CodexModelsManifestETagMatches applies If-None-Match semantics to a Codex
+// catalog ETag, including weak and comma-separated validators.
+func CodexModelsManifestETagMatches(ifNoneMatch, etag string) bool {
+	return codexModelsManifestETagMatches(ifNoneMatch, etag)
 }
 
 func isOfficialOpenAIModelsBaseURL(raw string) bool {

@@ -93,6 +93,10 @@ func (h *OpenAIGatewayHandler) CodexModels(c *gin.Context) {
 			h.errorResponse(c, infraerrors.Code(err), "upstream_error", infraerrors.Message(err))
 			return
 		}
+		if err := h.gatewayService.CompleteAPIKeyCodexModelsManifestForClient(manifest, account); err != nil {
+			h.errorResponse(c, http.StatusInternalServerError, "api_error", "Failed to complete Codex models manifest")
+			return
+		}
 		if err := h.gatewayService.MergeGroupConfiguredCodexModels(c.Request.Context(), apiKey.Group, manifest, ifNoneMatch); err != nil {
 			h.errorResponse(c, http.StatusInternalServerError, "api_error", "Failed to build Codex models manifest")
 			return
@@ -112,6 +116,7 @@ func writeCodexModelsManifestResponse(c *gin.Context, manifest *service.CodexMod
 	}
 	if manifest.NotModified {
 		c.Status(http.StatusNotModified)
+		c.Writer.WriteHeaderNow()
 		return
 	}
 	c.Data(http.StatusOK, "application/json", manifest.Body)

@@ -24,6 +24,22 @@ type gatewayModelsResponseForTest struct {
 	Data   []gatewayModelItemForTest `json:"data"`
 }
 
+type codexModelsResponseForTest struct {
+	Models []struct {
+		Slug                     string                       `json:"slug"`
+		SupportedReasoningLevels []codexReasoningLevelForTest `json:"supported_reasoning_levels"`
+		InputModalities          []string                     `json:"input_modalities"`
+		ModelMessages            map[string]json.RawMessage   `json:"model_messages"`
+		TruncationPolicy         map[string]json.RawMessage   `json:"truncation_policy"`
+		AvailabilityNUX          json.RawMessage              `json:"availability_nux"`
+		Upgrade                  json.RawMessage              `json:"upgrade"`
+	} `json:"models"`
+}
+
+type codexReasoningLevelForTest struct {
+	Effort string `json:"effort"`
+}
+
 type gatewayModelItemForTest struct {
 	ID                      string                                `json:"id"`
 	Object                  string                                `json:"object"`
@@ -39,26 +55,6 @@ type gatewayReasoningEffortOptionForTest struct {
 	Value   string `json:"value"`
 	Label   string `json:"label"`
 	Default bool   `json:"default"`
-}
-
-type codexModelForTest struct {
-	Slug                     string   `json:"slug"`
-	DisplayName              string   `json:"display_name"`
-	Visibility               string   `json:"visibility"`
-	SupportedInAPI           bool     `json:"supported_in_api"`
-	ContextWindow            int64    `json:"context_window"`
-	DefaultReasoningLevel    string   `json:"default_reasoning_level"`
-	InputModalities          []string `json:"input_modalities"`
-	SupportedReasoningLevels []struct {
-		Effort string `json:"effort"`
-	} `json:"supported_reasoning_levels"`
-	ModelMessages struct {
-		InstructionsTemplate string `json:"instructions_template"`
-	} `json:"model_messages"`
-}
-
-type codexModelsResponseForTest struct {
-	Models []codexModelForTest `json:"models"`
 }
 
 func (s *gatewayModelsAccountRepoStub) ListSchedulableByGroupID(ctx context.Context, groupID int64) ([]service.Account, error) {
@@ -83,483 +79,6 @@ func newGatewayModelsHandlerForTest(repo service.AccountRepository) *GatewayHand
 			nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
 		),
 	}
-}
-
-func TestDefaultModelIDsForCompositeIncludesAntigravityDefaults(t *testing.T) {
-	antigravityIDs := defaultModelIDsForPlatform(service.PlatformAntigravity)
-	require.NotEmpty(t, antigravityIDs)
-
-	compositeIDs := defaultModelIDsForPlatform(service.PlatformComposite)
-	require.Contains(t, compositeIDs, antigravityIDs[0])
-}
-
-func TestDefaultModelIDsForAnthropicExcludeAntigravityGemini(t *testing.T) {
-	anthropicIDs := defaultModelIDsForPlatform(service.PlatformAnthropic)
-	require.Contains(t, anthropicIDs, "claude-opus-4-6")
-	require.NotContains(t, anthropicIDs, "gemini-2.5-flash")
-
-	antigravityIDs := defaultModelIDsForPlatform(service.PlatformAntigravity)
-	require.Contains(t, antigravityIDs, "gemini-2.5-flash")
-}
-
-func TestDefaultModelIDsIncludeDeepSeekDefaults(t *testing.T) {
-	deepSeekIDs := defaultModelIDsForPlatform(service.PlatformDeepSeek)
-	require.Equal(t, []string{"deepseek-v4-flash", "deepseek-v4-pro"}, deepSeekIDs)
-
-	compositeIDs := defaultModelIDsForPlatform(service.PlatformComposite)
-	require.Contains(t, compositeIDs, "deepseek-v4-flash")
-	require.Contains(t, compositeIDs, "deepseek-v4-pro")
-}
-
-func TestDefaultModelIDsExcludeCodexAutoReview(t *testing.T) {
-	require.NotContains(t, defaultModelIDsForPlatform(service.PlatformOpenAI), "codex-auto-review")
-	require.NotContains(t, defaultModelIDsForPlatform(service.PlatformComposite), "codex-auto-review")
-}
-
-func TestGatewayModels_DeepSeekGroupFallsBackToDeepSeekModels(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-
-	groupID := int64(46)
-	h := newGatewayModelsHandlerForTest(
-		&gatewayModelsAccountRepoStub{
-			byGroup: map[int64][]service.Account{
-				groupID: {{ID: 1, Platform: service.PlatformDeepSeek}},
-			},
-		},
-	)
-
-	rec := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(rec)
-	c.Request = httptest.NewRequest(http.MethodGet, "/v1/models", nil)
-	c.Set(string(middleware2.ContextKeyAPIKey), &service.APIKey{
-		Group: &service.Group{ID: groupID, Platform: service.PlatformDeepSeek},
-	})
-
-	h.Models(c)
-
-	require.Equal(t, http.StatusOK, rec.Code)
-	var got gatewayModelsResponseForTest
-	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
-	require.Equal(t, []string{"deepseek-v4-flash", "deepseek-v4-pro"}, modelIDsForTest(got.Data))
-}
-
-func TestGatewayCodexModels_ListsAdminConfiguredDeepSeekModel(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-
-	groupID := int64(48)
-	h := newGatewayModelsHandlerForTest(
-		&gatewayModelsAccountRepoStub{
-			byGroup: map[int64][]service.Account{
-				groupID: {
-					{
-						ID:       1,
-						Platform: service.PlatformDeepSeek,
-						Credentials: map[string]any{
-							"model_mapping": map[string]any{
-								"deepseek-4-pro": "deepseek-v4-pro",
-							},
-						},
-					},
-				},
-			},
-		},
-	)
-
-	rec := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(rec)
-	c.Request = httptest.NewRequest(http.MethodGet, "/models?client_version=0.147.0", nil)
-	c.Set(string(middleware2.ContextKeyAPIKey), &service.APIKey{
-		Group: &service.Group{ID: groupID, Platform: service.PlatformDeepSeek},
-	})
-
-	h.CodexModels(c)
-
-	require.Equal(t, http.StatusOK, rec.Code)
-	var got codexModelsResponseForTest
-	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
-	require.Equal(t, []string{"deepseek-4-pro"}, codexModelSlugsForTest(got.Models))
-	require.Equal(t, "list", got.Models[0].Visibility)
-	require.True(t, got.Models[0].SupportedInAPI)
-	require.Equal(t, int64(1_000_000), got.Models[0].ContextWindow)
-	require.Equal(t, "high", got.Models[0].DefaultReasoningLevel)
-	require.Equal(t, "DeepSeek V4 Pro", got.Models[0].DisplayName)
-	require.NotEmpty(t, got.Models[0].ModelMessages.InstructionsTemplate)
-}
-
-func TestGatewayCodexModels_CompositeUsesCompleteManifest(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-
-	groupID := int64(51)
-	h := newGatewayModelsHandlerForTest(
-		&gatewayModelsAccountRepoStub{
-			byGroup: map[int64][]service.Account{
-				groupID: {
-					{
-						ID:       1,
-						Platform: service.PlatformOpenAI,
-						Credentials: map[string]any{
-							"model_mapping": map[string]any{
-								"gpt-5.5": "gpt-5.5",
-							},
-						},
-					},
-				},
-			},
-		},
-	)
-
-	rec := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(rec)
-	c.Request = httptest.NewRequest(http.MethodGet, "/models?client_version=0.147.0", nil)
-	c.Set(string(middleware2.ContextKeyAPIKey), &service.APIKey{
-		Group: &service.Group{ID: groupID, Platform: service.PlatformComposite},
-	})
-
-	h.CodexModels(c)
-
-	require.Equal(t, http.StatusOK, rec.Code)
-	var got codexModelsResponseForTest
-	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
-	require.Len(t, got.Models, 1)
-	require.Equal(t, "gpt-5.5", got.Models[0].Slug)
-	require.Equal(t, "list", got.Models[0].Visibility)
-	require.True(t, got.Models[0].SupportedInAPI)
-	require.Equal(t, int64(272_000), got.Models[0].ContextWindow)
-	require.Equal(t, "GPT-5.5", got.Models[0].DisplayName)
-	require.Equal(t, "medium", got.Models[0].DefaultReasoningLevel)
-	require.Equal(t, []string{"low", "medium", "high", "xhigh"}, codexReasoningEffortsForTest(got.Models[0]))
-	require.NotEmpty(t, got.Models[0].ModelMessages.InstructionsTemplate)
-}
-
-// Scenario: Composite 分组暴露完整有效模型集合。
-func TestGatewayCodexModels_CompositeAggregatesNativeDeepSeekGrokAndClaude(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-
-	const groupID int64 = 77
-	h := newGatewayModelsHandlerForTest(
-		&gatewayModelsAccountRepoStub{
-			byGroup: map[int64][]service.Account{
-				groupID: {
-					{ID: 1, Platform: service.PlatformAnthropic},
-					{
-						ID:       2,
-						Platform: service.PlatformGrok,
-						Credentials: map[string]any{
-							"model_mapping": map[string]any{
-								"grok-4.5":     "grok-4.5",
-								"grok-imagine": "grok-imagine",
-							},
-						},
-					},
-					{
-						ID:       3,
-						Platform: service.PlatformDeepSeek,
-						Credentials: map[string]any{
-							"model_mapping": map[string]any{
-								"deepseek-v4-flash": "deepseek-v4-flash",
-								"deepseek-v4-pro":   "deepseek-v4-pro",
-							},
-						},
-					},
-					{
-						ID:       4,
-						Platform: service.PlatformOpenAI,
-						Credentials: map[string]any{
-							"model_mapping": map[string]any{
-								"gpt-5.5":     "gpt-5.5",
-								"gpt-image-2": "gpt-image-2",
-							},
-						},
-					},
-				},
-			},
-		},
-	)
-
-	rec := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(rec)
-	c.Request = httptest.NewRequest(http.MethodGet, "/models?client_version=0.147.0", nil)
-	c.Set(string(middleware2.ContextKeyAPIKey), &service.APIKey{
-		Group: &service.Group{ID: groupID, Platform: service.PlatformComposite},
-	})
-
-	h.CodexModels(c)
-
-	require.Equal(t, http.StatusOK, rec.Code)
-	var got codexModelsResponseForTest
-	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
-	slugs := codexModelSlugsForTest(got.Models)
-	require.Contains(t, slugs, "deepseek-v4-flash")
-	require.Contains(t, slugs, "deepseek-v4-pro")
-	require.Contains(t, slugs, "grok-4.5")
-	require.Contains(t, slugs, "gpt-5.5")
-	require.Subset(t, slugs, defaultModelIDsForPlatform(service.PlatformAnthropic))
-	require.NotContains(t, slugs, "grok-imagine")
-	require.NotContains(t, slugs, "gpt-image-2")
-}
-
-// Scenario: 混合分组账号映射不启用 Auto Review。
-func TestGatewayCodexModels_CompositeFiltersAccountMappedAutoReviewByDefault(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-
-	const groupID int64 = 65
-	h := newGatewayModelsHandlerForTest(
-		&gatewayModelsAccountRepoStub{
-			byGroup: map[int64][]service.Account{
-				groupID: {
-					{
-						ID:       1,
-						Platform: service.PlatformOpenAI,
-						Credentials: map[string]any{
-							"model_mapping": map[string]any{
-								"codex-auto-review": "codex-auto-review",
-								"gpt-image-2":       "gpt-image-2",
-								"gpt-5.5":           "gpt-5.5",
-							},
-						},
-					},
-				},
-			},
-		},
-	)
-	group := &service.Group{
-		ID:       groupID,
-		Platform: service.PlatformComposite,
-		ModelsListConfig: service.GroupModelsListConfig{
-			Enabled: false,
-			Models:  []string{"codex-auto-review", "gpt-image-2", "gpt-5.5"},
-		},
-	}
-	rec := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(rec)
-	c.Request = httptest.NewRequest(http.MethodGet, "/models?client_version=0.148.0", nil)
-	c.Set(string(middleware2.ContextKeyAPIKey), &service.APIKey{Group: group})
-
-	h.CodexModels(c)
-
-	require.Equal(t, http.StatusOK, rec.Code)
-	var got codexModelsResponseForTest
-	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
-	require.Equal(t, []string{"gpt-5.5"}, codexModelSlugsForTest(got.Models))
-}
-
-// Scenario: 启用的分组自定义列表允许 Auto Review。
-func TestGatewayCodexModels_CompositeKeepsExplicitlySelectedAutoReview(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-
-	const groupID int64 = 66
-	h := newGatewayModelsHandlerForTest(
-		&gatewayModelsAccountRepoStub{
-			byGroup: map[int64][]service.Account{
-				groupID: {
-					{
-						ID:       1,
-						Platform: service.PlatformOpenAI,
-						Credentials: map[string]any{
-							"model_mapping": map[string]any{
-								"codex-auto-review": "codex-auto-review",
-								"gpt-image-2":       "gpt-image-2",
-								"gpt-5.5":           "gpt-5.5",
-							},
-						},
-					},
-				},
-			},
-		},
-	)
-	group := &service.Group{
-		ID:       groupID,
-		Platform: service.PlatformComposite,
-		ModelsListConfig: service.GroupModelsListConfig{
-			Enabled: true,
-			Models:  []string{"codex-auto-review", "gpt-image-2", "gpt-5.5"},
-		},
-	}
-	rec := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(rec)
-	c.Request = httptest.NewRequest(http.MethodGet, "/models?client_version=0.148.0", nil)
-	c.Set(string(middleware2.ContextKeyAPIKey), &service.APIKey{Group: group})
-
-	h.CodexModels(c)
-
-	require.Equal(t, http.StatusOK, rec.Code)
-	var got codexModelsResponseForTest
-	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
-	require.Equal(t, []string{"codex-auto-review", "gpt-5.5"}, codexModelSlugsForTest(got.Models))
-}
-
-func TestGatewayCodexModels_CompositeAdvertisesGPTReasoningLevels(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-
-	groupID := int64(55)
-	h := newGatewayModelsHandlerForTest(
-		&gatewayModelsAccountRepoStub{
-			byGroup: map[int64][]service.Account{
-				groupID: {
-					{
-						ID:       1,
-						Platform: service.PlatformOpenAI,
-						Credentials: map[string]any{
-							"model_mapping": map[string]any{
-								"gpt-5.6-sol": "gpt-5.6-sol",
-							},
-						},
-					},
-				},
-			},
-		},
-	)
-
-	rec := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(rec)
-	c.Request = httptest.NewRequest(http.MethodGet, "/models?client_version=0.147.0", nil)
-	c.Set(string(middleware2.ContextKeyAPIKey), &service.APIKey{
-		Group: &service.Group{ID: groupID, Platform: service.PlatformComposite},
-	})
-
-	h.CodexModels(c)
-
-	require.Equal(t, http.StatusOK, rec.Code)
-	var got codexModelsResponseForTest
-	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
-	require.Len(t, got.Models, 1)
-	require.Equal(t, "gpt-5.6-sol", got.Models[0].Slug)
-	require.Equal(t, "GPT-5.6 Sol", got.Models[0].DisplayName)
-	require.Equal(t, "medium", got.Models[0].DefaultReasoningLevel)
-	require.Equal(t, []string{"low", "medium", "high", "xhigh", "max"}, codexReasoningEffortsForTest(got.Models[0]))
-	require.NotEmpty(t, got.Models[0].ModelMessages.InstructionsTemplate)
-}
-
-func TestGatewayCodexModels_CompositeAdvertisesClaudeReasoningLevels(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-
-	groupID := int64(54)
-	h := newGatewayModelsHandlerForTest(
-		&gatewayModelsAccountRepoStub{
-			byGroup: map[int64][]service.Account{
-				groupID: {
-					{
-						ID:       1,
-						Platform: service.PlatformAnthropic,
-						Credentials: map[string]any{
-							"model_mapping": map[string]any{
-								"claude-opus-4-6": "claude-opus-4-6",
-							},
-						},
-					},
-				},
-			},
-		},
-	)
-
-	rec := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(rec)
-	c.Request = httptest.NewRequest(http.MethodGet, "/models?client_version=0.147.0", nil)
-	c.Set(string(middleware2.ContextKeyAPIKey), &service.APIKey{
-		Group: &service.Group{ID: groupID, Platform: service.PlatformComposite},
-	})
-
-	h.CodexModels(c)
-
-	require.Equal(t, http.StatusOK, rec.Code)
-	var got codexModelsResponseForTest
-	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
-	require.Len(t, got.Models, 1)
-	require.Equal(t, "claude-opus-4-6", got.Models[0].Slug)
-	require.Equal(t, "Claude Opus 4.6", got.Models[0].DisplayName)
-	require.Equal(t, "medium", got.Models[0].DefaultReasoningLevel)
-	require.Equal(t, []string{"low", "medium", "high", "max"}, codexReasoningEffortsForTest(got.Models[0]))
-	require.NotContains(t, codexReasoningEffortsForTest(got.Models[0]), "xhigh")
-	require.NotEmpty(t, got.Models[0].ModelMessages.InstructionsTemplate)
-}
-
-func TestGatewayCodexModels_CompositeAdvertisesGrokReasoningLevels(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-
-	groupID := int64(52)
-	h := newGatewayModelsHandlerForTest(
-		&gatewayModelsAccountRepoStub{
-			byGroup: map[int64][]service.Account{
-				groupID: {
-					{
-						ID:       1,
-						Platform: service.PlatformGrok,
-						Credentials: map[string]any{
-							"model_mapping": map[string]any{
-								"grok-4.6": "grok-4.6",
-							},
-						},
-					},
-				},
-			},
-		},
-	)
-
-	rec := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(rec)
-	c.Request = httptest.NewRequest(http.MethodGet, "/models?client_version=0.147.0", nil)
-	c.Set(string(middleware2.ContextKeyAPIKey), &service.APIKey{
-		Group: &service.Group{ID: groupID, Platform: service.PlatformComposite},
-	})
-
-	h.CodexModels(c)
-
-	require.Equal(t, http.StatusOK, rec.Code)
-	var got codexModelsResponseForTest
-	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
-	require.Len(t, got.Models, 1)
-	require.Equal(t, "grok-4.6", got.Models[0].Slug)
-	require.Equal(t, "Grok 4.6", got.Models[0].DisplayName)
-	require.Equal(t, "list", got.Models[0].Visibility)
-	require.True(t, got.Models[0].SupportedInAPI)
-	require.Equal(t, "high", got.Models[0].DefaultReasoningLevel)
-	require.Equal(t, []string{"low", "medium", "high", "xhigh"}, codexReasoningEffortsForTest(got.Models[0]))
-	require.Equal(t, int64(500_000), got.Models[0].ContextWindow)
-	require.NotEmpty(t, got.Models[0].ModelMessages.InstructionsTemplate)
-}
-
-func TestGatewayCodexModels_GrokUsesCompleteManifest(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-
-	groupID := int64(53)
-	h := newGatewayModelsHandlerForTest(
-		&gatewayModelsAccountRepoStub{
-			byGroup: map[int64][]service.Account{
-				groupID: {
-					{
-						ID:       1,
-						Platform: service.PlatformGrok,
-						Credentials: map[string]any{
-							"model_mapping": map[string]any{
-								"grok-4.6": "grok-4.6",
-							},
-						},
-					},
-				},
-			},
-		},
-	)
-
-	rec := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(rec)
-	c.Request = httptest.NewRequest(http.MethodGet, "/models?client_version=0.147.0", nil)
-	c.Set(string(middleware2.ContextKeyAPIKey), &service.APIKey{
-		Group: &service.Group{ID: groupID, Platform: service.PlatformGrok},
-	})
-
-	h.CodexModels(c)
-
-	require.Equal(t, http.StatusOK, rec.Code)
-	var got codexModelsResponseForTest
-	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
-	require.Len(t, got.Models, 1)
-	require.Equal(t, "grok-4.6", got.Models[0].Slug)
-	require.Equal(t, "Grok 4.6", got.Models[0].DisplayName)
-	require.Equal(t, "list", got.Models[0].Visibility)
-	require.True(t, got.Models[0].SupportedInAPI)
-	require.Equal(t, "high", got.Models[0].DefaultReasoningLevel)
-	require.Equal(t, []string{"low", "medium", "high", "xhigh"}, codexReasoningEffortsForTest(got.Models[0]))
-	require.NotEmpty(t, got.Models[0].ModelMessages.InstructionsTemplate)
 }
 
 func TestGatewayCodexModels_GrokOmitsImagineModels(t *testing.T) {
@@ -593,7 +112,7 @@ func TestGatewayCodexModels_GrokOmitsImagineModels(t *testing.T) {
 	require.NotContains(t, slugs, "grok-imagine-image-quality")
 }
 
-func TestGatewayCodexModels_UsesOnlyCurrentGroupsSchedulableModels(t *testing.T) {
+func TestGatewayCodexModels_DoesNotLeakModelsFromOtherGroups(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	linkedGroupID := int64(49)
@@ -628,7 +147,9 @@ func TestGatewayCodexModels_UsesOnlyCurrentGroupsSchedulableModels(t *testing.T)
 	require.Equal(t, http.StatusOK, rec.Code)
 	var got codexModelsResponseForTest
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
-	require.Empty(t, got.Models)
+	slugs := codexModelSlugsForTest(got.Models)
+	require.Equal(t, []string{"deepseek-v4-pro", "deepseek-v4-flash"}, slugs)
+	require.NotContains(t, slugs, "deepseek-4-pro")
 }
 
 func TestGatewayModels_CompositeAnthropicDoesNotAdvertiseAntigravityDefaults(t *testing.T) {
@@ -660,62 +181,6 @@ func TestGatewayModels_CompositeAnthropicDoesNotAdvertiseAntigravityDefaults(t *
 	require.NotContains(t, ids, "gemini-2.5-flash")
 }
 
-func TestGatewayCodexModels_CompositeAnthropicDoesNotAdvertiseAntigravityDefaults(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-
-	groupID := int64(65)
-	h := newGatewayModelsHandlerForTest(
-		&gatewayModelsAccountRepoStub{
-			byGroup: map[int64][]service.Account{
-				groupID: {{ID: 1, Platform: service.PlatformAnthropic}},
-			},
-		},
-	)
-
-	rec := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(rec)
-	c.Request = httptest.NewRequest(http.MethodGet, "/models?client_version=0.147.0", nil)
-	c.Set(string(middleware2.ContextKeyAPIKey), &service.APIKey{
-		Group: &service.Group{ID: groupID, Platform: service.PlatformComposite},
-	})
-
-	h.CodexModels(c)
-
-	require.Equal(t, http.StatusOK, rec.Code)
-	var got codexModelsResponseForTest
-	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
-	slugs := codexModelSlugsForTest(got.Models)
-	require.Contains(t, slugs, "claude-opus-4-6")
-	require.NotContains(t, slugs, "gemini-2.5-flash")
-}
-
-func TestGatewayModels_CompositeAntigravityAdvertisesAntigravityDefaults(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-
-	groupID := int64(66)
-	h := newGatewayModelsHandlerForTest(
-		&gatewayModelsAccountRepoStub{
-			byGroup: map[int64][]service.Account{
-				groupID: {{ID: 1, Platform: service.PlatformAntigravity}},
-			},
-		},
-	)
-
-	rec := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(rec)
-	c.Request = httptest.NewRequest(http.MethodGet, "/v1/models", nil)
-	c.Set(string(middleware2.ContextKeyAPIKey), &service.APIKey{
-		Group: &service.Group{ID: groupID, Platform: service.PlatformComposite},
-	})
-
-	h.Models(c)
-
-	require.Equal(t, http.StatusOK, rec.Code)
-	var got gatewayModelsResponseForTest
-	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
-	require.Contains(t, modelIDsForTest(got.Data), "gemini-2.5-flash")
-}
-
 func TestGatewayModels_CompositeIncludesSchedulableDeepSeekDefaults(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
@@ -741,6 +206,247 @@ func TestGatewayModels_CompositeIncludesSchedulableDeepSeekDefaults(t *testing.T
 	var got gatewayModelsResponseForTest
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
 	require.Equal(t, []string{"deepseek-v4-flash", "deepseek-v4-pro"}, modelIDsForTest(got.Data))
+}
+
+// Scenario: Anthropic defaults contain only Claude while Antigravity keeps its own Gemini models.
+func TestDefaultModelIDsForAnthropicExcludeAntigravityGemini(t *testing.T) {
+	anthropicIDs := defaultModelIDsForPlatform(service.PlatformAnthropic)
+	require.Contains(t, anthropicIDs, "claude-opus-4-6")
+	require.NotContains(t, anthropicIDs, "gemini-2.5-flash")
+
+	antigravityIDs := defaultModelIDsForPlatform(service.PlatformAntigravity)
+	require.Contains(t, antigravityIDs, "gemini-2.5-flash")
+}
+
+// Scenario: non-OpenAI groups return a Codex manifest instead of a standard model list.
+func TestGatewayCodexModels_NonOpenAIGroupsUseMappedModels(t *testing.T) {
+	tests := []struct {
+		name       string
+		platform   string
+		model      string
+		efforts    []string
+		modalities []string
+	}{
+		{
+			name:       "Grok",
+			platform:   service.PlatformGrok,
+			model:      "grok-4.6",
+			efforts:    []string{"low", "medium", "high", "xhigh"},
+			modalities: []string{"text", "image"},
+		},
+		{
+			name:       "DeepSeek",
+			platform:   service.PlatformDeepseek,
+			model:      "deepseek-v4-pro",
+			efforts:    []string{"low", "high", "max"},
+			modalities: []string{"text"},
+		},
+		{
+			name:       "provider-qualified Claude",
+			platform:   service.PlatformAnthropic,
+			model:      "anthropic/claude-sonnet-4-6",
+			efforts:    []string{"low", "medium", "high", "max"},
+			modalities: []string{"text"},
+		},
+	}
+
+	for index, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gin.SetMode(gin.TestMode)
+			groupID := int64(100 + index)
+			h := newGatewayModelsHandlerForTest(&gatewayModelsAccountRepoStub{
+				byGroup: map[int64][]service.Account{
+					groupID: {
+						{
+							ID:       1,
+							Platform: tt.platform,
+							Credentials: map[string]any{
+								"model_mapping": map[string]any{tt.model: tt.model},
+							},
+						},
+					},
+				},
+			})
+
+			rec := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(rec)
+			c.Request = httptest.NewRequest(http.MethodGet, "/models?client_version=0.147.0", nil)
+			c.Set(string(middleware2.ContextKeyAPIKey), &service.APIKey{
+				Group: &service.Group{ID: groupID, Platform: tt.platform},
+			})
+
+			h.CodexModels(c)
+
+			require.Equal(t, http.StatusOK, rec.Code)
+			var got codexModelsResponseForTest
+			require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
+			require.Len(t, got.Models, 1)
+			require.Equal(t, tt.model, got.Models[0].Slug)
+			require.NotEmpty(t, got.Models[0].ModelMessages)
+			require.NotEmpty(t, got.Models[0].TruncationPolicy)
+			require.NotNil(t, got.Models[0].AvailabilityNUX)
+			require.NotNil(t, got.Models[0].Upgrade)
+			require.Equal(t, tt.efforts, codexReasoningEffortsForTest(got.Models[0].SupportedReasoningLevels))
+			require.Equal(t, tt.modalities, got.Models[0].InputModalities)
+		})
+	}
+}
+
+// Scenario: Composite manifests aggregate only administrator-configured models.
+func TestGatewayCodexModels_CompositeUsesCompleteEffectiveModelList(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	const groupID int64 = 120
+	h := newGatewayModelsHandlerForTest(&gatewayModelsAccountRepoStub{
+		byGroup: map[int64][]service.Account{
+			groupID: {
+				{
+					ID:          3,
+					Platform:    service.PlatformOpenAI,
+					Status:      service.StatusActive,
+					Schedulable: true,
+					Credentials: map[string]any{},
+				},
+				{
+					ID:       1,
+					Platform: service.PlatformOpenAI,
+					Credentials: map[string]any{
+						"model_mapping": map[string]any{"gpt-5.5": "gpt-5.5"},
+					},
+				},
+				{
+					ID:       2,
+					Platform: service.PlatformGrok,
+					Credentials: map[string]any{
+						"model_mapping": map[string]any{"grok-4.6": "grok-4.6"},
+					},
+				},
+			},
+		},
+	})
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodGet, "/models?client_version=0.147.0", nil)
+	c.Set(string(middleware2.ContextKeyAPIKey), &service.APIKey{
+		Group: &service.Group{ID: groupID, Platform: service.PlatformComposite},
+	})
+
+	h.CodexModels(c)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	var got codexModelsResponseForTest
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
+	require.Equal(t, []string{"gpt-5.5", "grok-4.6"}, codexModelSlugsForTest(got.Models))
+}
+
+func TestGatewayCodexModels_GeneratedManifestUsesFinalBodyETag(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	const groupID int64 = 122
+	h := newGatewayModelsHandlerForTest(&gatewayModelsAccountRepoStub{
+		byGroup: map[int64][]service.Account{
+			groupID: {{
+				ID:       1,
+				Platform: service.PlatformDeepseek,
+				Credentials: map[string]any{
+					"model_mapping": map[string]any{"deepseek-v4-pro": "deepseek-v4-pro"},
+				},
+			}},
+		},
+	})
+	group := &service.Group{ID: groupID, Platform: service.PlatformDeepseek}
+
+	first := httptest.NewRecorder()
+	firstContext, _ := gin.CreateTestContext(first)
+	firstContext.Request = httptest.NewRequest(http.MethodGet, "/models?client_version=0.147.0", nil)
+	firstContext.Set(string(middleware2.ContextKeyAPIKey), &service.APIKey{Group: group})
+	h.CodexModels(firstContext)
+
+	require.Equal(t, http.StatusOK, first.Code)
+	etag := first.Header().Get("ETag")
+	require.NotEmpty(t, etag)
+	require.Equal(t, service.CodexModelsManifestETag(first.Body.Bytes()), etag)
+
+	second := httptest.NewRecorder()
+	secondContext, _ := gin.CreateTestContext(second)
+	secondContext.Request = httptest.NewRequest(http.MethodGet, "/models?client_version=0.147.0", nil)
+	secondContext.Request.Header.Set("If-None-Match", "W/"+etag)
+	secondContext.Set(string(middleware2.ContextKeyAPIKey), &service.APIKey{Group: group})
+	h.CodexModels(secondContext)
+
+	require.Equal(t, http.StatusNotModified, second.Code)
+	require.Empty(t, second.Body.Bytes())
+	require.Equal(t, etag, second.Header().Get("ETag"))
+}
+
+// Scenario: group models_list_config limits the generated Codex manifest.
+func TestGatewayCodexModels_CustomModelsListFiltersCompositeManifest(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	const groupID int64 = 121
+	h := newGatewayModelsHandlerForTest(&gatewayModelsAccountRepoStub{
+		byGroup: map[int64][]service.Account{
+			groupID: {
+				{
+					ID:       1,
+					Platform: service.PlatformOpenAI,
+					Credentials: map[string]any{
+						"model_mapping": map[string]any{"gpt-5.5": "gpt-5.5"},
+					},
+				},
+				{
+					ID:       2,
+					Platform: service.PlatformGrok,
+					Credentials: map[string]any{
+						"model_mapping": map[string]any{"grok-4.6": "grok-4.6"},
+					},
+				},
+			},
+		},
+	})
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodGet, "/models?client_version=0.147.0", nil)
+	c.Set(string(middleware2.ContextKeyAPIKey), &service.APIKey{
+		Group: &service.Group{
+			ID:       groupID,
+			Platform: service.PlatformComposite,
+			ModelsListConfig: service.GroupModelsListConfig{
+				Enabled: true,
+				Models:  []string{"grok-4.6"},
+			},
+		},
+	})
+
+	h.CodexModels(c)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	var got codexModelsResponseForTest
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
+	require.Equal(t, []string{"grok-4.6"}, codexModelSlugsForTest(got.Models))
+}
+
+func codexModelSlugsForTest(models []struct {
+	Slug                     string                       `json:"slug"`
+	SupportedReasoningLevels []codexReasoningLevelForTest `json:"supported_reasoning_levels"`
+	InputModalities          []string                     `json:"input_modalities"`
+	ModelMessages            map[string]json.RawMessage   `json:"model_messages"`
+	TruncationPolicy         map[string]json.RawMessage   `json:"truncation_policy"`
+	AvailabilityNUX          json.RawMessage              `json:"availability_nux"`
+	Upgrade                  json.RawMessage              `json:"upgrade"`
+}) []string {
+	slugs := make([]string, 0, len(models))
+	for _, model := range models {
+		slugs = append(slugs, model.Slug)
+	}
+	return slugs
+}
+
+func codexReasoningEffortsForTest(levels []codexReasoningLevelForTest) []string {
+	efforts := make([]string, 0, len(levels))
+	for _, level := range levels {
+		efforts = append(efforts, level.Effort)
+	}
+	return efforts
 }
 
 func TestGatewayModels_GeminiGroupFallsBackToGeminiModels(t *testing.T) {
@@ -776,9 +482,38 @@ func TestGatewayModels_GeminiGroupFallsBackToGeminiModels(t *testing.T) {
 }
 
 func TestGatewayModels_Grok45AdvertisesReasoningEffortForGrokBuild(t *testing.T) {
+	assertGrokGatewayReasoningEfforts(t, 4409, "grok-4.5", []gatewayReasoningEffortOptionForTest{
+		{Value: "low", Label: "Low"},
+		{Value: "medium", Label: "Medium"},
+		{Value: "high", Label: "High", Default: true},
+	})
+}
+
+func TestGatewayModels_Grok46AdvertisesXHighReasoningEffortForGrokBuild(t *testing.T) {
+	xhighEfforts := []gatewayReasoningEffortOptionForTest{
+		{Value: "low", Label: "Low"},
+		{Value: "medium", Label: "Medium"},
+		{Value: "high", Label: "High", Default: true},
+		{Value: "xhigh", Label: "xHigh"},
+	}
+	tests := []struct {
+		groupID int64
+		model   string
+	}{
+		{groupID: 4410, model: "grok-4.6"},
+		{groupID: 4411, model: "grok-4.6-latest"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.model, func(t *testing.T) {
+			assertGrokGatewayReasoningEfforts(t, tt.groupID, tt.model, xhighEfforts)
+		})
+	}
+}
+
+func assertGrokGatewayReasoningEfforts(t *testing.T, groupID int64, modelID string, want []gatewayReasoningEffortOptionForTest) {
+	t.Helper()
 	gin.SetMode(gin.TestMode)
 
-	groupID := int64(4409)
 	h := newGatewayModelsHandlerForTest(
 		&gatewayModelsAccountRepoStub{
 			byGroup: map[int64][]service.Account{
@@ -787,7 +522,7 @@ func TestGatewayModels_Grok45AdvertisesReasoningEffortForGrokBuild(t *testing.T)
 						ID:       1,
 						Platform: service.PlatformGrok,
 						Credentials: map[string]any{
-							"model_mapping": map[string]any{"grok-4.5": "grok-4.5"},
+							"model_mapping": map[string]any{modelID: modelID},
 						},
 					},
 				},
@@ -809,14 +544,10 @@ func TestGatewayModels_Grok45AdvertisesReasoningEffortForGrokBuild(t *testing.T)
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
 	require.Len(t, got.Data, 1)
 	model := got.Data[0]
-	require.Equal(t, "grok-4.5", model.ID)
+	require.Equal(t, modelID, model.ID)
 	require.True(t, model.SupportsReasoningEffort)
 	require.Equal(t, "high", model.ReasoningEffort)
-	require.Equal(t, []gatewayReasoningEffortOptionForTest{
-		{Value: "low", Label: "Low"},
-		{Value: "medium", Label: "Medium"},
-		{Value: "high", Label: "High", Default: true},
-	}, model.ReasoningEfforts)
+	require.Equal(t, want, model.ReasoningEfforts)
 }
 
 func TestGatewayModels_GeminiGroupFiltersMappedModelsByPlatform(t *testing.T) {
@@ -864,6 +595,62 @@ func TestGatewayModels_GeminiGroupFiltersMappedModelsByPlatform(t *testing.T) {
 	var got gatewayModelsResponseForTest
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
 	require.Equal(t, []string{"gemini-2.5-flash"}, modelIDsForTest(got.Data))
+}
+
+// Scenario: a Composite group with only Anthropic accounts must not inherit Antigravity Gemini defaults.
+func TestGatewayCodexModels_CompositeAnthropicDoesNotAdvertiseAntigravityDefaults(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	groupID := int64(64)
+	h := newGatewayModelsHandlerForTest(&gatewayModelsAccountRepoStub{
+		byGroup: map[int64][]service.Account{
+			groupID: {{ID: 1, Platform: service.PlatformAnthropic}},
+		},
+	})
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodGet, "/models?client_version=0.147.0", nil)
+	c.Set(string(middleware2.ContextKeyAPIKey), &service.APIKey{
+		Group: &service.Group{ID: groupID, Platform: service.PlatformComposite},
+	})
+
+	h.CodexModels(c)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	var got codexModelsResponseForTest
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
+	slugs := codexModelSlugsForTest(got.Models)
+	require.Contains(t, slugs, "claude-opus-4-6")
+	require.NotContains(t, slugs, "gemini-2.5-flash")
+}
+
+// Scenario: Antigravity retains its own Claude and Gemini defaults inside Composite groups.
+func TestGatewayModels_CompositeAntigravityAdvertisesAntigravityDefaults(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	groupID := int64(65)
+	h := newGatewayModelsHandlerForTest(&gatewayModelsAccountRepoStub{
+		byGroup: map[int64][]service.Account{
+			groupID: {{ID: 1, Platform: service.PlatformAntigravity}},
+		},
+	})
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+	c.Set(string(middleware2.ContextKeyAPIKey), &service.APIKey{
+		Group: &service.Group{ID: groupID, Platform: service.PlatformComposite},
+	})
+
+	h.Models(c)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	var got gatewayModelsResponseForTest
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
+	ids := modelIDsForTest(got.Data)
+	require.Contains(t, ids, "claude-opus-4-6")
+	require.Contains(t, ids, "gemini-2.5-flash")
 }
 
 func TestGatewayModels_CustomModelsListDisabledKeepsOriginalModels(t *testing.T) {
@@ -1129,6 +916,89 @@ func TestDefaultModelIDsForPlatform_CNProvidersUseProviderCatalogs(t *testing.T)
 	} {
 		require.Equal(t, tc.want, defaultModelIDsForPlatform(tc.platform), "platform=%s", tc.platform)
 	}
+}
+
+func TestDefaultCodexModelIDsForPlatform_DeepSeekUsesDeepSeekModels(t *testing.T) {
+	require.Equal(t, []string{"deepseek-v4-pro", "deepseek-v4-flash"}, defaultCodexModelIDsForPlatform(service.PlatformDeepseek))
+	require.Equal(t, defaultModelIDsForPlatform(service.PlatformAnthropic), defaultCodexModelIDsForPlatform(service.PlatformAnthropic))
+}
+
+func TestGatewayCodexModels_DeepSeekWithoutMappingUsesDeepSeekDefaults(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	const groupID int64 = 130
+	h := newGatewayModelsHandlerForTest(&gatewayModelsAccountRepoStub{
+		byGroup: map[int64][]service.Account{
+			groupID: {
+				{
+					ID:          1,
+					Platform:    service.PlatformDeepseek,
+					Status:      service.StatusActive,
+					Schedulable: true,
+					Credentials: map[string]any{},
+				},
+			},
+		},
+	})
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodGet, "/models?client_version=0.150.0", nil)
+	c.Set(string(middleware2.ContextKeyAPIKey), &service.APIKey{
+		Group: &service.Group{ID: groupID, Platform: service.PlatformDeepseek},
+	})
+
+	h.CodexModels(c)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	var got codexModelsResponseForTest
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
+	slugs := make([]string, 0, len(got.Models))
+	for _, model := range got.Models {
+		slugs = append(slugs, model.Slug)
+	}
+	require.Contains(t, slugs, "deepseek-v4-pro")
+	require.Contains(t, slugs, "deepseek-v4-flash")
+	require.NotContains(t, slugs, "claude-sonnet-4-6")
+	require.NotContains(t, slugs, "claude-opus-4-6")
+}
+
+func TestGatewayCodexModels_OmitsWildcardMappingKeys(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	const groupID int64 = 131
+	h := newGatewayModelsHandlerForTest(&gatewayModelsAccountRepoStub{
+		byGroup: map[int64][]service.Account{
+			groupID: {
+				{
+					ID:       1,
+					Platform: service.PlatformDeepseek,
+					Credentials: map[string]any{
+						"model_mapping": map[string]any{
+							"foo-*":           "deepseek-v4-pro",
+							"deepseek-v4-pro": "deepseek-v4-pro",
+						},
+					},
+				},
+			},
+		},
+	})
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodGet, "/models?client_version=0.150.0", nil)
+	c.Set(string(middleware2.ContextKeyAPIKey), &service.APIKey{
+		Group: &service.Group{ID: groupID, Platform: service.PlatformDeepseek},
+	})
+
+	h.CodexModels(c)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	var got codexModelsResponseForTest
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
+	slugs := make([]string, 0, len(got.Models))
+	for _, model := range got.Models {
+		slugs = append(slugs, model.Slug)
+	}
+	require.Equal(t, []string{"deepseek-v4-pro"}, slugs)
 }
 
 func TestGatewayModels_CustomModelsListKeepsConcreteModelAllowedByWildcardMapping(t *testing.T) {
@@ -1551,20 +1421,4 @@ func modelIDsForTest(models []gatewayModelItemForTest) []string {
 		ids = append(ids, model.ID)
 	}
 	return ids
-}
-
-func codexModelSlugsForTest(models []codexModelForTest) []string {
-	slugs := make([]string, 0, len(models))
-	for _, model := range models {
-		slugs = append(slugs, model.Slug)
-	}
-	return slugs
-}
-
-func codexReasoningEffortsForTest(model codexModelForTest) []string {
-	efforts := make([]string, 0, len(model.SupportedReasoningLevels))
-	for _, level := range model.SupportedReasoningLevels {
-		efforts = append(efforts, level.Effort)
-	}
-	return efforts
 }

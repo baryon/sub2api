@@ -17,6 +17,7 @@ import (
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
+	"github.com/stretchr/testify/require"
 )
 
 type codexModelsFailoverAccountRepo struct {
@@ -162,7 +163,7 @@ func TestCodexModelsAppliesLocalFiltersBeforeClientETag(t *testing.T) {
 		},
 	}
 
-	first := performCodexModelsRequestForGroupWithETag(t, handler, group, "")
+	first := performCodexModelsRequestForGroup(t, handler, group, "")
 	if first.Code != http.StatusOK {
 		t.Fatalf("first status: got %d, want %d; body=%s", first.Code, http.StatusOK, first.Body.String())
 	}
@@ -175,7 +176,7 @@ func TestCodexModelsAppliesLocalFiltersBeforeClientETag(t *testing.T) {
 	}
 
 	group.ModelsListConfig.Enabled = false
-	second := performCodexModelsRequestForGroupWithETag(t, handler, group, oldETag)
+	second := performCodexModelsRequestForGroup(t, handler, group, oldETag)
 	if second.Code != http.StatusOK {
 		t.Fatalf("second status: got %d, want %d; body=%s", second.Code, http.StatusOK, second.Body.String())
 	}
@@ -185,9 +186,107 @@ func TestCodexModelsAppliesLocalFiltersBeforeClientETag(t *testing.T) {
 	if newETag := second.Header().Get("ETag"); newETag == "" || newETag == oldETag {
 		t.Fatalf("second ETag: got %q, want a new final-body ETag", newETag)
 	}
+
+	third := performCodexModelsRequestForGroup(t, handler, group, second.Header().Get("ETag"))
+	if third.Code != http.StatusNotModified {
+		t.Fatalf("third status: got %d, want %d; body=%s", third.Code, http.StatusNotModified, third.Body.String())
+	}
+	if third.Body.Len() != 0 {
+		t.Fatalf("third body: got %q, want empty", third.Body.String())
+	}
 }
 
-// Scenario: OpenAI 混合账号组使用管理员模型配置。
+func TestCodexModelsAPIKeyCacheDoesNotLeakGroupFilters(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	repo := &codexModelsFailoverAccountRepo{accounts: []service.Account{
+		{
+			ID:          1,
+			Name:        "shared-api-key",
+			Platform:    service.PlatformOpenAI,
+			Type:        service.AccountTypeAPIKey,
+			Status:      service.StatusActive,
+			Schedulable: true,
+			Concurrency: 1,
+			Credentials: map[string]any{
+				"api_key":  "sk-shared",
+				"base_url": "https://upstream.example/v1",
+			},
+		},
+	}}
+	upstream := &codexModelsFailoverHTTPUpstream{
+		firstBody: `{"object":"list","data":[{"id":"model-a"},{"id":"model-b"}]}`,
+	}
+	gatewayService := service.NewOpenAIGatewayService(
+		repo,
+		nil, nil, nil, nil, nil, nil, &config.Config{RunMode: config.RunModeSimple}, nil, nil, nil, nil, nil,
+		upstream,
+		nil, nil, nil, nil, nil, nil, nil, nil,
+	)
+	handler := &OpenAIGatewayHandler{gatewayService: gatewayService}
+	groupA := &service.Group{
+		ID:       91,
+		Platform: service.PlatformOpenAI,
+		ModelsListConfig: service.GroupModelsListConfig{
+			Enabled: true,
+			Models:  []string{"model-a"},
+		},
+	}
+	groupB := &service.Group{
+		ID:       92,
+		Platform: service.PlatformOpenAI,
+		ModelsListConfig: service.GroupModelsListConfig{
+			Enabled: true,
+			Models:  []string{"model-b"},
+		},
+	}
+
+	firstA := performCodexModelsRequestForGroup(t, handler, groupA, "")
+	require.Equal(t, http.StatusOK, firstA.Code, firstA.Body.String())
+	require.Equal(t, []string{"model-a"}, codexHandlerManifestSlugs(t, firstA))
+
+	firstB := performCodexModelsRequestForGroup(t, handler, groupB, "")
+	require.Equal(t, http.StatusOK, firstB.Code, firstB.Body.String())
+	require.Equal(t, []string{"model-b"}, codexHandlerManifestSlugs(t, firstB))
+
+	etagA := firstA.Header().Get("ETag")
+	require.NotEmpty(t, etagA)
+
+	var wg sync.WaitGroup
+	results := make([]*httptest.ResponseRecorder, 8)
+	for i := range results {
+		wg.Add(1)
+		go func(index int) {
+			defer wg.Done()
+			if index%2 == 0 {
+				results[index] = performCodexModelsRequestForGroup(t, handler, groupA, etagA)
+				return
+			}
+			results[index] = performCodexModelsRequestForGroup(t, handler, groupB, "")
+		}(i)
+	}
+	wg.Wait()
+
+	sawGroupB := false
+	for _, recorder := range results {
+		require.NotNil(t, recorder)
+		switch recorder.Code {
+		case http.StatusNotModified:
+			require.Empty(t, recorder.Body.Bytes())
+		case http.StatusOK:
+			slugs := codexHandlerManifestSlugs(t, recorder)
+			if len(slugs) == 1 && slugs[0] == "model-b" {
+				sawGroupB = true
+				continue
+			}
+			require.Equal(t, []string{"model-a"}, slugs)
+		default:
+			t.Fatalf("unexpected status %d body=%s", recorder.Code, recorder.Body.String())
+		}
+	}
+	require.True(t, sawGroupB)
+}
+
+// Scenario: OpenAI 分组内混用 OAuth 和第三方 API Key 时，管理员模型配置优先。
 func TestCodexModelsUsesConfiguredModelsBeforeUpstreamDiscovery(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	groupID := int64(44)
@@ -292,14 +391,12 @@ func TestCodexModelsFailsOverFromRetryableUpstreamStatus(t *testing.T) {
 			if recorder.Code != http.StatusOK {
 				t.Fatalf("status: got %d, want %d; body=%s", recorder.Code, http.StatusOK, recorder.Body.String())
 			}
-			if got, want := recorder.Body.String(), `{"models":[{"slug":"gpt-5.6-sol"}]}`; got != want {
-				t.Fatalf("body: got %q, want %q", got, want)
-			}
+			requireCompleteCodexModelsHandlerResponse(t, recorder, "gpt-5.6-sol")
 		})
 	}
 }
 
-// Scenario: API-key 上游未实现 /models 时仅排除当前账号并继续发现。
+// Scenario: an API-key upstream without /models is excluded only for this discovery request.
 func TestCodexModelsFailsOverWhenAPIKeyModelsEndpointIsUnavailable(t *testing.T) {
 	for _, status := range []int{http.StatusNotFound, http.StatusMethodNotAllowed} {
 		t.Run(http.StatusText(status), func(t *testing.T) {
@@ -344,9 +441,7 @@ func TestCodexModelsFailsOverFromInvalidManifestEnvelope(t *testing.T) {
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("status: got %d, want %d; body=%s", recorder.Code, http.StatusOK, recorder.Body.String())
 	}
-	if got, want := recorder.Body.String(), `{"models":[{"slug":"gpt-5.6-sol"}]}`; got != want {
-		t.Fatalf("body: got %q, want %q", got, want)
-	}
+	requireCompleteCodexModelsHandlerResponse(t, recorder, "gpt-5.6-sol")
 }
 
 func TestCodexModelsDoesNotFailOverFromPermanentUpstreamStatus(t *testing.T) {
@@ -460,15 +555,7 @@ func newCodexModelsFailoverTestHandlerWithAccountCount(firstStatus, accountCount
 }
 
 func performCodexModelsRequest(t *testing.T, handler *OpenAIGatewayHandler, groupID int64) *httptest.ResponseRecorder {
-	return performCodexModelsRequestWithETag(t, handler, groupID, "")
-}
-
-func performCodexModelsRequestWithETag(t *testing.T, handler *OpenAIGatewayHandler, groupID int64, etag string) *httptest.ResponseRecorder {
-	return performCodexModelsRequestForGroupWithETag(t, handler, &service.Group{ID: groupID, Platform: service.PlatformOpenAI}, etag)
-}
-
-func performCodexModelsRequestForGroupWithETag(t *testing.T, handler *OpenAIGatewayHandler, group *service.Group, etag string) *httptest.ResponseRecorder {
-	return performCodexModelsRequestForGroup(t, handler, group, etag)
+	return performCodexModelsRequestForGroup(t, handler, &service.Group{ID: groupID, Platform: service.PlatformOpenAI}, "")
 }
 
 func performCodexModelsRequestForPlatform(t *testing.T, handler *OpenAIGatewayHandler, groupID int64, platform string) *httptest.ResponseRecorder {
@@ -483,14 +570,62 @@ func performCodexModelsRequestForGroup(t *testing.T, handler *OpenAIGatewayHandl
 	if etag != "" {
 		c.Request.Header.Set("If-None-Match", etag)
 	}
-	groupID := group.ID
 	c.Set(string(middleware2.ContextKeyAPIKey), &service.APIKey{
-		GroupID: &groupID,
+		GroupID: &group.ID,
 		Group:   group,
 	})
 
 	handler.CodexModels(c)
 	return recorder
+}
+
+func codexHandlerManifestSlugs(t *testing.T, recorder *httptest.ResponseRecorder) []string {
+	t.Helper()
+
+	var envelope struct {
+		Models []struct {
+			Slug string `json:"slug"`
+		} `json:"models"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &envelope); err != nil {
+		t.Fatalf("decode body: %v; body=%s", err, recorder.Body.String())
+	}
+	slugs := make([]string, 0, len(envelope.Models))
+	for _, model := range envelope.Models {
+		slugs = append(slugs, model.Slug)
+	}
+	return slugs
+}
+
+func requireCompleteCodexModelsHandlerResponse(t *testing.T, recorder *httptest.ResponseRecorder, slug string) {
+	t.Helper()
+
+	var envelope struct {
+		Models []map[string]any `json:"models"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &envelope); err != nil {
+		t.Fatalf("decode body: %v; body=%s", err, recorder.Body.String())
+	}
+	if len(envelope.Models) != 1 {
+		t.Fatalf("models count: got %d, want 1; body=%s", len(envelope.Models), recorder.Body.String())
+	}
+	model := envelope.Models[0]
+	if got := model["slug"]; got != slug {
+		t.Fatalf("slug: got %v, want %q", got, slug)
+	}
+	if levels, ok := model["supported_reasoning_levels"].([]any); !ok || len(levels) == 0 {
+		t.Fatalf("supported_reasoning_levels must be populated: %v", model["supported_reasoning_levels"])
+	}
+	if messages, ok := model["model_messages"].(map[string]any); !ok || messages["instructions_template"] == "" {
+		t.Fatalf("model_messages.instructions_template must be populated: %v", model["model_messages"])
+	}
+	if policy, ok := model["truncation_policy"].(map[string]any); !ok || len(policy) == 0 {
+		t.Fatalf("truncation_policy must be populated: %v", model["truncation_policy"])
+	}
+	modalities, ok := model["input_modalities"].([]any)
+	if !ok || len(modalities) != 1 || modalities[0] != "text" {
+		t.Fatalf("custom OpenAI-compatible endpoint modalities: got %v, want [text]", model["input_modalities"])
+	}
 }
 
 func equalInt64Slices(got, want []int64) bool {

@@ -3,8 +3,10 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"sort"
@@ -17,10 +19,11 @@ import (
 )
 
 const (
-	upstreamModelsBodyLimit       int64 = 8 << 20
-	modelsDevRegistryURL                = "https://models.dev/api.json"
-	modelsDevRegistryTTL                = 6 * time.Hour
-	UpstreamModelMetadataExtraKey       = "upstream_model_metadata"
+	upstreamModelsBodyLimit             int64 = 8 << 20
+	modelsDevRegistryURL                      = "https://models.dev/api.json"
+	modelsDevRegistryTTL                      = 6 * time.Hour
+	UpstreamModelMetadataExtraKey             = "upstream_model_metadata"
+	UpstreamModelMetadataIncompleteCode       = "upstream_model_metadata_incomplete"
 )
 
 type UpstreamModelMetadata struct {
@@ -44,6 +47,12 @@ type UpstreamModelMetadataSnapshot struct {
 type UpstreamModelCatalog struct {
 	Models   []string                         `json:"models"`
 	Metadata map[string]UpstreamModelMetadata `json:"metadata,omitempty"`
+	Warnings []UpstreamModelSyncWarning       `json:"warnings,omitempty"`
+}
+
+type UpstreamModelSyncWarning struct {
+	Code    string `json:"code"`
+	Message string `json:"message"`
 }
 
 type modelsDevProvider struct {
@@ -132,9 +141,10 @@ const (
 
 // UpstreamModelSyncError keeps internal failure details wrapped while exposing a safe client message.
 type UpstreamModelSyncError struct {
-	Kind    UpstreamModelSyncErrorKind
-	Message string
-	Err     error
+	Kind       UpstreamModelSyncErrorKind
+	Message    string
+	StatusCode int
+	Err        error
 }
 
 func (e *UpstreamModelSyncError) Error() string {
@@ -191,7 +201,18 @@ func (s *AccountTestService) FetchUpstreamSupportedModels(ctx context.Context, a
 func (s *AccountTestService) SyncUpstreamModelCatalog(ctx context.Context, account *Account) (*UpstreamModelCatalog, error) {
 	models, body, err := s.fetchUpstreamModelList(ctx, account)
 	if err != nil {
-		return nil, err
+		configuredModels := configuredUpstreamModelsForCapabilitySync(account)
+		if !upstreamModelListEndpointUnsupported(err) || len(configuredModels) == 0 {
+			return nil, err
+		}
+		models = configuredModels
+		body = nil
+		slog.Info("upstream model list endpoint unavailable; using configured models for capability sync",
+			"account_id", upstreamModelSyncAccountID(account),
+			"platform", upstreamModelSyncPlatform(account),
+			"status_code", upstreamModelSyncStatusCode(err),
+			"model_count", len(models),
+		)
 	}
 	catalog := &UpstreamModelCatalog{Models: models, Metadata: make(map[string]UpstreamModelMetadata)}
 	if len(body) > 0 {
@@ -203,7 +224,6 @@ func (s *AccountTestService) SyncUpstreamModelCatalog(ctx context.Context, accou
 
 	source := "upstream"
 	metadataIncomplete := upstreamCatalogNeedsRegistry(models, catalog.Metadata)
-	metadataEnrichmentFailed := false
 	if metadataIncomplete {
 		if registryMetadata, registryErr := s.fetchModelsDevMetadata(ctx, account, models); registryErr == nil {
 			for modelID, fallback := range registryMetadata {
@@ -215,11 +235,22 @@ func (s *AccountTestService) SyncUpstreamModelCatalog(ctx context.Context, accou
 				}
 			}
 		} else {
-			metadataEnrichmentFailed = true
+			slog.Warn("upstream model capability metadata enrichment failed",
+				"account_id", upstreamModelSyncAccountID(account),
+				"platform", upstreamModelSyncPlatform(account),
+				"error", registryErr,
+			)
 		}
 	}
 
-	if metadataEnrichmentFailed || len(catalog.Metadata) == 0 || account == nil || account.ID <= 0 || s.accountRepo == nil {
+	if upstreamCatalogNeedsRegistry(models, catalog.Metadata) {
+		catalog.Warnings = append(catalog.Warnings, UpstreamModelSyncWarning{
+			Code:    UpstreamModelMetadataIncompleteCode,
+			Message: "Model IDs were synced, but capability metadata is incomplete.",
+		})
+		return catalog, nil
+	}
+	if len(catalog.Metadata) == 0 || account == nil || account.ID <= 0 || s.accountRepo == nil {
 		return catalog, nil
 	}
 	snapshot := UpstreamModelMetadataSnapshot{
@@ -232,6 +263,48 @@ func (s *AccountTestService) SyncUpstreamModelCatalog(ctx context.Context, accou
 	}
 	account.SetUpstreamModelMetadataSnapshot(snapshot)
 	return catalog, nil
+}
+
+func upstreamModelSyncStatusCode(err error) int {
+	var syncErr *UpstreamModelSyncError
+	if errors.As(err, &syncErr) {
+		return syncErr.StatusCode
+	}
+	return 0
+}
+
+func upstreamModelListEndpointUnsupported(err error) bool {
+	statusCode := upstreamModelSyncStatusCode(err)
+	return statusCode == http.StatusNotFound || statusCode == http.StatusMethodNotAllowed
+}
+
+func configuredUpstreamModelsForCapabilitySync(account *Account) []string {
+	if account == nil {
+		return nil
+	}
+	models := make([]string, 0)
+	for _, mappedModel := range account.GetModelMapping() {
+		mappedModel = strings.TrimSpace(mappedModel)
+		if mappedModel == "" || strings.Contains(mappedModel, "*") {
+			continue
+		}
+		models = append(models, mappedModel)
+	}
+	return dedupeAndSortModelIDs(models)
+}
+
+func upstreamModelSyncAccountID(account *Account) int64 {
+	if account == nil {
+		return 0
+	}
+	return account.ID
+}
+
+func upstreamModelSyncPlatform(account *Account) string {
+	if account == nil {
+		return ""
+	}
+	return account.Platform
 }
 
 func upstreamCatalogNeedsRegistry(models []string, metadata map[string]UpstreamModelMetadata) bool {
@@ -531,10 +604,12 @@ func (s *AccountTestService) fetchUpstreamModelList(ctx context.Context, account
 	}
 
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
-		return nil, nil, newUpstreamModelSyncUpstreamError(
-			fmt.Sprintf("Upstream model list request failed with HTTP %d", resp.StatusCode),
-			fmt.Errorf("upstream model list returned HTTP %d", resp.StatusCode),
-		)
+		return nil, nil, &UpstreamModelSyncError{
+			Kind:       UpstreamModelSyncErrorUpstream,
+			Message:    fmt.Sprintf("Upstream model list request failed with HTTP %d", resp.StatusCode),
+			StatusCode: resp.StatusCode,
+			Err:        fmt.Errorf("upstream model list returned HTTP %d", resp.StatusCode),
+		}
 	}
 
 	extractModels := extractUpstreamModelIDs
@@ -1126,7 +1201,7 @@ func upstreamMetadataFromCapabilityEntry(modelID string, entry upstreamModelCapa
 	}
 	reasoning := entry.Reasoning
 	if reasoning == nil && len(levels) > 0 {
-		inferred := !(len(levels) == 1 && levels[0] == "none")
+		inferred := len(levels) != 1 || levels[0] != "none"
 		reasoning = &inferred
 	}
 	modalities := entry.InputModalities
@@ -1207,7 +1282,7 @@ func normalizeReasoningLevel(level string) string {
 		return "none"
 	case "extra-high", "extra_high":
 		return "xhigh"
-	case "none", "minimal", "low", "medium", "high", "xhigh", "max":
+	case "none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra":
 		return level
 	default:
 		return ""

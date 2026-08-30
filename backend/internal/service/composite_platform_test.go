@@ -17,6 +17,7 @@ func (r *compositeOwnershipAccountRepo) ListSchedulableByGroupID(context.Context
 	return r.accounts, nil
 }
 
+// Scenario: 唯一平台的精确别名可路由
 func TestResolveCompositeModelOwnershipKeepsProviderAccountsIsolated(t *testing.T) {
 	groupID := int64(7)
 	repo := &compositeOwnershipAccountRepo{
@@ -30,7 +31,7 @@ func TestResolveCompositeModelOwnershipKeepsProviderAccountsIsolated(t *testing.
 			},
 			{
 				ID:       2,
-				Platform: PlatformDeepSeek,
+				Platform: PlatformDeepseek,
 				Credentials: map[string]any{
 					"model_mapping": map[string]any{"reasoning-alias": "deepseek-v4-pro"},
 				},
@@ -41,16 +42,15 @@ func TestResolveCompositeModelOwnershipKeepsProviderAccountsIsolated(t *testing.
 
 	deepSeekOwnership, err := svc.resolveCompositeModelOwnership(context.Background(), groupID, "reasoning-alias")
 	require.NoError(t, err)
-	require.True(t, deepSeekOwnership.Matched)
-	require.Equal(t, PlatformDeepSeek, deepSeekOwnership.TargetPlatform)
+	require.Equal(t, CompositeModelOwnership{TargetPlatform: PlatformDeepseek, Matched: true}, deepSeekOwnership)
 
 	openAIOwnership, err := svc.resolveCompositeModelOwnership(context.Background(), groupID, "gpt-public")
 	require.NoError(t, err)
-	require.True(t, openAIOwnership.Matched)
-	require.Equal(t, PlatformOpenAI, openAIOwnership.TargetPlatform)
+	require.Equal(t, CompositeModelOwnership{TargetPlatform: PlatformOpenAI, Matched: true}, openAIOwnership)
 }
 
-func TestResolveCompositeModelOwnershipIgnoresWildcardsAndEmptyMappings(t *testing.T) {
+// Scenario: 通配符和空映射不声明所有权
+func TestResolveCompositeModelOwnershipRequiresNonEmptyExactMappings(t *testing.T) {
 	groupID := int64(7)
 	repo := &compositeOwnershipAccountRepo{
 		accounts: []Account{
@@ -58,16 +58,11 @@ func TestResolveCompositeModelOwnershipIgnoresWildcardsAndEmptyMappings(t *testi
 				ID:       1,
 				Platform: PlatformOpenAI,
 				Credentials: map[string]any{
-					"model_mapping": map[string]any{"*": "gpt-5", "gpt-*": "gpt-5"},
+					"model_mapping": map[string]any{"*": "gpt-5", "gpt-*": "gpt-5", "empty-alias": ""},
 				},
 			},
 			{
-				ID:          2,
-				Platform:    PlatformDeepSeek,
-				Credentials: map[string]any{"api_key": "sk-deepseek"},
-			},
-			{
-				ID:       3,
+				ID:       2,
 				Platform: PlatformGrok,
 				Credentials: map[string]any{
 					"model_mapping": map[string]any{"grok-public": "grok-4"},
@@ -77,20 +72,84 @@ func TestResolveCompositeModelOwnershipIgnoresWildcardsAndEmptyMappings(t *testi
 	}
 	svc := &GatewayService{accountRepo: repo}
 
-	wildcardOwnership, err := svc.resolveCompositeModelOwnership(context.Background(), groupID, "deepseek-v4-pro")
-	require.NoError(t, err)
-	require.False(t, wildcardOwnership.Matched)
-	require.False(t, wildcardOwnership.Ambiguous)
-	require.Empty(t, wildcardOwnership.TargetPlatform)
+	for _, model := range []string{"gpt-5", "empty-alias", "unknown-alias"} {
+		ownership, err := svc.resolveCompositeModelOwnership(context.Background(), groupID, model)
+		require.NoError(t, err)
+		require.Equal(t, CompositeModelOwnership{}, ownership, "model=%s", model)
+	}
 
-	gptOwnership, err := svc.resolveCompositeModelOwnership(context.Background(), groupID, "gpt-5")
+	ownership, err := svc.resolveCompositeModelOwnership(context.Background(), groupID, "grok-public")
 	require.NoError(t, err)
-	require.False(t, gptOwnership.Matched)
+	require.Equal(t, CompositeModelOwnership{TargetPlatform: PlatformGrok, Matched: true}, ownership)
+}
 
-	grokOwnership, err := svc.resolveCompositeModelOwnership(context.Background(), groupID, "grok-public")
+func TestResolveCompositeModelOwnershipAllowsSamePlatformAndRejectsCrossPlatformAliases(t *testing.T) {
+	groupID := int64(7)
+	repo := &compositeOwnershipAccountRepo{
+		accounts: []Account{
+			{ID: 1, Platform: PlatformOpenAI, Credentials: map[string]any{"model_mapping": map[string]any{"shared-openai": "gpt-5", "ambiguous": "gpt-5"}}},
+			{ID: 2, Platform: PlatformOpenAI, Credentials: map[string]any{"model_mapping": map[string]any{"shared-openai": "gpt-5.1"}}},
+			{ID: 3, Platform: PlatformDeepseek, Credentials: map[string]any{"model_mapping": map[string]any{"ambiguous": "deepseek-v4-pro"}}},
+		},
+	}
+	svc := &GatewayService{accountRepo: repo}
+
+	samePlatform, err := svc.resolveCompositeModelOwnership(context.Background(), groupID, "shared-openai")
 	require.NoError(t, err)
-	require.True(t, grokOwnership.Matched)
-	require.Equal(t, PlatformGrok, grokOwnership.TargetPlatform)
+	require.Equal(t, CompositeModelOwnership{TargetPlatform: PlatformOpenAI, Matched: true}, samePlatform)
+
+	ambiguous, err := svc.resolveCompositeModelOwnership(context.Background(), groupID, "ambiguous")
+	require.NoError(t, err)
+	require.Equal(t, CompositeModelOwnership{Ambiguous: true}, ambiguous)
+}
+
+func TestNewGatewayServiceWiresCompositeModelOwnershipResolver(t *testing.T) {
+	groupID := int64(7)
+	repo := &compositeOwnershipAccountRepo{
+		accounts: []Account{{
+			ID:          1,
+			Platform:    PlatformDeepseek,
+			Credentials: map[string]any{"model_mapping": map[string]any{"reasoning-alias": "deepseek-v4-pro"}},
+		}},
+	}
+	resolver := NewCompositeRouteResolver(nil)
+	svc := NewGatewayService(
+		repo,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		resolver,
+		nil,
+		nil,
+	)
+	require.Same(t, resolver, svc.compositeResolver)
+
+	decision, err := resolver.Resolve(context.Background(), groupID, "reasoning-alias", CompositeRouteEndpointResponses)
+	require.NoError(t, err)
+	require.True(t, decision.Matched)
+	require.Equal(t, CompositeRouteSourceAccount, decision.Source)
+	require.Equal(t, PlatformDeepseek, decision.TargetPlatform)
 }
 
 func TestDetectModelPlatform(t *testing.T) {

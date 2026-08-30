@@ -627,6 +627,8 @@ type ForwardResult struct {
 	FirstTokenMs                *int // 首字时间（流式请求）
 	ClientDisconnect            bool // 客户端是否在流式传输过程中断开
 	ReasoningEffort             *string
+	// RequestedReasoningEffort is the client-requested effort before mapping.
+	RequestedReasoningEffort *string
 	// ServiceTier records the tier requested by the client. OpenAI uses
 	// service_tier; Anthropic speed=fast is normalized to "fast". Usage recording
 	// lowers it to UpstreamResponseServiceTier when the upstream reports a
@@ -1485,10 +1487,7 @@ func (s *GatewayService) resolveCompositeModelOwnership(ctx context.Context, gro
 	platforms := make(map[string]struct{})
 	for _, account := range accounts {
 		platform := strings.TrimSpace(account.Platform)
-		if !isConcreteRequestPlatform(platform) {
-			continue
-		}
-		if !explicitModelMappingClaims(account, model) {
+		if !isConcreteRequestPlatform(platform) || !explicitModelMappingClaims(account, model) {
 			continue
 		}
 		platforms[platform] = struct{}{}
@@ -1508,6 +1507,14 @@ func (s *GatewayService) resolveCompositeModelOwnership(ctx context.Context, gro
 		s.modelsListCache.Set(cacheKey, ownership, s.modelsListCacheTTL)
 	}
 	return ownership, nil
+}
+
+func explicitModelMappingClaims(account Account, model string) bool {
+	if account.Credentials == nil || model == "" {
+		return false
+	}
+	mapped, ok := stringMappingFromRaw(account.Credentials["model_mapping"])[model]
+	return ok && strings.TrimSpace(mapped) != ""
 }
 
 // GetSchedulablePlatforms returns the concrete platforms that currently have
@@ -1569,14 +1576,6 @@ func (s *GatewayService) InvalidateAvailableModelsCache(groupID *int64, platform
 		}
 		s.modelsListCache.Delete(key)
 	}
-}
-
-func explicitModelMappingClaims(account Account, model string) bool {
-	if account.Credentials == nil || model == "" {
-		return false
-	}
-	mapped := strings.TrimSpace(stringMappingFromRaw(account.Credentials["model_mapping"])[model])
-	return mapped != ""
 }
 
 func (s *GatewayService) invalidateCompositeModelOwnershipCache(groupID *int64) {

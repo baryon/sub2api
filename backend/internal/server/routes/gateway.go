@@ -86,16 +86,9 @@ func RegisterGatewayRoutes(
 		}
 	}
 	codexModelsHandler := func(c *gin.Context) {
-		// Official OpenAI groups proxy ChatGPT's live Codex manifest from a
-		// single scheduled account. Composite groups must aggregate every
-		// schedulable platform (Claude, Grok, native DeepSeek, GPT, …)
-		// instead of inheriting whichever OpenAI-compatible account happens
-		// to win selection.
-		if getGroupPlatform(c) == service.PlatformOpenAI {
-			h.OpenAIGateway.CodexModels(c)
-			return
-		}
-		h.Gateway.CodexModels(c)
+		// Official OpenAI groups proxy ChatGPT's live Codex manifest. Other
+		// groups use the generated multi-provider catalog.
+		dispatchCodexModelsGateway(c, h.OpenAIGateway.CodexModels, h.Gateway.CodexModels)
 	}
 	modelsHandler := func(c *gin.Context) {
 		if c.Query("client_version") != "" {
@@ -535,6 +528,14 @@ func dispatchMessagesGateway(c *gin.Context, openAIHandler, genericHandler gin.H
 	default:
 		genericHandler(c)
 	}
+}
+
+func dispatchCodexModelsGateway(c *gin.Context, openAIHandler, generatedHandler gin.HandlerFunc) {
+	if getGroupPlatform(c) == service.PlatformOpenAI {
+		openAIHandler(c)
+		return
+	}
+	generatedHandler(c)
 }
 
 // getGroupPlatform extracts the group platform from the API Key stored in context.
