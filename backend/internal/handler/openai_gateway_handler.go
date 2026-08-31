@@ -873,6 +873,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 					ChannelUsageFields: clientRequestedUsageFields(c, channelMapping, reqModel, res.UpstreamModel),
 					PricingAt:          pricingAt,
 					CyberBlocked:       cyberBlocked,
+					NativeCompactionV2: nativeV2,
 				}); err != nil {
 					logger.L().With(
 						zap.String("component", "handler.openai_gateway.responses"),
@@ -3960,6 +3961,7 @@ func (h *OpenAIGatewayHandler) recordCyberPolicyIfMarkedWithUsage(c *gin.Context
 	}
 	// 提前拍成标量，避免在下方 goroutine 内访问 gin.Context。
 	sessionID := service.ExtractClientSessionID(c)
+	nativeCompactionV2 := service.IsOpenAINativeCompactionV2(c)
 	apiKeyPrefix := ""
 	if apiKey != nil {
 		apiKeyPrefix = keyPrefix(apiKey.Key, 8)
@@ -4043,6 +4045,7 @@ func (h *OpenAIGatewayHandler) recordCyberPolicyIfMarkedWithUsage(c *gin.Context
 				APIKeyService:      apiKeySvc,
 				QuotaPlatform:      quotaPlatform,
 				PricingAt:          pricingAt,
+				NativeCompactionV2: nativeCompactionV2,
 				ChannelUsageFields: channelFields,
 			})
 		}

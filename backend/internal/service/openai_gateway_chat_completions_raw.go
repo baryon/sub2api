@@ -123,6 +123,8 @@ func (s *OpenAIGatewayService) forwardAsRawChatCompletions(
 		}
 		upstreamBody = strippedBody
 	}
+	// Keep the final outbound tier separate from the observed response tier so
+	// usage recording can apply the selected credential's response contract.
 	serviceTier := extractOpenAIServiceTierFromBody(upstreamBody)
 
 	// Grok Composer does not accept image_url parts directly, but Grok Build
