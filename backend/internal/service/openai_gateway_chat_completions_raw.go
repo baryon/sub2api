@@ -48,7 +48,8 @@ const deepSeekHarnessForwardHeaderMaxBytes = 1024
 // forwardAsRawChatCompletions 直转客户端的 Chat Completions 请求到上游原生
 // Chat Completions 端点，**不**做 CC↔Responses 协议转换。
 //
-// 适用场景包括：OpenAI-compatible APIKey 上游被探测确认不支持 Responses，
+// 适用场景包括：OpenAI-compatible APIKey 上游被探测确认不支持 Responses
+// （如 GLM/Qwen 等第三方兼容上游）、CN 供应商固定 chat_completions 协议，
 // 以及同时原生支持 Chat 与 Responses 的独立 DeepSeek 平台。
 //
 // 与 ForwardAsChatCompletions 的关键差异：
