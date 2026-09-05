@@ -508,7 +508,8 @@ func configuredCodexSupportsPriorityServiceTier(modelID string) bool {
 			return true
 		}
 	}
-	return false
+	// GPT-6 Astra advertises Fast via service_tier=priority in public model metadata.
+	return isOpenAIGPT6AstraModel(modelID)
 }
 
 func configuredCodexGrokReasoningLevels(modelID string) []configuredCodexReasoningLevel {
