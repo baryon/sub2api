@@ -235,18 +235,15 @@ func buildDeepSeekWSFullInput(previous []json.RawMessage, currentPayload []byte)
 		return nil, false, err
 	}
 	if len(previous) == 0 {
-		return cloneOpenAIWSRawMessages(current), currentExists, nil
+		return append([]json.RawMessage(nil), current...), currentExists, nil
 	}
 	if !currentExists || len(current) == 0 {
-		return cloneOpenAIWSRawMessages(previous), true, nil
+		return append([]json.RawMessage(nil), previous...), true, nil
 	}
 	if openAIWSRawItemsHasPrefix(current, previous) {
-		return cloneOpenAIWSRawMessages(current), true, nil
+		return append([]json.RawMessage(nil), current...), true, nil
 	}
-	merged := make([]json.RawMessage, 0, len(previous)+len(current))
-	merged = append(merged, cloneOpenAIWSRawMessages(previous)...)
-	merged = append(merged, cloneOpenAIWSRawMessages(current)...)
-	return merged, true, nil
+	return combineOpenAIWSReplayItems(previous, current), true, nil
 }
 
 func validateDeepSeekWSReplayToolPairs(items []json.RawMessage) error {
@@ -642,7 +639,7 @@ func (s *OpenAIGatewayService) ProxyDeepSeekResponsesWebSocket(
 			// Native non-success terminals complete the turn without making it
 			// replayable on another account. The connection itself remains valid.
 		}
-		ledger = cloneOpenAIWSRawMessages(turnInput)
+		ledger = append([]json.RawMessage(nil), turnInput...)
 		if outcome.result != nil && outcome.result.deepSeekWSCompaction {
 			ledger = nil
 		}
