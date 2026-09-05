@@ -795,6 +795,71 @@ func TestSyncUpstreamModelCatalogDoesNotPersistPartialMetadataWhenRegistryFails(
 	require.Nil(t, repo.updates, "partial metadata must not replace a more complete persisted snapshot")
 }
 
+// Scenario: 图片专用模型缺少 context 时，不阻止 agent 模型能力落库，也不误报整批失败。
+func TestSyncUpstreamModelCatalogIgnoresDedicatedMediaModelsForCompleteness(t *testing.T) {
+	upstream := &httpUpstreamRecorder{responses: []*http.Response{
+		{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Body: io.NopCloser(strings.NewReader(`{"object":"list","data":[
+				{"id":"gpt-6-astra","object":"model"},
+				{"id":"gpt-image-2","object":"model"}
+			]}`)),
+		},
+		{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Body: io.NopCloser(strings.NewReader(`{
+				"openai": {
+					"id": "openai",
+					"models": {
+						"gpt-6-astra": {
+							"id": "gpt-6-astra",
+							"name": "GPT-6 Astra",
+							"reasoning": true,
+							"reasoning_options": [{"type":"effort","values":["low","medium","high","xhigh","max"]}],
+							"modalities": {"input":["text","image"],"output":["text"]},
+							"limit": {"context":1050000,"output":128000}
+						},
+						"gpt-image-2": {
+							"id": "gpt-image-2",
+							"name": "gpt-image-2",
+							"reasoning": false,
+							"modalities": {"input":["text","image"],"output":["image"]},
+							"limit": {"context":0,"output":0}
+						}
+					}
+				}
+			}`)),
+		},
+	}}
+	repo := &upstreamModelMetadataRepoStub{}
+	svc := &AccountTestService{accountRepo: repo, httpUpstream: upstream, cfg: upstreamModelSyncTestConfig()}
+
+	catalog, err := svc.SyncUpstreamModelCatalog(context.Background(), &Account{
+		ID: 113, Platform: PlatformOpenAI, Type: AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"api_key":  "sk-test",
+			"base_url": "https://api.openai.com/v1",
+			"model_mapping": map[string]any{
+				"gpt-6-astra": "gpt-6-astra",
+				"gpt-image-2": "gpt-image-2",
+			},
+		},
+	})
+	require.NoError(t, err)
+	require.Empty(t, catalog.Warnings, "media generators must not keep agent capability sync in a failed state")
+	require.NotNil(t, repo.updates)
+
+	encoded, err := json.Marshal(repo.updates[UpstreamModelMetadataExtraKey])
+	require.NoError(t, err)
+	var snapshot UpstreamModelMetadataSnapshot
+	require.NoError(t, json.Unmarshal(encoded, &snapshot))
+	require.Contains(t, snapshot.Models, "gpt-6-astra")
+	require.Equal(t, []string{"low", "medium", "high", "xhigh", "max"}, snapshot.Models["gpt-6-astra"].SupportedReasoningLevels)
+	require.NotContains(t, snapshot.Models, "gpt-image-2")
+}
+
 func TestFetchUpstreamSupportedModelsUsesConfiguredBodyLimit(t *testing.T) {
 	t.Parallel()
 
@@ -974,7 +1039,7 @@ func TestSyncUpstreamModelCatalogPersistsCompleteModelsWhenSomeRemainIncomplete(
 	})
 	require.NoError(t, err)
 	require.Equal(t, []string{"complete-model", "incomplete-model"}, catalog.Models)
-	require.Equal(t, UpstreamModelMetadataIncompleteCode, catalog.Warnings[0].Code)
+	require.Equal(t, UpstreamModelMetadataPartialCode, catalog.Warnings[0].Code)
 	require.NotNil(t, repo.updates)
 
 	encoded, err := json.Marshal(repo.updates[UpstreamModelMetadataExtraKey])

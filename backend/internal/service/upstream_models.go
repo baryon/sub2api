@@ -24,6 +24,7 @@ const (
 	modelsDevRegistryTTL                      = 6 * time.Hour
 	UpstreamModelMetadataExtraKey             = "upstream_model_metadata"
 	UpstreamModelMetadataIncompleteCode       = "upstream_model_metadata_incomplete"
+	UpstreamModelMetadataPartialCode          = "upstream_model_metadata_partial"
 )
 
 type UpstreamModelMetadata struct {
@@ -232,9 +233,13 @@ func (s *AccountTestService) SyncUpstreamModelCatalog(ctx context.Context, accou
 	// whitelist models that the live /models list omitted; those still need registry
 	// metadata so Codex catalogs can advertise reasoning and modalities.
 	enrichIDs := dedupeAndSortModelIDs(append(append([]string{}, models...), configuredUpstreamModelsForCapabilitySync(account)...))
+	// Dedicated image/video generators are not Codex agent catalog entries and often
+	// omit context windows in public registries. Keep them out of completeness checks
+	// so they do not mask successful agent-model capability sync.
+	capabilityIDs := capabilitySyncModelIDs(enrichIDs)
 
 	source := "upstream"
-	if upstreamCatalogNeedsRegistry(enrichIDs, catalog.Metadata) {
+	if upstreamCatalogNeedsRegistry(capabilityIDs, catalog.Metadata) {
 		if registryMetadata, registryErr := s.fetchModelsDevMetadata(ctx, account, enrichIDs); registryErr == nil {
 			for modelID, fallback := range registryMetadata {
 				current := catalog.Metadata[modelID]
@@ -253,26 +258,34 @@ func (s *AccountTestService) SyncUpstreamModelCatalog(ctx context.Context, accou
 		}
 	}
 
-	if upstreamCatalogNeedsRegistry(enrichIDs, catalog.Metadata) {
-		catalog.Warnings = append(catalog.Warnings, UpstreamModelSyncWarning{
-			Code:    UpstreamModelMetadataIncompleteCode,
-			Message: "Model IDs were synced, but capability metadata is incomplete.",
-		})
+	completeMetadata := completeUpstreamModelMetadataSubset(capabilityIDs, catalog.Metadata)
+	persistedCapabilities := false
+	if len(completeMetadata) > 0 && account != nil && account.ID > 0 && s.accountRepo != nil {
+		snapshot := UpstreamModelMetadataSnapshot{
+			Source:   source,
+			SyncedAt: time.Now().UTC().Format(time.RFC3339),
+			Models:   completeMetadata,
+		}
+		if err := s.accountRepo.UpdateExtra(ctx, account.ID, map[string]any{UpstreamModelMetadataExtraKey: snapshot}); err != nil {
+			return nil, newUpstreamModelSyncInternalError("Failed to save upstream model metadata", err)
+		}
+		account.SetUpstreamModelMetadataSnapshot(snapshot)
+		persistedCapabilities = true
 	}
 
-	completeMetadata := completeUpstreamModelMetadataSubset(enrichIDs, catalog.Metadata)
-	if len(completeMetadata) == 0 || account == nil || account.ID <= 0 || s.accountRepo == nil {
-		return catalog, nil
+	if upstreamCatalogNeedsRegistry(capabilityIDs, catalog.Metadata) {
+		if persistedCapabilities {
+			catalog.Warnings = append(catalog.Warnings, UpstreamModelSyncWarning{
+				Code:    UpstreamModelMetadataPartialCode,
+				Message: "Some model capabilities were saved; remaining models are still incomplete.",
+			})
+		} else {
+			catalog.Warnings = append(catalog.Warnings, UpstreamModelSyncWarning{
+				Code:    UpstreamModelMetadataIncompleteCode,
+				Message: "Model IDs were synced, but capability metadata is incomplete.",
+			})
+		}
 	}
-	snapshot := UpstreamModelMetadataSnapshot{
-		Source:   source,
-		SyncedAt: time.Now().UTC().Format(time.RFC3339),
-		Models:   completeMetadata,
-	}
-	if err := s.accountRepo.UpdateExtra(ctx, account.ID, map[string]any{UpstreamModelMetadataExtraKey: snapshot}); err != nil {
-		return nil, newUpstreamModelSyncInternalError("Failed to save upstream model metadata", err)
-	}
-	account.SetUpstreamModelMetadataSnapshot(snapshot)
 	return catalog, nil
 }
 
@@ -302,6 +315,18 @@ func configuredUpstreamModelsForCapabilitySync(account *Account) []string {
 		models = append(models, mappedModel)
 	}
 	return dedupeAndSortModelIDs(models)
+}
+
+func capabilitySyncModelIDs(modelIDs []string) []string {
+	filtered := make([]string, 0, len(modelIDs))
+	for _, modelID := range modelIDs {
+		modelID = strings.TrimSpace(modelID)
+		if modelID == "" || isCodexDedicatedMediaModel(modelID) {
+			continue
+		}
+		filtered = append(filtered, modelID)
+	}
+	return filtered
 }
 
 func upstreamModelSyncAccountID(account *Account) int64 {
