@@ -481,6 +481,25 @@ func responsesInputItemType(item map[string]any) string {
 	return ""
 }
 
+// applyDeepSeekResponsesHistoryGuards 在出站到 DeepSeek /responses 前重排工具调用块
+// 并补 reasoning_text 占位。openai 平台但主机为 api.deepseek.com 的映射账号与原生
+// DeepSeek 共用此函数：前者走通用 Forward，不能只挂在 IsDeepSeek 早返上。
+func applyDeepSeekResponsesHistoryGuards(account *Account, body []byte, compactPath bool) ([]byte, bool) {
+	if account == nil || compactPath || !isDeepSeekResponsesUpstream(account) {
+		return body, false
+	}
+	changed := false
+	if reorderedBody, reordered := normalizeDeepSeekResponsesToolCallBlocks(body); reordered {
+		body = reorderedBody
+		changed = true
+	}
+	if replayedBody, replayed := ensureDeepSeekResponsesReasoningPlaceholders(body, openAIRequestBodyHasTools(body)); replayed {
+		body = replayedBody
+		changed = true
+	}
+	return body, changed
+}
+
 // ensureDeepSeekResponsesReasoningPlaceholders 为历史里缺少 reasoning 明文的 assistant
 // 消息前置插入一条非空明文占位 reasoning item。
 //

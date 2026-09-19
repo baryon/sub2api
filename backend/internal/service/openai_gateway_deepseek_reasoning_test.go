@@ -140,3 +140,73 @@ func TestForwardDeepSeekResponsesReordersToolCallBlocks(t *testing.T) {
 	require.Equal(t, "call-b", gjson.GetBytes(upstream.lastBody, "input.4.call_id").String())
 	require.Len(t, gjson.GetBytes(upstream.lastBody, "input").Array(), 7)
 }
+
+func TestForwardResponses_OpenAIMappedDeepSeekInjectsReasoningPlaceholders(t *testing.T) {
+	body := []byte(`{"model":"gpt-5.6-sol","stream":false,` + deepSeekResponsesToolsFragment + `,"input":[` +
+		`{"type":"message","role":"user","content":"go"},` +
+		`{"type":"message","id":"msg_1","role":"assistant","content":[{"type":"output_text","text":""}]},` +
+		`{"type":"function_call","call_id":"c1","name":"shell","arguments":"{}"},` +
+		`{"type":"function_call_output","call_id":"c1","output":"ok"}]}`)
+
+	upstream := deepSeekResponsesTestUpstream()
+	svc := &OpenAIGatewayService{cfg: deepSeekChatFallbackTestConfig(), httpUpstream: upstream}
+	c := deepSeekResponsesTestContext(t, body)
+
+	_, err := svc.Forward(context.Background(), c, openaiPlatformDeepSeekAccount(), body)
+	require.NoError(t, err)
+	require.Contains(t, upstream.lastReq.URL.String(), "/responses")
+	assertAssistantMessagesGuarded(t, upstream.lastBody)
+	require.Equal(t, "rs_ph_msg_1", gjson.GetBytes(upstream.lastBody, "input.1.id").String())
+	require.Equal(t, responsesReasoningPlaceholderText, gjson.GetBytes(upstream.lastBody, "input.1.content.0.text").String())
+}
+
+func TestForwardResponses_OpenAIMappedDeepSeekKeepsReasoningText(t *testing.T) {
+	body := []byte(`{"model":"gpt-5.6-sol","stream":false,` + deepSeekResponsesToolsFragment + `,"input":[` +
+		`{"type":"message","role":"user","content":"go"},` +
+		`{"type":"reasoning","id":"rs_1","summary":[{"type":"summary_text","text":"portable"}],"content":[{"type":"reasoning_text","text":"visible reasoning"}]},` +
+		`{"type":"message","id":"msg_1","role":"assistant","content":[{"type":"output_text","text":""}]},` +
+		`{"type":"function_call","call_id":"c1","name":"shell","arguments":"{}"},` +
+		`{"type":"function_call_output","call_id":"c1","output":"ok"}]}`)
+
+	upstream := deepSeekResponsesTestUpstream()
+	svc := &OpenAIGatewayService{cfg: deepSeekChatFallbackTestConfig(), httpUpstream: upstream}
+	c := deepSeekResponsesTestContext(t, body)
+
+	_, err := svc.Forward(context.Background(), c, openaiPlatformDeepSeekAccount(), body)
+	require.NoError(t, err)
+	require.Contains(t, upstream.lastReq.URL.String(), "/responses")
+	require.Equal(t, "visible reasoning", gjson.GetBytes(upstream.lastBody, "input.1.content.0.text").String())
+	require.True(t, gjson.GetBytes(upstream.lastBody, "input.1.content").Exists())
+	assertAssistantMessagesGuarded(t, upstream.lastBody)
+}
+
+func TestForwardResponses_OfficialOpenAIStillStripsReasoningContent(t *testing.T) {
+	body := []byte(`{"model":"gpt-5.6-sol","stream":false,` + deepSeekResponsesToolsFragment + `,"input":[` +
+		`{"type":"message","role":"user","content":"go"},` +
+		`{"type":"reasoning","id":"rs_1","summary":[{"type":"summary_text","text":"portable"}],"content":[{"type":"reasoning_text","text":"visible reasoning"}]},` +
+		`{"type":"message","id":"msg_1","role":"assistant","content":[{"type":"output_text","text":"ok"}]}]}`)
+
+	upstream := deepSeekResponsesTestUpstream()
+	svc := &OpenAIGatewayService{cfg: deepSeekChatFallbackTestConfig(), httpUpstream: upstream}
+	c := deepSeekResponsesTestContext(t, body)
+	account := &Account{
+		ID:       17,
+		Name:     "openai-official",
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeAPIKey,
+		Extra:    map[string]any{"openai_responses_supported": true},
+		Credentials: map[string]any{
+			"api_key":  "sk-test",
+			"base_url": "https://api.openai.com",
+		},
+		Status:      StatusActive,
+		Schedulable: true,
+	}
+
+	_, err := svc.Forward(context.Background(), c, account, body)
+	require.NoError(t, err)
+	require.Contains(t, upstream.lastReq.URL.String(), "/responses")
+	require.Equal(t, "reasoning", gjson.GetBytes(upstream.lastBody, "input.1.type").String())
+	require.False(t, gjson.GetBytes(upstream.lastBody, "input.1.content").Exists())
+	require.Equal(t, "portable", gjson.GetBytes(upstream.lastBody, "input.1.summary.0.text").String())
+}
