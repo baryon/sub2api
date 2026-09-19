@@ -157,6 +157,54 @@ func TestForwardDeepSeekRemoteCompactionUsesNativeResponsesAndSynthesizesOneItem
 	require.NotContains(t, checkpoint, "private chain of thought")
 }
 
+func TestForwardOpenAIMappedDeepSeekRemoteCompactionSynthesizesOneItem(t *testing.T) {
+	body := mustMarshalDeepSeekCompactTestJSON(t, map[string]any{
+		"model": "gpt-5.6-sol", "stream": true, "store": true,
+		"instructions": "You are Codex. Preserve the current engineering task.",
+		"reasoning":    map[string]any{"effort": "max", "summary": "detailed"},
+		"tools":        []any{map[string]any{"type": "function", "name": "shell", "description": "Run a command", "parameters": map[string]any{"type": "object"}}},
+		"tool_choice":  "auto",
+		"input": []any{
+			map[string]any{"type": "message", "role": "user", "content": []any{map[string]any{"type": "input_text", "text": strings.Repeat("Implement the compact bridge with full contract coverage. ", 80)}}},
+			map[string]any{"type": "function_call", "call_id": "call_1", "name": "shell", "arguments": `{"cmd":"go test ./..."}`},
+			map[string]any{"type": "function_call_output", "call_id": "call_1", "output": "one focused test is failing"},
+			map[string]any{"type": "compaction_trigger"},
+		},
+	})
+	c, recorder := newDeepSeekResponsesTestContext(t, body)
+	c.Request.Header.Set("Accept", "text/event-stream")
+	c.Request.Header.Set("X-Codex-Beta-Features", "remote_compaction_v2")
+	MarkOpenAINativeCompactionV2(c)
+	require.False(t, IsDeepSeekCompactionMarked(c))
+
+	account := openaiPlatformDeepSeekAccount()
+	account.Credentials["model_mapping"] = map[string]any{"gpt-5.6-sol": "deepseek-flash"}
+	upstream := &httpUpstreamRecorder{resp: deepSeekRemoteCompactResponsesResponse(deepSeekRemoteCompactTestSummary)}
+	svc := newDeepSeekRemoteCompactTestService(upstream)
+
+	result, err := svc.Forward(deepSeekCompactTestContext(42), c, account, body)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, UsageRequestKindCompact, result.RequestKind)
+	require.Contains(t, upstream.lastReq.URL.String(), "/responses")
+	require.Equal(t, "deepseek-flash", gjson.GetBytes(upstream.lastBody, "model").String())
+	require.False(t, gjson.GetBytes(upstream.lastBody, "tools").Exists())
+	items := gjson.GetBytes(upstream.lastBody, "input").Array()
+	require.NotEmpty(t, items)
+	require.NotEqual(t, "compaction_trigger", items[len(items)-1].Get("type").String())
+	require.Equal(t, deepSeekCompactInstruction, items[len(items)-1].Get("content.0.text").String())
+
+	events := parseCompactBridgeSSE(t, recorder.Body.String())
+	require.Len(t, events, 2)
+	require.Equal(t, "response.output_item.done", events[0][0])
+	require.Equal(t, "response.completed", events[1][0])
+	outputs := gjson.Get(events[1][1], "response.output").Array()
+	require.Len(t, outputs, 1)
+	require.Equal(t, "compaction", outputs[0].Get("type").String())
+	require.Equal(t, "compaction", gjson.Get(events[0][1], "item.type").String())
+	require.NotEmpty(t, outputs[0].Get("encrypted_content").String())
+}
+
 func TestForwardDeepSeekLegacyCompactReturnsUnaryResponsesJSON(t *testing.T) {
 	body := mustMarshalDeepSeekCompactTestJSON(t, map[string]any{
 		"model": "deepseek-v4-flash", "instructions": "You are Codex.",

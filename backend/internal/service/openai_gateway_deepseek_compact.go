@@ -1290,6 +1290,52 @@ func (s *OpenAIGatewayService) executeDeepSeekRemoteCompaction(
 	return execution, nil
 }
 
+// shouldSynthesizeDeepSeekRemoteCompaction 判断这次请求是否必须由网关合成
+// Codex remote compact v2 的 compaction item。DeepSeek /responses 不会产出该
+// 类型；handler 又只在入站平台是 DeepSeek 时打桥接标记。映射账号（openai 平台
+// + api.deepseek.com）因此会把 compaction_trigger 原样转给上游，客户端看到
+// reasoning+message 两条输出、0 条 compaction。
+func shouldSynthesizeDeepSeekRemoteCompaction(c *gin.Context, account *Account, body []byte) bool {
+	if account == nil || !isDeepSeekResponsesUpstream(account) || !HasCompactionTriggerInInput(body) {
+		return false
+	}
+	if IsDeepSeekCompactionMarked(c) {
+		return true
+	}
+	return gjson.GetBytes(body, "stream").Bool()
+}
+
+func ensureDeepSeekRemoteCompactionMarked(c *gin.Context, body []byte) {
+	if IsDeepSeekCompactionMarked(c) {
+		return
+	}
+	if gjson.GetBytes(body, "stream").Bool() {
+		MarkDeepSeekCompaction(c, DeepSeekCompactionModeRemoteV2SSE)
+		return
+	}
+	MarkDeepSeekCompaction(c, DeepSeekCompactionModeLegacyUnary)
+}
+
+func (s *OpenAIGatewayService) maybeForwardDeepSeekRemoteCompaction(
+	ctx context.Context,
+	c *gin.Context,
+	account *Account,
+	body []byte,
+) (*OpenAIForwardResult, bool, error) {
+	if !shouldSynthesizeDeepSeekRemoteCompaction(c, account, body) {
+		return nil, false, nil
+	}
+	ensureDeepSeekRemoteCompactionMarked(c, body)
+	originalModel := strings.TrimSpace(gjson.GetBytes(body, "model").String())
+	if originalModel == "" {
+		return nil, true, fmt.Errorf("parse DeepSeek Responses request: model is required")
+	}
+	billingModel := resolveOpenAIForwardModel(account, originalModel, "")
+	upstreamModel := normalizeOpenAIModelForUpstream(account, billingModel)
+	result, err := s.forwardDeepSeekRemoteCompactionV2(ctx, c, account, body, originalModel, billingModel, upstreamModel)
+	return result, true, err
+}
+
 func (s *OpenAIGatewayService) forwardDeepSeekRemoteCompactionV2(
 	ctx context.Context,
 	c *gin.Context,
@@ -1299,11 +1345,7 @@ func (s *OpenAIGatewayService) forwardDeepSeekRemoteCompactionV2(
 	billingModel string,
 	upstreamModel string,
 ) (*OpenAIForwardResult, error) {
-	token := account.GetDeepSeekAPIKey()
-	if token == "" {
-		return nil, fmt.Errorf("account %d missing api_key", account.ID)
-	}
-	targetURL, err := s.deepSeekEndpointURL(account, deepSeekResponsesEndpoint)
+	targetURL, token, err := s.deepSeekResponsesCompactUpstream(account)
 	if err != nil {
 		return nil, err
 	}

@@ -73,6 +73,40 @@ func (s *OpenAIGatewayService) deepSeekEndpointURL(account *Account, endpoint st
 	}
 }
 
+// deepSeekResponsesCompactUpstream 解析 compact 合成器要打的 DeepSeek
+// /responses 地址和密钥。原生 DeepSeek 账号走无 /v1 的官方根；openai 平台但
+// 主机为 api.deepseek.com 的映射账号沿用 OpenAI 协议密钥和 URL 构造，否则
+// GetDeepSeekAPIKey 为空，合成器根本发不出去。
+func (s *OpenAIGatewayService) deepSeekResponsesCompactUpstream(account *Account) (targetURL, token string, err error) {
+	if account == nil {
+		return "", "", errors.New("deepseek compact requires an account")
+	}
+	if account.IsDeepSeekAPIKey() {
+		token = account.GetDeepSeekAPIKey()
+		if token == "" {
+			return "", "", fmt.Errorf("account %d missing api_key", account.ID)
+		}
+		targetURL, err = s.deepSeekEndpointURL(account, deepSeekResponsesEndpoint)
+		return targetURL, token, err
+	}
+	if !isDeepSeekResponsesUpstream(account) {
+		return "", "", errors.New("deepseek compact requires a DeepSeek Responses upstream")
+	}
+	token = strings.TrimSpace(account.GetOpenAIProtocolAPIKey())
+	if token == "" {
+		return "", "", fmt.Errorf("account %d missing api_key", account.ID)
+	}
+	baseURL := strings.TrimSpace(account.GetOpenAIBaseURL())
+	if baseURL == "" {
+		return "", "", fmt.Errorf("account %d missing base_url", account.ID)
+	}
+	validated, err := s.validateUpstreamBaseURL(baseURL)
+	if err != nil {
+		return "", "", fmt.Errorf("invalid deepseek compact base_url: %w", err)
+	}
+	return buildOpenAIResponsesURLForPlatform(account.Platform, validated), token, nil
+}
+
 type deepSeekResponsesRelayResult struct {
 	usage            *OpenAIUsage
 	firstTokenMs     *int

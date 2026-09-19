@@ -38,6 +38,9 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	if account != nil && account.IsDeepSeek() {
 		return s.forwardDeepSeekResponses(ctx, c, account, body)
 	}
+	if result, handled, err := s.maybeForwardDeepSeekRemoteCompaction(ctx, c, account, body); handled {
+		return result, err
+	}
 	clearGrokResponsesClientToolMapping(c)
 	clearOpenAIResponsesClientToolMapping(c)
 	clearOpenAIResponsesNamespaceNames(c)
