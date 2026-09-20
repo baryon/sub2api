@@ -25,11 +25,20 @@ func openaiPlatformDeepSeekAccount() *Account {
 		Extra:    map[string]any{"openai_responses_supported": true},
 		Credentials: map[string]any{
 			"api_key":  "sk-test",
-			"base_url": "https://api.deepseek.com",
+			"base_url": DefaultDeepseekBaseURL,
 		},
 		Status:      StatusActive,
 		Schedulable: true,
 	}
+}
+
+func openaiPlatformDeepSeekForceChatAccount() *Account {
+	account := openaiPlatformDeepSeekAccount()
+	account.ID = 19
+	account.Extra = map[string]any{
+		openai_compat.ExtraKeyResponsesMode: string(openai_compat.ResponsesSupportModeForceChatCompletions),
+	}
+	return account
 }
 
 func deepSeekChatFallbackTestConfig() *config.Config {
@@ -113,6 +122,19 @@ func deepSeekLiteHistoryWithEncryptedReasoning() []byte {
 	}`)
 }
 
+func deepSeekChatHistoryWithEncryptedReasoning() []byte {
+	return []byte(`{
+		"model":"gpt-5.6-sol",
+		"stream":false,
+		"input":[
+			{"type":"reasoning","id":"item_enc1","summary":[],"encrypted_content":"opaque"},
+			{"type":"function_call","call_id":"call_1","name":"exec","arguments":"{}"},
+			{"type":"function_call_output","call_id":"call_1","output":"ok"},
+			{"type":"message","role":"user","content":[{"type":"input_text","text":"go on"}]}
+		]
+	}`)
+}
+
 func newDeepSeekChatFallbackContext(t *testing.T, body []byte) *gin.Context {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
@@ -145,6 +167,23 @@ func TestForwardResponses_DeepSeekChatFallbackInjectsReasoningPlaceholderOnCache
 	}
 
 	result, err := svc.Forward(context.Background(), c, openaiPlatformDeepSeekAccount(), body)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Contains(t, upstream.lastReq.URL.String(), "/chat/completions")
+	require.Equal(t, responsesReasoningPlaceholderText, gjson.GetBytes(upstream.lastBody, "messages.0.reasoning_content").String())
+	require.Equal(t, "call_1", gjson.GetBytes(upstream.lastBody, "messages.0.tool_calls.0.id").String())
+}
+
+func TestForwardResponses_DeepSeekForceChatFallbackInjectsReasoningPlaceholderOnCacheMiss(t *testing.T) {
+	body := deepSeekChatHistoryWithEncryptedReasoning()
+	c := newDeepSeekChatFallbackContext(t, body)
+	upstream := newOKChatCompletionsUpstream("rid_ds_rc_force_chat", deepSeekChatFallbackOKBody)
+	svc := &OpenAIGatewayService{
+		cfg:          deepSeekChatFallbackTestConfig(),
+		httpUpstream: upstream,
+	}
+
+	result, err := svc.Forward(context.Background(), c, openaiPlatformDeepSeekForceChatAccount(), body)
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	require.Contains(t, upstream.lastReq.URL.String(), "/chat/completions")

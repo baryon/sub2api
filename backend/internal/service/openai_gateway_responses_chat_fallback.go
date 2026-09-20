@@ -442,7 +442,11 @@ func targetsDeepSeekAPIHost(account *Account) bool {
 	if err != nil {
 		return false
 	}
-	return strings.EqualFold(u.Hostname(), deepSeekAPIHost)
+	ds, err := url.Parse(DefaultDeepseekBaseURL)
+	if err != nil {
+		return false
+	}
+	return strings.EqualFold(u.Hostname(), ds.Hostname()) || strings.EqualFold(u.Hostname(), deepSeekAPIHost)
 }
 
 // ensureDeepSeekChatReasoningPlaceholders 给缺 reasoning_content 的 assistant
