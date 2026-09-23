@@ -327,8 +327,8 @@ const claudeAliases = computed(() => claudeAliasesFromModels(resolvedModels.valu
 
 const showCodexModelCatalog = computed(() =>
   props.show &&
-  props.platform === 'composite' &&
-  activeClientTab.value === 'codex'
+  (activeClientTab.value === 'codex' ||
+    (props.platform === 'openai' && activeClientTab.value === 'codex-ws'))
 )
 
 const codexModelCatalogPath = computed(() => {
@@ -987,6 +987,7 @@ function generateOpenAIFiles(baseUrl: string, apiKey: string): FileConfig[] {
 model = "${model}"
 review_model = "${model}"
 ${reasoningEffortLine}disable_response_storage = true
+model_catalog_json = "${escapeTomlBasicString(codexModelCatalogPath.value)}"
 network_access = "enabled"
 windows_wsl_setup_acknowledged = true
 
@@ -1017,9 +1018,10 @@ function buildOpenAICodexFileConfigs(
   configContent: string,
   apiKey: string
 ): FileConfig[] {
+  const isWindows = activeTab.value === 'windows'
   const files: FileConfig[] = [
     {
-      path: `${configDir}/config.toml`,
+      path: joinConfigPath(configDir, 'config.toml', isWindows),
       content: configContent,
       hint: t('keys.useKeyModal.openai.configTomlHint')
     }
@@ -1027,7 +1029,7 @@ function buildOpenAICodexFileConfigs(
 
   if (codexAuthMode.value === 'legacy') {
     files.push({
-      path: `${configDir}/auth.json`,
+      path: joinConfigPath(configDir, 'auth.json', isWindows),
       content: JSON.stringify({ OPENAI_API_KEY: apiKey }, null, 2)
     })
   }
@@ -1222,6 +1224,7 @@ function generateGrokCodexFiles(baseUrl: string, apiKey: string): FileConfig[] {
 
 model_provider = "sub2api"
 model = "${model}"
+model_catalog_json = "${escapeTomlBasicString(codexModelCatalogPath.value)}"
 # Optional:
 # review_model = "${model}"
 # model_reasoning_effort = "medium"
@@ -1303,15 +1306,13 @@ function generateRoutedCodexFiles(
     ? `\n[features]\nresponses_websockets_v2 = true`
     : ''
   const reasoningEffortLine = codexReasoningEffortTomlLine(model)
-  const catalogLine = platform === 'composite'
-    ? `\nmodel_catalog_json = "${escapeTomlBasicString(codexModelCatalogPath.value)}"`
-    : ''
 
   const configContent = `# Codex CLI -> Sub2API ${label} group
 model_provider = "sub2api"
 model = "${model}"
 review_model = "${model}"
-${reasoningEffortLine}disable_response_storage = true${catalogLine}
+${reasoningEffortLine}disable_response_storage = true
+model_catalog_json = "${escapeTomlBasicString(codexModelCatalogPath.value)}"
 
 [model_providers.sub2api]
 name = "${providerName}"
@@ -1346,6 +1347,7 @@ function generateOpenAIWsFiles(baseUrl: string, apiKey: string): FileConfig[] {
 model = "${model}"
 review_model = "${model}"
 ${reasoningEffortLine}disable_response_storage = true
+model_catalog_json = "${escapeTomlBasicString(codexModelCatalogPath.value)}"
 network_access = "enabled"
 windows_wsl_setup_acknowledged = true
 

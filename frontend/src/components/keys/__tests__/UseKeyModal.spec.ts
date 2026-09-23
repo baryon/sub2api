@@ -339,8 +339,8 @@ describe('UseKeyModal', () => {
     expect(codexConfig).toContain('supports_websockets = true')
     expect(codexConfig).toContain('responses_websockets_v2 = true')
     expect(codexConfig).toContain('base_url = "https://example.com/v1"')
-    expect(codexConfig).not.toContain('model_catalog_json')
-    expect(wrapper.find('[data-testid="codex-model-catalog"]').exists()).toBe(false)
+    expect(codexConfig).toContain('model_catalog_json = "~/.codex/codex-models.json"')
+    expect(wrapper.find('[data-testid="codex-model-catalog"]').exists()).toBe(true)
     expect(codexConfig).not.toContain('name = "DeepSeek')
 
     const opencodeTab = wrapper.findAll('button').find((button) =>
@@ -487,8 +487,8 @@ describe('UseKeyModal', () => {
     // API-key provider: Codex must not require a ChatGPT OAuth login.
     expect(configToml).toContain('requires_openai_auth = false')
     expect(configToml).toContain('supports_websockets = false')
-    expect(configToml).not.toContain('model_catalog_json')
-    expect(wrapper.find('[data-testid="codex-model-catalog"]').exists()).toBe(false)
+    expect(configToml).toContain('model_catalog_json = "~/.codex/codex-models.json"')
+    expect(wrapper.find('[data-testid="codex-model-catalog"]').exists()).toBe(true)
     expect(configToml).toContain('grok-4.20-multi-agent-0309 (text / web_search)')
     expect(configToml).toContain('grok-imagine-image')
     expect(configToml).toContain('grok-imagine-video')
@@ -537,8 +537,8 @@ describe('UseKeyModal', () => {
     expect(configToml).toBeDefined()
     expect(configToml).toContain('model = "gpt-5.5"')
     expect(configToml).toContain('review_model = "gpt-5.5"')
-    expect(configToml).not.toContain('model_catalog_json')
-    expect(wrapper.find('[data-testid="codex-model-catalog"]').exists()).toBe(false)
+    expect(configToml).toContain('model_catalog_json = "~/.codex/codex-models.json"')
+    expect(wrapper.find('[data-testid="codex-model-catalog"]').exists()).toBe(true)
     expect(configToml).not.toContain('model = "gpt-5.4"')
     expect(configToml).not.toContain('model_context_window')
     expect(configToml).not.toContain('model_auto_compact_token_limit')
@@ -976,7 +976,7 @@ describe('UseKeyModal', () => {
   })
 
   it.each(['anthropic', 'gemini', 'antigravity', 'kimi', 'zhipu', 'minimax'] as const)(
-    'keeps Codex models on the API for the %s group',
+    'offers Codex catalog configuration for the %s routed group',
     async (platform) => {
       const wrapper = mount(UseKeyModal, {
         props: {
@@ -1004,11 +1004,11 @@ describe('UseKeyModal', () => {
       await codexTab!.trigger('click')
       await nextTick()
 
-      expect(wrapper.find('[data-testid="codex-model-catalog"]').exists()).toBe(false)
+      expect(wrapper.find('[data-testid="codex-model-catalog"]').exists()).toBe(true)
       const config = wrapper.findAll('pre code')
         .map((code) => code.text())
         .find((content) => content.includes('[model_providers.sub2api]'))
-      expect(config).not.toContain('model_catalog_json')
+      expect(config).toContain('model_catalog_json = "~/.codex/codex-models.json"')
       expect(config).toContain('base_url = "https://example.com/v1"')
       expect(config).toContain('wire_api = "responses"')
     }
@@ -1061,7 +1061,7 @@ describe('UseKeyModal', () => {
     expect(config).toContain('review_model = "gpt-5.5"')
   })
 
-  it('does not ask OpenAI groups to download a Codex catalog', () => {
+  it('offers the catalog for OpenAI groups', () => {
     const wrapper = mount(UseKeyModal, {
       props: {
         show: true,
@@ -1081,12 +1081,12 @@ describe('UseKeyModal', () => {
       }
     })
 
-    expect(wrapper.find('[data-testid="codex-model-catalog"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="codex-model-catalog"]').exists()).toBe(true)
     const configToml = wrapper.findAll('pre code')
       .map((code) => code.text())
       .find((content) => content.includes('model_provider = "OpenAI"'))
     expect(configToml).toContain('model = "gpt-5.5"')
-    expect(configToml).not.toContain('model_catalog_json')
+    expect(configToml).toContain('model_catalog_json = "~/.codex/codex-models.json"')
     expect(configToml).not.toContain('model_reasoning_effort')
   })
 })

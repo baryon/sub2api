@@ -172,7 +172,7 @@ export default {
         authModeLegacy: 'Compatibility mode',
         authModeApiKey: 'API Key Mode',
         authModeApiKeyRestartNotice: 'After saving this configuration, completely quit and restart Codex Desktop or CLI, then create a new task so the client can rebuild its tool registry.',
-        configTomlHint: 'Save the following as config.toml, then restart Codex. This group returns models from the API, so there is no catalog file to save.',
+        configTomlHint: 'Save this as config.toml, download the catalog below to the path in the config, then restart Codex.',
         note: 'Make sure the config directory exists. macOS/Linux users can run mkdir -p ~/.codex to create it.',
         noteWindows: 'Press Win+R and enter %userprofile%\\.codex to open the config directory. Create it manually if it does not exist.',
       },
@@ -222,7 +222,7 @@ export default {
         codexDescription:
           'Configure Codex to use DeepSeek through Sub2API Responses, including gateway compaction and optional client WebSocket ingress.',
         codexConfigTomlHint:
-          'Keep the provider name exactly "OpenAI" so Codex enables remote_compaction_v2. Models come from the API, so there is no catalog file to save. supports_websockets is the client entry; DeepSeek upstream still uses HTTP /responses.',
+          'Keep the provider name exactly "OpenAI" so Codex enables remote_compaction_v2. Download the catalog below to the path in the config. supports_websockets is the client entry; DeepSeek upstream still uses HTTP /responses.',
         note:
           'The selected client sends requests through the DeepSeek API-key group. Do not commit files containing your API key.',
         codexNote:
@@ -233,7 +233,7 @@ export default {
       minimax: {
         description: 'Configure Claude Code, Codex, or OpenCode through the current MiniMax group.',
         codexDescription: 'Configure Codex with API key authentication through the current MiniMax group.',
-        codexConfigTomlHint: 'Save config.toml in the Codex config directory, then restart Codex. Models come from the API, so there is no catalog file to save.',
+        codexConfigTomlHint: 'Save config.toml and the catalog below, then restart Codex.',
         codexNote: 'Export SUB2API_API_KEY before starting Codex. The downloaded catalog contains model metadata only, not your API key.',
       },
       composite: {
@@ -251,15 +251,15 @@ export default {
           'Set $env:SUB2API_API_KEY and save config.toml under %USERPROFILE%\\.codex. Composite selects the upstream account from the model route; no OpenAI ChatGPT login is required.',
       },
       routedCodex: {
-        description: 'Configure Codex for this group. Models come from the API.',
+        description: 'Configure the Codex model catalog for this group.',
         configTomlHint:
-          'Save the config in the Codex config directory, then restart Codex. Models come from the API, so there is no catalog file to save.',
+          'Save config.toml and the catalog below, then restart Codex.',
         note: 'Export SUB2API_API_KEY before starting Codex.',
       },
       codexModelCatalog: {
         title: 'Codex model catalog',
         description:
-          'A composite group has no single upstream model list. Download this catalog to the path below. config.toml already references the file, and /model uses it after Codex restarts.',
+          'Fetch the models available to this API key, then download the catalog to the path below. config.toml references the file; /model shows its models after Codex restarts.',
         notFetched: 'Not fetched',
         loading: 'Fetching',
         ready: 'Ready',
