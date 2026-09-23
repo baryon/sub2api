@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/openai_compat"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
@@ -15,7 +16,25 @@ import (
 
 const deepSeekInputImageDataURI = "data:image/png;base64,AQID"
 
-func deepSeekNativeResponsesAccount() *Account {
+func openaiMappedDeepSeekResponsesImageAccount() *Account {
+	return &Account{
+		ID:       18,
+		Name:     "openai-deepseek-responses",
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeAPIKey,
+		Extra: map[string]any{
+			openai_compat.ExtraKeyResponsesSupported: true,
+		},
+		Credentials: map[string]any{
+			"api_key":  "sk-test",
+			"base_url": DefaultDeepseekBaseURL,
+		},
+		Status:      StatusActive,
+		Schedulable: true,
+	}
+}
+
+func deepSeekNativeResponsesImageAccount() *Account {
 	return &Account{
 		Platform: PlatformDeepseek,
 		Type:     AccountTypeAPIKey,
@@ -33,8 +52,8 @@ func deepSeekUserImageBody(partJSON string) []byte {
 func TestNormalizeDeepSeekResponsesRequestBodyAliasesInputImageURL(t *testing.T) {
 	t.Parallel()
 
-	native := deepSeekNativeResponsesAccount()
-	mapped := openaiPlatformDeepSeekAccount()
+	native := deepSeekNativeResponsesImageAccount()
+	mapped := openaiMappedDeepSeekResponsesImageAccount()
 	kimi := &Account{
 		Platform: PlatformKimi, Type: AccountTypeAPIKey,
 		Credentials: map[string]any{"api_protocol": APIProtocolResponses},
@@ -48,6 +67,7 @@ func TestNormalizeDeepSeekResponsesRequestBodyAliasesInputImageURL(t *testing.T)
 		require.Equal(t, deepSeekInputImageDataURI, gjson.GetBytes(got, "input.0.content.1.image_url").String())
 		require.Equal(t, deepSeekInputImageDataURI, gjson.GetBytes(got, "input.0.content.1.url").String())
 		require.Equal(t, "what is this?", gjson.GetBytes(got, "input.0.content.0.text").String())
+		require.True(t, gjson.GetBytes(got, "store").Bool(), "mapped openai 账号不应被无状态适配改掉 store")
 	})
 
 	t.Run("nested_image_url_object_flattened", func(t *testing.T) {
@@ -123,7 +143,7 @@ func TestForwardResponses_OpenAIMappedDeepSeekAliasesInputImageURL(t *testing.T)
 		httpUpstream: upstream,
 	}
 
-	result, err := svc.Forward(context.Background(), c, openaiPlatformDeepSeekAccount(), body)
+	result, err := svc.Forward(context.Background(), c, openaiMappedDeepSeekResponsesImageAccount(), body)
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	require.Contains(t, upstream.lastReq.URL.String(), "/responses")
@@ -168,4 +188,26 @@ func TestBuildDeepSeekWSHTTPBridgeRequestAliasesInputImageURL(t *testing.T) {
 	require.Equal(t, deepSeekInputImageDataURI, gjson.GetBytes(prepared, "input.0.content.0.image_url").String())
 	require.Equal(t, deepSeekInputImageDataURI, gjson.GetBytes(prepared, "input.0.content.0.url").String())
 	require.False(t, gjson.GetBytes(prepared, "type").Exists())
+}
+func TestForwardResponses_NativeDeepSeekAliasesInputImageURL(t *testing.T) {
+	body := deepSeekUserImageBody(`{"type":"input_image","image_url":"` + deepSeekInputImageDataURI + `"}`)
+	c := newDeepSeekChatFallbackContext(t, body)
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body: io.NopCloser(bytes.NewReader([]byte(
+			`{"id":"resp_ds_img","object":"response","model":"deepseek-flash","status":"completed","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"ok"}]}],"usage":{"input_tokens":5,"output_tokens":2,"total_tokens":7}}`,
+		))),
+	}}
+	svc := &OpenAIGatewayService{
+		cfg:          deepSeekChatFallbackTestConfig(),
+		httpUpstream: upstream,
+	}
+
+	result, err := svc.Forward(context.Background(), c, deepSeekNativeResponsesImageAccount(), body)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, "https://api.deepseek.com/responses", upstream.lastReq.URL.String())
+	require.Equal(t, deepSeekInputImageDataURI, gjson.GetBytes(upstream.lastBody, "input.0.content.1.image_url").String())
+	require.Equal(t, deepSeekInputImageDataURI, gjson.GetBytes(upstream.lastBody, "input.0.content.1.url").String())
 }

@@ -478,7 +478,7 @@ func TestTryModelFilePricing_Success(t *testing.T) {
 	require.InDelta(t, 0.2, *result, 1e-12)
 }
 
-func TestTryModelFilePricing_Fable51MaxEffortUsesTripleQuota(t *testing.T) {
+func TestTryModelFilePricing_Fable51PreservesLocalMaxMultiplier(t *testing.T) {
 	bs := newTestBillingServiceWithPrices(map[string]*ModelPricing{
 		"claude-fable-5-1": {InputPricePerToken: 0.001},
 	})

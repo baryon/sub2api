@@ -63,6 +63,19 @@ func TestResponsesToAnthropicRequest_MapsUnsupportedClaudeEffort(t *testing.T) {
 	require.Equal(t, "max", got.OutputConfig.Effort)
 }
 
+func TestResponsesToAnthropicRequest_MapsNonClaudeXHighToMax(t *testing.T) {
+	t.Parallel()
+
+	req := &ResponsesRequest{
+		Model:     "k3",
+		Input:     json.RawMessage(`"hello"`),
+		Reasoning: &ResponsesReasoning{Effort: "xhigh"},
+	}
+	got, err := ResponsesToAnthropicRequest(req)
+	require.NoError(t, err)
+	require.Equal(t, "max", got.OutputConfig.Effort)
+}
+
 func TestResponsesToAnthropicRequest_DropsEffortOnClaudeWithoutSupport(t *testing.T) {
 	t.Parallel()
 

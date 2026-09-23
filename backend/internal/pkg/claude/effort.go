@@ -39,6 +39,7 @@ var claudeEffortFamilies = []struct {
 	{family: "claude-opus-4-7", levels: effortLowMediumHighXHighMax},
 	{family: "claude-opus-4-6", levels: effortLowMediumHighMax},
 	{family: "claude-opus-4-5", levels: effortLowMediumHigh},
+	{family: "claude-opus-5-5", levels: effortLowMediumHighXHighMax},
 	{family: "claude-opus-5", levels: effortLowMediumHighXHighMax},
 }
 
@@ -53,6 +54,11 @@ var effortRank = map[string]int{
 // IsClaudeModelID reports whether model looks like a Claude / Anthropic ID.
 func IsClaudeModelID(model string) bool {
 	return strings.HasPrefix(normalizeClaudeModelID(model), "claude")
+}
+
+// IsOpus55 recognizes the official model ID and its provider/date variants.
+func IsOpus55(model string) bool {
+	return normalizeClaudeModelID(model) == "claude-opus-5-5"
 }
 
 // EffortLevelsForModel returns the Anthropic effort values this Claude model
