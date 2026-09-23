@@ -65,6 +65,30 @@ func TestFilterHeadersForceRemoveOverridesReasoningIncluded(t *testing.T) {
 	}
 }
 
+func TestWriteAnthropicFeatureHeadersRespectsExplicitFilters(t *testing.T) {
+	src := http.Header{}
+	src.Set("Anthropic-Auto-Mode-Result", "opaque")
+	src.Set("X-Claude-Code-Feature", "server-checks")
+	src.Set("Anthropic-Blocked", "hidden")
+	src.Set("Set-Cookie", "secret=1")
+	filter := CompileHeaderFilter(config.ResponseHeaderConfig{
+		Enabled: true, AdditionalAllowed: []string{"anthropic-auto-mode-result"},
+		ForceRemove: []string{"anthropic-blocked"},
+	})
+	dst := FilterHeaders(src, filter)
+	WriteAnthropicFeatureHeaders(dst, src, filter)
+
+	if got := dst.Values("Anthropic-Auto-Mode-Result"); len(got) != 1 || got[0] != "opaque" {
+		t.Fatalf("feature header copied twice or lost: %v", got)
+	}
+	if got := dst.Get("X-Claude-Code-Feature"); got != "server-checks" {
+		t.Fatalf("Claude Code feature header lost: %q", got)
+	}
+	if dst.Get("Anthropic-Blocked") != "" || dst.Get("Set-Cookie") != "" {
+		t.Fatal("force-remove or unrelated response headers leaked")
+	}
+}
+
 func TestFilterHeadersEnabledUsesAllowlist(t *testing.T) {
 	src := http.Header{}
 	src.Add("Content-Type", "application/json")

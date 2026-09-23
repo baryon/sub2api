@@ -119,3 +119,27 @@ func WriteFilteredHeaders(dst http.Header, src http.Header, filter *CompiledHead
 		}
 	}
 }
+
+// WriteAnthropicFeatureHeaders forwards future Anthropic/Claude Code feature
+// response headers on native passthrough routes. Explicit force_remove rules
+// still apply, and headers already copied by the standard filter are skipped.
+func WriteAnthropicFeatureHeaders(dst, src http.Header, filter *CompiledHeaderFilter) {
+	if filter == nil {
+		filter = defaultCompiledHeaderFilter
+	}
+	for key, values := range src {
+		lower := strings.ToLower(strings.TrimSpace(key))
+		if !strings.HasPrefix(lower, "anthropic-") && !strings.HasPrefix(lower, "x-claude-code-") {
+			continue
+		}
+		if _, removed := filter.forceRemove[lower]; removed {
+			continue
+		}
+		if _, hop := hopByHopHeaders[lower]; hop || len(dst.Values(key)) > 0 {
+			continue
+		}
+		for _, value := range values {
+			dst.Add(key, value)
+		}
+	}
+}
