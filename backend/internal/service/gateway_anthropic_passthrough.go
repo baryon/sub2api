@@ -1044,5 +1044,5 @@ func writeAnthropicPassthroughResponseHeaders(dst http.Header, src http.Header, 
 			}
 		}
 	}
-	responseheaders.WriteAnthropicFeatureHeaders(dst, src, filter)
+	responseheaders.WriteClaudeCodeResponseHeaders(dst, src, filter)
 }

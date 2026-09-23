@@ -65,27 +65,37 @@ func TestFilterHeadersForceRemoveOverridesReasoningIncluded(t *testing.T) {
 	}
 }
 
-func TestWriteAnthropicFeatureHeadersRespectsExplicitFilters(t *testing.T) {
+func TestWriteClaudeCodeResponseHeaders(t *testing.T) {
 	src := http.Header{}
-	src.Set("Anthropic-Auto-Mode-Result", "opaque")
-	src.Set("X-Claude-Code-Feature", "server-checks")
-	src.Set("Anthropic-Blocked", "hidden")
+	src.Set("X-Should-Retry", "true")
+	src.Set("Anthropic-Ratelimit-Unified-Status", "allowed")
+	src.Set("Anthropic-Ratelimit-Unified-Reset", "1760000000")
+	src.Set("Anthropic-Organization-Id", "org-upstream")
+	src.Set("Anthropic-Ratelimit-Tokens-Remaining", "100")
 	src.Set("Set-Cookie", "secret=1")
 	filter := CompileHeaderFilter(config.ResponseHeaderConfig{
-		Enabled: true, AdditionalAllowed: []string{"anthropic-auto-mode-result"},
-		ForceRemove: []string{"anthropic-blocked"},
+		Enabled: true, AdditionalAllowed: []string{"x-should-retry"},
+		ForceRemove: []string{"anthropic-ratelimit-unified-reset"},
 	})
 	dst := FilterHeaders(src, filter)
-	WriteAnthropicFeatureHeaders(dst, src, filter)
+	WriteClaudeCodeResponseHeaders(dst, src, filter)
 
-	if got := dst.Values("Anthropic-Auto-Mode-Result"); len(got) != 1 || got[0] != "opaque" {
-		t.Fatalf("feature header copied twice or lost: %v", got)
+	if got := dst.Values("X-Should-Retry"); len(got) != 1 || got[0] != "true" {
+		t.Fatalf("retry header copied twice or lost: %v", got)
 	}
-	if got := dst.Get("X-Claude-Code-Feature"); got != "server-checks" {
-		t.Fatalf("Claude Code feature header lost: %q", got)
+	if got := dst.Get("Anthropic-Ratelimit-Unified-Status"); got != "allowed" {
+		t.Fatalf("unified rate limit header lost: %q", got)
 	}
-	if dst.Get("Anthropic-Blocked") != "" || dst.Get("Set-Cookie") != "" {
-		t.Fatal("force-remove or unrelated response headers leaked")
+	for _, key := range []string{"Anthropic-Ratelimit-Unified-Reset", "Anthropic-Organization-Id", "Anthropic-Ratelimit-Tokens-Remaining", "Set-Cookie"} {
+		if dst.Get(key) != "" {
+			t.Fatalf("%s must not be forwarded", key)
+		}
+	}
+
+	nilDst := http.Header{}
+	WriteClaudeCodeResponseHeaders(nilDst, src, nil)
+	if nilDst.Get("X-Should-Retry") != "true" || nilDst.Get("Anthropic-Organization-Id") != "" {
+		t.Fatalf("nil filter must use the default rules: %v", nilDst)
 	}
 }
 
