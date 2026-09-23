@@ -415,6 +415,65 @@ func TestNewConfiguredCodexModelDescriptorUsesProviderMetadataAndSafeFallback(t 
 	require.Equal(t, configuredCodexTruncationPolicy{Mode: "bytes", Limit: 10_000}, custom.TruncationPolicy)
 }
 
+func TestConfiguredCodexModelDescriptorGPT6SolAndLunaExposeReasoningLevels(t *testing.T) {
+	t.Parallel()
+
+	sol := newConfiguredCodexModelDescriptor("gpt-6-sol")
+	require.Equal(t, "GPT-6 Sol", sol.DisplayName)
+	require.NotNil(t, sol.DefaultReasoningLevel)
+	require.Equal(t, "medium", *sol.DefaultReasoningLevel)
+	require.Equal(t, []string{"low", "medium", "high", "xhigh", "max", "ultra"}, effortsFromConfiguredCodexLevels(sol.SupportedReasoningLevels))
+	require.Equal(t, "v2", sol.MultiAgentVersion)
+	require.Nil(t, sol.MultiAgentReasoningEffort)
+	require.Equal(t, int64(1_050_000), sol.ContextWindow)
+	require.Equal(t, int64(1_050_000), sol.MaxContextWindow)
+	require.True(t, configuredCodexSupportsPriorityServiceTier("gpt-6-sol"))
+	require.True(t, isOpenAICodexReasoningGPTModel("openai/gpt-6-sol"))
+	require.True(t, isOpenAICodexImageInputModel("gpt-6-sol-2026-09-23"))
+
+	luna := newConfiguredCodexModelDescriptor("OPENAI/gpt-6-luna")
+	require.Equal(t, "GPT-6 Luna", luna.DisplayName)
+	require.NotNil(t, luna.DefaultReasoningLevel)
+	require.Equal(t, "medium", *luna.DefaultReasoningLevel)
+	require.Equal(t, []string{"low", "medium", "high", "xhigh", "max"}, effortsFromConfiguredCodexLevels(luna.SupportedReasoningLevels))
+	require.NotContains(t, effortsFromConfiguredCodexLevels(luna.SupportedReasoningLevels), "ultra")
+	require.Equal(t, "v2", luna.MultiAgentVersion)
+	require.Nil(t, luna.MultiAgentReasoningEffort)
+
+	other := newConfiguredCodexModelDescriptor("gpt-6-other")
+	require.Equal(t, []string{"none"}, effortsFromConfiguredCodexLevels(other.SupportedReasoningLevels))
+	require.False(t, isOpenAICodexReasoningGPTModel("gpt-6-other"))
+}
+
+func TestBuildCodexModelsManifestIncludesGPT6SolAndLunaReasoningLevels(t *testing.T) {
+	t.Parallel()
+
+	body, err := BuildCodexModelsManifest([]string{"gpt-6-sol", "gpt-6-luna"})
+	require.NoError(t, err)
+	models := decodeCodexManifestModels(t, body)
+	require.Len(t, models, 2)
+
+	bySlug := make(map[string]map[string]any, len(models))
+	for _, model := range models {
+		slug, ok := model["slug"].(string)
+		require.True(t, ok)
+		bySlug[slug] = model
+	}
+	require.Equal(t, "medium", bySlug["gpt-6-sol"]["default_reasoning_level"])
+	require.Equal(t, []string{"low", "medium", "high", "xhigh", "max", "ultra"}, effortsFromManifestModel(t, bySlug["gpt-6-sol"]))
+	require.Equal(t, "medium", bySlug["gpt-6-luna"]["default_reasoning_level"])
+	require.Equal(t, []string{"low", "medium", "high", "xhigh", "max"}, effortsFromManifestModel(t, bySlug["gpt-6-luna"]))
+	for _, slug := range []string{"gpt-6-sol", "gpt-6-luna"} {
+		require.Equal(t, []any{
+			map[string]any{
+				"id":          "priority",
+				"name":        "Fast",
+				"description": "Priority processing for lower latency.",
+			},
+		}, bySlug[slug]["service_tiers"])
+	}
+}
+
 func TestBuildCodexModelsManifestUsesGPT6AstraInstructions(t *testing.T) {
 	body, err := BuildCodexModelsManifest([]string{"gpt-6-astra"})
 	require.NoError(t, err)
@@ -2336,12 +2395,12 @@ func TestCompleteAPIKeyCodexModelsManifestForClientMarksOnlyOfficialVisionGPTIma
 	t.Parallel()
 
 	svc := &OpenAIGatewayService{}
-	manifest := &OpenAIModelsResponse{Body: []byte(`{"models":[{"slug":"gpt-6-astra"},{"slug":"gpt-5.6-sol"},{"slug":"gpt-4o"},{"slug":"gpt-3.5-turbo"},{"slug":"gpt-4"}]}`)}
+	manifest := &OpenAIModelsResponse{Body: []byte(`{"models":[{"slug":"gpt-6-astra"},{"slug":"gpt-6-sol"},{"slug":"gpt-6-luna"},{"slug":"gpt-5.6-sol"},{"slug":"gpt-4o"},{"slug":"gpt-3.5-turbo"},{"slug":"gpt-4"}]}`)}
 	account := newCodexModelsAPIKeyTestAccount("")
 
 	require.NoError(t, svc.CompleteAPIKeyCodexModelsManifestForClient(manifest, account))
 	models := decodeCodexManifestModels(t, manifest.Body)
-	require.Len(t, models, 5)
+	require.Len(t, models, 7)
 
 	bySlug := make(map[string]map[string]any, len(models))
 	for _, model := range models {
@@ -2349,7 +2408,11 @@ func TestCompleteAPIKeyCodexModelsManifestForClientMarksOnlyOfficialVisionGPTIma
 		require.True(t, ok)
 		bySlug[slug] = model
 	}
-	for _, slug := range []string{"gpt-6-astra", "gpt-5.6-sol", "gpt-4o"} {
+	require.Equal(t, []string{"low", "medium", "high", "xhigh", "max", "ultra"}, effortsFromManifestModel(t, bySlug["gpt-6-sol"]))
+	require.Equal(t, "medium", bySlug["gpt-6-sol"]["default_reasoning_level"])
+	require.Equal(t, []string{"low", "medium", "high", "xhigh", "max"}, effortsFromManifestModel(t, bySlug["gpt-6-luna"]))
+	require.Equal(t, "medium", bySlug["gpt-6-luna"]["default_reasoning_level"])
+	for _, slug := range []string{"gpt-6-astra", "gpt-6-sol", "gpt-6-luna", "gpt-5.6-sol", "gpt-4o"} {
 		require.Equal(t, []any{"text", "image"}, bySlug[slug]["input_modalities"])
 		require.Equal(t, true, bySlug[slug]["supports_image_detail_original"])
 	}

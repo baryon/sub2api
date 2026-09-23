@@ -1793,7 +1793,7 @@ func (s *BillingService) applyModelSpecificPricingPolicyEx(model string, pricing
 	needsMaxReasoningEffortMultiplier := isClaudeFable51Model(model) && pricing.MaxReasoningEffortMultiplier == nil
 	needsCacheCreationPolicy := isGPT56 && !pricing.CacheCreationPriceExplicit && (pricing.CacheCreationPricePerToken <= 0 ||
 		(pricing.InputPricePerTokenPriority > 0 && pricing.CacheCreationPricePerTokenPriority <= 0))
-	fastRatio := openAIModelFastPricingRatio(normalized)
+	fastRatio := openAIModelFastPricingRatio(model)
 	if !needsCacheCreationPolicy && fastRatio <= 0 && !needsMaxReasoningEffortMultiplier {
 		return pricing
 	}
@@ -1816,18 +1816,19 @@ func (s *BillingService) applyModelSpecificPricingPolicyEx(model string, pricing
 }
 
 // openAIModelFastPricingRatio 返回业务口径下 OpenAI GPT 模型 Fast/priority
-// 的标准价倍率：gpt-5.6 / gpt-6-astra / gpt-5.4 为 2x，gpt-5.5 为 2.5x。未定义 Fast
-// 档的模型（如 gpt-5.5-pro、gpt-5.4-mini/nano）返回 0。
-func openAIModelFastPricingRatio(normalized string) float64 {
+// 的标准价倍率：gpt-5.6 / GPT-6 Astra、Sol、Luna / gpt-5.4 为 2x，gpt-5.5 为 2.5x。
+// 未定义 Fast 档的模型（如 gpt-5.5-pro、gpt-5.4-mini/nano）返回 0。
+func openAIModelFastPricingRatio(model string) float64 {
+	if isOpenAIGPT6CodexCatalogModel(model) {
+		return 2.0
+	}
+	normalized := normalizeKnownOpenAICodexModel(model)
 	switch normalized {
 	case "gpt-5.4", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna", "gpt-6-astra":
 		return 2.0
 	case "gpt-5.5":
 		return 2.5
 	default:
-		if isOpenAIGPT6AstraModel(normalized) {
-			return 2.0
-		}
 		return 0
 	}
 }

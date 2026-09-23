@@ -172,7 +172,7 @@ export default {
         authModeLegacy: '兼容模式',
         authModeApiKey: 'API Key Mode',
         authModeApiKeyRestartNotice: '保存此配置后，必须完全退出并重启 Codex Desktop 或 CLI，然后新建 task，让客户端重新构建工具注册表。',
-        configTomlHint: '请将以下内容保存为 config.toml；其中已包含 model_catalog_json。下载模型目录后重启 Codex。',
+        configTomlHint: '把下面的内容保存为 config.toml，然后重启 Codex。这个分组的模型由接口返回，不用另存模型目录。',
         note: '请确保配置目录存在。macOS/Linux 用户可运行 mkdir -p ~/.codex 创建目录。',
         noteWindows:
           '按 Win+R，输入 %userprofile%\\.codex 打开配置目录。如目录不存在，请先手动创建。'
@@ -225,7 +225,7 @@ export default {
         codexDescription:
           '配置 Codex 通过 Sub2API Responses 使用 DeepSeek，包括网关压缩和可选的客户端 WebSocket 入口。',
         codexConfigTomlHint:
-          'provider name 必须精确保持为 "OpenAI"，以便 Codex 启用 remote_compaction_v2。配置已包含 model_catalog_json；下载模型目录并保存后重启 Codex。supports_websockets 表示 Sub2API 客户端入口能力；DeepSeek 上游仍使用 HTTP /responses。',
+          'provider name 必须写成 "OpenAI"，Codex 才会启用 remote_compaction_v2。模型由接口返回，不用另存模型目录。supports_websockets 是客户端入口；DeepSeek 上游仍使用 HTTP /responses。',
         note: '所选客户端通过 DeepSeek API Key 分组发送请求。请勿提交包含 API Key 的配置文件。',
         codexNote:
           '导出 SUB2API_API_KEY，将 config.toml 保存到 ~/.codex。启用 WebSocket 时，由 Sub2API 桥接到 DeepSeek HTTP /responses。',
@@ -235,7 +235,7 @@ export default {
       minimax: {
         description: '通过当前 MiniMax 分组配置 Claude Code、Codex 或 OpenCode。',
         codexDescription: '使用 API Key 配置 Codex，并通过当前 MiniMax 分组发送请求。',
-        codexConfigTomlHint: '下载下方模型目录，将两个文件保存到 Codex 配置目录后重启 Codex。',
+        codexConfigTomlHint: '把 config.toml 保存到 Codex 配置目录后重启。模型由接口返回，不用另存模型目录。',
         codexNote: '启动 Codex 前先导出 SUB2API_API_KEY。下载的目录只包含模型元数据，不包含 API Key。'
       },
       composite: {
@@ -251,13 +251,13 @@ export default {
           '设置 $env:SUB2API_API_KEY，将 config.toml 保存到 %USERPROFILE%\\.codex。Composite 会按模型路由选择上游账号，不需要使用 OpenAI ChatGPT 登录。'
       },
       routedCodex: {
-        description: '使用当前路由分组的完整模型目录配置 Codex。',
-        configTomlHint: '下载下方模型目录，将两个文件保存到 Codex 配置目录后重启 Codex。',
-        note: '启动 Codex 前先导出 SUB2API_API_KEY。下载的目录只包含模型元数据，不包含 API Key。'
+        description: '按当前分组配置 Codex。模型由接口返回。',
+        configTomlHint: '把配置保存到 Codex 配置目录后重启。模型由接口返回，不用另存模型目录。',
+        note: '启动 Codex 前先导出 SUB2API_API_KEY。'
       },
       codexModelCatalog: {
         title: 'Codex 模型目录',
-        description: '从当前 API 密钥对应的分组获取完整模型目录。下载后保存到下方路径；上面的 config.toml 已包含 model_catalog_json，重启 Codex 后即可在 /model 中看到目录里的模型。',
+        description: '组合分组没有单一上游模型列表。下载这份目录并保存到下面的路径，config.toml 已引用该文件。重启 Codex 后，/model 使用这份目录。',
         notFetched: '未获取',
         loading: '获取中',
         ready: '已获取',

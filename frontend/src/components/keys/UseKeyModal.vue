@@ -327,8 +327,8 @@ const claudeAliases = computed(() => claudeAliasesFromModels(resolvedModels.valu
 
 const showCodexModelCatalog = computed(() =>
   props.show &&
-  (activeClientTab.value === 'codex' ||
-    (props.platform === 'openai' && activeClientTab.value === 'codex-ws'))
+  props.platform === 'composite' &&
+  activeClientTab.value === 'codex'
 )
 
 const codexModelCatalogPath = computed(() => {
@@ -987,7 +987,6 @@ function generateOpenAIFiles(baseUrl: string, apiKey: string): FileConfig[] {
 model = "${model}"
 review_model = "${model}"
 ${reasoningEffortLine}disable_response_storage = true
-model_catalog_json = "${escapeTomlBasicString(codexModelCatalogPath.value)}"
 network_access = "enabled"
 windows_wsl_setup_acknowledged = true
 
@@ -1223,7 +1222,6 @@ function generateGrokCodexFiles(baseUrl: string, apiKey: string): FileConfig[] {
 
 model_provider = "sub2api"
 model = "${model}"
-model_catalog_json = "${escapeTomlBasicString(codexModelCatalogPath.value)}"
 # Optional:
 # review_model = "${model}"
 # model_reasoning_effort = "medium"
@@ -1305,13 +1303,15 @@ function generateRoutedCodexFiles(
     ? `\n[features]\nresponses_websockets_v2 = true`
     : ''
   const reasoningEffortLine = codexReasoningEffortTomlLine(model)
+  const catalogLine = platform === 'composite'
+    ? `\nmodel_catalog_json = "${escapeTomlBasicString(codexModelCatalogPath.value)}"`
+    : ''
 
   const configContent = `# Codex CLI -> Sub2API ${label} group
 model_provider = "sub2api"
 model = "${model}"
 review_model = "${model}"
-${reasoningEffortLine}disable_response_storage = true
-model_catalog_json = "${escapeTomlBasicString(codexModelCatalogPath.value)}"
+${reasoningEffortLine}disable_response_storage = true${catalogLine}
 
 [model_providers.sub2api]
 name = "${providerName}"
@@ -1346,7 +1346,6 @@ function generateOpenAIWsFiles(baseUrl: string, apiKey: string): FileConfig[] {
 model = "${model}"
 review_model = "${model}"
 ${reasoningEffortLine}disable_response_storage = true
-model_catalog_json = "${escapeTomlBasicString(codexModelCatalogPath.value)}"
 network_access = "enabled"
 windows_wsl_setup_acknowledged = true
 
@@ -1393,6 +1392,40 @@ function generateOpenCodeConfig(platform: string, baseUrl: string, apiKey: strin
     },
     'gpt-6-astra': {
       name: 'GPT-6 Astra',
+      limit: {
+        context: 1050000,
+        output: 128000
+      },
+      options: {
+        store: false
+      },
+      variants: {
+        low: {},
+        medium: {},
+        high: {},
+        xhigh: {},
+        max: {}
+      }
+    },
+    'gpt-6-sol': {
+      name: 'GPT-6 Sol',
+      limit: {
+        context: 1050000,
+        output: 128000
+      },
+      options: {
+        store: false
+      },
+      variants: {
+        low: {},
+        medium: {},
+        high: {},
+        xhigh: {},
+        max: {}
+      }
+    },
+    'gpt-6-luna': {
+      name: 'GPT-6 Luna',
       limit: {
         context: 1050000,
         output: 128000

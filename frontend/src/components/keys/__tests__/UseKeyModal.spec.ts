@@ -339,6 +339,8 @@ describe('UseKeyModal', () => {
     expect(codexConfig).toContain('supports_websockets = true')
     expect(codexConfig).toContain('responses_websockets_v2 = true')
     expect(codexConfig).toContain('base_url = "https://example.com/v1"')
+    expect(codexConfig).not.toContain('model_catalog_json')
+    expect(wrapper.find('[data-testid="codex-model-catalog"]').exists()).toBe(false)
     expect(codexConfig).not.toContain('name = "DeepSeek')
 
     const opencodeTab = wrapper.findAll('button').find((button) =>
@@ -485,6 +487,8 @@ describe('UseKeyModal', () => {
     // API-key provider: Codex must not require a ChatGPT OAuth login.
     expect(configToml).toContain('requires_openai_auth = false')
     expect(configToml).toContain('supports_websockets = false')
+    expect(configToml).not.toContain('model_catalog_json')
+    expect(wrapper.find('[data-testid="codex-model-catalog"]').exists()).toBe(false)
     expect(configToml).toContain('grok-4.20-multi-agent-0309 (text / web_search)')
     expect(configToml).toContain('grok-imagine-image')
     expect(configToml).toContain('grok-imagine-video')
@@ -533,7 +537,8 @@ describe('UseKeyModal', () => {
     expect(configToml).toBeDefined()
     expect(configToml).toContain('model = "gpt-5.5"')
     expect(configToml).toContain('review_model = "gpt-5.5"')
-    expect(configToml).toContain('model_catalog_json = "~/.codex/codex-models.json"')
+    expect(configToml).not.toContain('model_catalog_json')
+    expect(wrapper.find('[data-testid="codex-model-catalog"]').exists()).toBe(false)
     expect(configToml).not.toContain('model = "gpt-5.4"')
     expect(configToml).not.toContain('model_context_window')
     expect(configToml).not.toContain('model_auto_compact_token_limit')
@@ -796,7 +801,7 @@ describe('UseKeyModal', () => {
 
     const parsed = JSON.parse(wrapper.find('pre code').text())
     const models = parsed.provider.openai.models
-    for (const model of ['gpt-5.6', 'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna', 'gpt-6-astra']) {
+    for (const model of ['gpt-5.6', 'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna', 'gpt-6-astra', 'gpt-6-sol', 'gpt-6-luna']) {
       expect(models[model]).toBeDefined()
       expect(models[model].variants).toHaveProperty('max')
       expect(models[model].variants).toHaveProperty('xhigh')
@@ -814,6 +819,13 @@ describe('UseKeyModal', () => {
       options: { store: false },
       variants: { low: {}, medium: {}, high: {}, xhigh: {}, max: {} }
     })
+    expect(models['gpt-6-sol']).toEqual({
+      name: 'GPT-6 Sol',
+      limit: { context: 1050000, output: 128000 },
+      options: { store: false },
+      variants: { low: {}, medium: {}, high: {}, xhigh: {}, max: {} }
+    })
+    expect(models['gpt-6-luna'].variants).not.toHaveProperty('ultra')
   })
 
   it('renders Claude Fable 5 OpenCode config with adaptive thinking', async () => {
@@ -964,7 +976,7 @@ describe('UseKeyModal', () => {
   })
 
   it.each(['anthropic', 'gemini', 'antigravity', 'kimi', 'zhipu', 'minimax'] as const)(
-    'offers Codex catalog configuration for the %s routed group',
+    'keeps Codex models on the API for the %s group',
     async (platform) => {
       const wrapper = mount(UseKeyModal, {
         props: {
@@ -992,11 +1004,11 @@ describe('UseKeyModal', () => {
       await codexTab!.trigger('click')
       await nextTick()
 
-      expect(wrapper.find('[data-testid="codex-model-catalog"]').exists()).toBe(true)
+      expect(wrapper.find('[data-testid="codex-model-catalog"]').exists()).toBe(false)
       const config = wrapper.findAll('pre code')
         .map((code) => code.text())
         .find((content) => content.includes('[model_providers.sub2api]'))
-      expect(config).toContain('model_catalog_json = "~/.codex/codex-models.json"')
+      expect(config).not.toContain('model_catalog_json')
       expect(config).toContain('base_url = "https://example.com/v1"')
       expect(config).toContain('wire_api = "responses"')
     }
@@ -1049,21 +1061,7 @@ describe('UseKeyModal', () => {
     expect(config).toContain('review_model = "gpt-5.5"')
   })
 
-  it('derives OpenAI Codex reasoning effort from the selected catalog descriptor', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
-      ok: true,
-      status: 200,
-      json: async () => ({
-        models: [
-          {
-            slug: 'glm-5.3',
-            default_reasoning_level: 'none',
-            supported_reasoning_levels: [{ effort: 'none' }]
-          }
-        ]
-      })
-    }))
-
+  it('does not ask OpenAI groups to download a Codex catalog', () => {
     const wrapper = mount(UseKeyModal, {
       props: {
         show: true,
@@ -1083,13 +1081,12 @@ describe('UseKeyModal', () => {
       }
     })
 
-    await wrapper.get('[data-testid="codex-model-catalog-fetch"]').trigger('click')
-    await flushPromises()
-
+    expect(wrapper.find('[data-testid="codex-model-catalog"]').exists()).toBe(false)
     const configToml = wrapper.findAll('pre code')
       .map((code) => code.text())
       .find((content) => content.includes('model_provider = "OpenAI"'))
-    expect(configToml).toContain('model = "glm-5.3"')
+    expect(configToml).toContain('model = "gpt-5.5"')
+    expect(configToml).not.toContain('model_catalog_json')
     expect(configToml).not.toContain('model_reasoning_effort')
   })
 })

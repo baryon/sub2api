@@ -157,6 +157,34 @@ func TestGPT6AstraDedicatedFallbacksUseOfficialRates(t *testing.T) {
 	}
 }
 
+func TestGPT6SolAndLunaFallbacksUseOfficialRates(t *testing.T) {
+	svc := NewBillingService(&config.Config{}, &PricingService{pricingData: map[string]*LiteLLMModelPricing{
+		"gpt-6-astra": {InputCostPerToken: 123e-6, OutputCostPerToken: 456e-6},
+		"gpt-5.4":     {InputCostPerToken: 2.5e-6, OutputCostPerToken: 15e-6},
+	}})
+
+	sol, err := svc.GetModelPricing("gpt-6-sol")
+	require.NoError(t, err)
+	require.InDelta(t, 2e-6, sol.InputPricePerToken, 1e-12)
+	require.InDelta(t, 4e-6, sol.InputPricePerTokenPriority, 1e-12)
+	require.InDelta(t, 10e-6, sol.OutputPricePerToken, 1e-12)
+	require.InDelta(t, 20e-6, sol.OutputPricePerTokenPriority, 1e-12)
+	require.InDelta(t, 2.5e-6, sol.CacheCreationPricePerToken, 1e-12)
+	require.InDelta(t, 2e-7, sol.CacheReadPricePerToken, 1e-12)
+	require.Equal(t, 272_000, sol.LongContextInputThreshold)
+	require.InDelta(t, 2.0, sol.LongContextInputMultiplier, 1e-12)
+	require.InDelta(t, 1.5, sol.LongContextOutputMultiplier, 1e-12)
+
+	luna, err := svc.GetModelPricing("openai/gpt-6-luna-2026-09-23")
+	require.NoError(t, err)
+	require.InDelta(t, 1e-7, luna.InputPricePerToken, 1e-15)
+	require.InDelta(t, 2e-7, luna.InputPricePerTokenPriority, 1e-15)
+	require.InDelta(t, 5e-7, luna.OutputPricePerToken, 1e-15)
+	require.InDelta(t, 1e-6, luna.OutputPricePerTokenPriority, 1e-15)
+	require.InDelta(t, 1.25e-7, luna.CacheCreationPricePerToken, 1e-15)
+	require.InDelta(t, 1e-8, luna.CacheReadPricePerToken, 1e-15)
+}
+
 func TestPricingServiceBareGPT6AliasUsesAstra(t *testing.T) {
 	astraPricing := &LiteLLMModelPricing{InputCostPerToken: 123e-6, OutputCostPerToken: 456e-6}
 	pricingSvc := &PricingService{pricingData: map[string]*LiteLLMModelPricing{"gpt-6-astra": astraPricing}}

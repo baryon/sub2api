@@ -106,6 +106,28 @@ func isOpenAIGPT6AstraModel(model string) bool {
 	return normalized == "gpt-6" || normalized == "gpt-6-astra" || strings.HasPrefix(normalized, "gpt-6-astra-")
 }
 
+func isOpenAIGPT6NamedFamily(model, family string) bool {
+	normalized := canonicalizeOpenAIModelAliasSpelling(model)
+	return normalized == family || strings.HasPrefix(normalized, family+"-")
+}
+
+// isOpenAIGPT6SolModel reports GPT-6 Sol and dated/provider-prefixed variants.
+// It does not match nearby names such as a hypothetical gpt-6-solar.
+func isOpenAIGPT6SolModel(model string) bool {
+	return isOpenAIGPT6NamedFamily(model, "gpt-6-sol")
+}
+
+// isOpenAIGPT6LunaModel reports GPT-6 Luna and dated/provider-prefixed variants.
+func isOpenAIGPT6LunaModel(model string) bool {
+	return isOpenAIGPT6NamedFamily(model, "gpt-6-luna")
+}
+
+// isOpenAIGPT6CodexCatalogModel reports the GPT-6 families that Codex can select
+// as reasoning models. Bare "gpt-6" stays on Astra.
+func isOpenAIGPT6CodexCatalogModel(model string) bool {
+	return isOpenAIGPT6AstraModel(model) || isOpenAIGPT6SolModel(model) || isOpenAIGPT6LunaModel(model)
+}
+
 func appendUsageBillingModelCandidate(candidates []string, seen map[string]struct{}, model string) []string {
 	trimmed := strings.TrimSpace(model)
 	if trimmed == "" {

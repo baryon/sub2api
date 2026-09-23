@@ -520,6 +520,12 @@ func newConfiguredCodexModelDescriptor(modelID string) configuredCodexModelDescr
 				descriptor.ContextWindow = configuredCodexGPT6AstraContext
 				descriptor.MaxContextWindow = configuredCodexGPT6AstraContext
 			}
+			if isOpenAIGPT6SolModel(modelID) || isOpenAIGPT6LunaModel(modelID) {
+				// Official API context is 1,050,000. Codex still lists Ultra only on Sol.
+				descriptor.MultiAgentVersion = "v2"
+				descriptor.ContextWindow = configuredCodexGPT6AstraContext
+				descriptor.MaxContextWindow = configuredCodexGPT6AstraContext
+			}
 		}
 		if SupportsVerbosity(modelID) {
 			defaultVerbosity := "low"
@@ -557,8 +563,8 @@ func configuredCodexSupportsPriorityServiceTier(modelID string) bool {
 			return true
 		}
 	}
-	// GPT-6 Astra advertises Fast via service_tier=priority in public model metadata.
-	return isOpenAIGPT6AstraModel(modelID)
+	// GPT-6 Astra, Sol, and Luna advertise Fast via service_tier=priority.
+	return isOpenAIGPT6CodexCatalogModel(modelID)
 }
 
 func configuredCodexSupportsUltrafastServiceTier(modelID string) bool {
@@ -621,13 +627,14 @@ func configuredCodexGPTReasoningLevels(modelID string) []configuredCodexReasonin
 		{Effort: "xhigh", Description: "Extra-high reasoning depth for difficult tasks"},
 	}
 	normalized := getNormalizedCodexModel(modelID)
-	if isOpenAIGPT56Model(modelID) || isOpenAIGPT6AstraModel(modelID) {
+	if isOpenAIGPT56Model(modelID) || isOpenAIGPT6CodexCatalogModel(modelID) {
 		levels = append(levels, configuredCodexReasoningLevel{
 			Effort:      "max",
 			Description: "Maximum reasoning depth for complex tasks",
 		})
 	}
-	if isOpenAIGPT6AstraModel(modelID) || normalized == "gpt-5.6-sol" || normalized == "gpt-5.6-terra" {
+	// Luna stops at max. Sol and Astra also expose Codex Ultra.
+	if isOpenAIGPT6AstraModel(modelID) || isOpenAIGPT6SolModel(modelID) || normalized == "gpt-5.6-sol" || normalized == "gpt-5.6-terra" {
 		levels = append(levels, configuredCodexReasoningLevel{
 			Effort:      "ultra",
 			Description: "Maximum reasoning with automatic task delegation",
@@ -646,12 +653,12 @@ func isOpenAICodexGPTModel(modelID string) bool {
 
 func isOpenAICodexReasoningGPTModel(modelID string) bool {
 	normalized := canonicalizeOpenAIModelAliasSpelling(modelID)
-	return isOpenAIGPT6AstraModel(normalized) || strings.HasPrefix(normalized, "gpt-5")
+	return isOpenAIGPT6CodexCatalogModel(normalized) || strings.HasPrefix(normalized, "gpt-5")
 }
 
 func isOpenAICodexImageInputModel(modelID string) bool {
 	normalized := canonicalizeOpenAIModelAliasSpelling(modelID)
-	return isOpenAIGPT6AstraModel(normalized) ||
+	return isOpenAIGPT6CodexCatalogModel(normalized) ||
 		strings.HasPrefix(normalized, "gpt-5") ||
 		strings.HasPrefix(normalized, "gpt-4o") ||
 		strings.HasPrefix(normalized, "gpt-4.1") ||
@@ -1222,11 +1229,11 @@ func accountCodexModelSupportsImageInput(account *Account, upstreamModel string)
 	case PlatformOpenAI, PlatformDeepseek:
 		if metadata, ok := account.GetUpstreamModelMetadata(upstreamModel); ok {
 			if modalities := normalizeCodexInputModalities(metadata.InputModalities); len(modalities) > 0 {
-				// Official GPT-6 Astra metadata briefly shipped with a stale
-				// text-only modality list. Keep explicit provider metadata
-				// authoritative for compatible hosts, but repair that stale
-				// official snapshot at the capability boundary.
-				if isOpenAIGPT6AstraModel(upstreamModel) && isOfficialOpenAICodexAccount(account) {
+				// Official GPT-6 metadata has shipped with a stale text-only
+				// modality list. Keep explicit provider metadata authoritative
+				// for compatible hosts, but repair that snapshot for the known
+				// GPT-6 vision families.
+				if isOpenAIGPT6CodexCatalogModel(upstreamModel) && isOfficialOpenAICodexAccount(account) {
 					return true
 				}
 				return stringSliceContains(modalities, "image")
@@ -2016,6 +2023,8 @@ func CodexModelsManifestETag(body []byte) string {
 
 var apiKeyCodexModelsWithoutResponsesLite = map[string]struct{}{
 	"gpt-6-astra":   {},
+	"gpt-6-sol":     {},
+	"gpt-6-luna":    {},
 	"gpt-5.6-sol":   {},
 	"gpt-5.6-terra": {},
 	"gpt-5.6-luna":  {},
@@ -2049,8 +2058,13 @@ func adjustAPIKeyCodexModelsManifest(body []byte, account *Account) ([]byte, err
 		if account != nil {
 			target = account.GetMappedModel(slug)
 		}
-		if isOpenAIGPT6AstraModel(target) {
+		switch {
+		case isOpenAIGPT6AstraModel(target):
 			target = "gpt-6-astra"
+		case isOpenAIGPT6SolModel(target):
+			target = "gpt-6-sol"
+		case isOpenAIGPT6LunaModel(target):
+			target = "gpt-6-luna"
 		}
 		if _, targeted := apiKeyCodexModelsWithoutResponsesLite[target]; !targeted {
 			continue
