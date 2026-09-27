@@ -371,6 +371,13 @@ func sanitizeGroupOpenAIFast(group *Group) {
 	}
 }
 
+// sanitizeGroupBalanceFallback 余额兜底只对订阅分组有意义：标准分组本来就扣余额。
+func sanitizeGroupBalanceFallback(group *Group) {
+	if group != nil && !group.IsSubscriptionType() {
+		group.BalanceFallbackEnabled = false
+	}
+}
+
 func normalizeCreateGroupInputForSimpleMode(input *CreateGroupInput) {
 	if input == nil {
 		return
@@ -616,6 +623,7 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		AllowLive:                       input.AllowLive,
 		ForceOpenAIFast:                 input.ForceOpenAIFast,
 		FreeOpenAIFast:                  input.FreeOpenAIFast,
+		BalanceFallbackEnabled:          input.BalanceFallbackEnabled,
 		RequireOAuthOnly:                input.RequireOAuthOnly,
 		RequirePrivacySet:               input.RequirePrivacySet,
 		DefaultMappedModel:              input.DefaultMappedModel,
@@ -632,6 +640,7 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 	sanitizeGroupOAuthRequirement(group)
 	sanitizeGroupMessagesDispatchFields(group)
 	sanitizeGroupOpenAIFast(group)
+	sanitizeGroupBalanceFallback(group)
 	if group.Platform != PlatformOpenAI && group.Platform != PlatformComposite {
 		group.AllowLive = false
 	}
@@ -999,6 +1008,9 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	if input.FreeOpenAIFast != nil {
 		group.FreeOpenAIFast = *input.FreeOpenAIFast
 	}
+	if input.BalanceFallbackEnabled != nil {
+		group.BalanceFallbackEnabled = *input.BalanceFallbackEnabled
+	}
 	if input.RequireOAuthOnly != nil {
 		group.RequireOAuthOnly = *input.RequireOAuthOnly
 	}
@@ -1048,6 +1060,7 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	sanitizeGroupOAuthRequirement(group)
 	sanitizeGroupMessagesDispatchFields(group)
 	sanitizeGroupOpenAIFast(group)
+	sanitizeGroupBalanceFallback(group)
 	if group.Platform != PlatformOpenAI && group.Platform != PlatformComposite {
 		group.AllowLive = false
 	}
@@ -1362,8 +1375,8 @@ func (s *adminServiceImpl) AdminUpdateAPIKeyGroupID(ctx context.Context, keyID i
 		if group.Status != StatusActive {
 			return nil, infraerrors.BadRequest("GROUP_NOT_ACTIVE", "target group is not active")
 		}
-		// 订阅类型分组：用户须持有该分组的有效订阅才可绑定
-		if group.IsSubscriptionType() {
+		// 订阅类型分组：用户须持有该分组的有效订阅才可绑定；余额兜底分组没有套餐也能用余额，按标准分组处理
+		if group.IsSubscriptionType() && !group.BalanceFallbackEnabled {
 			if s.userSubRepo == nil {
 				return nil, infraerrors.InternalServer("SUBSCRIPTION_REPOSITORY_UNAVAILABLE", "subscription repository is not configured")
 			}
@@ -1380,7 +1393,7 @@ func (s *adminServiceImpl) AdminUpdateAPIKeyGroupID(ctx context.Context, keyID i
 		apiKey.Group = group
 
 		// 专属标准分组：使用事务保证「添加分组权限」与「更新 API Key」的原子性
-		if group.IsExclusive && !group.IsSubscriptionType() {
+		if group.IsExclusive && (!group.IsSubscriptionType() || group.BalanceFallbackEnabled) {
 			opCtx := ctx
 			var tx *dbent.Tx
 			if s.entClient == nil {

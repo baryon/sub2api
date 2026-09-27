@@ -765,6 +765,21 @@
                 :placeholder="t('admin.groups.subscription.noLimit')"
               />
             </div>
+            <div>
+              <div class="flex items-center justify-between gap-4">
+                <label class="text-sm text-gray-600 dark:text-gray-400">
+                  {{ t("admin.groups.subscription.balanceFallback") }}
+                </label>
+                <Toggle
+                  data-testid="create-balance-fallback"
+                  :aria-label="t('admin.groups.subscription.balanceFallback')"
+                  v-model="createForm.balance_fallback_enabled"
+                />
+              </div>
+              <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                {{ t("admin.groups.subscription.balanceFallbackHint") }}
+              </p>
+            </div>
           </div>
         </div>
 
@@ -2404,6 +2419,21 @@
                 class="input"
                 :placeholder="t('admin.groups.subscription.noLimit')"
               />
+            </div>
+            <div>
+              <div class="flex items-center justify-between gap-4">
+                <label class="text-sm text-gray-600 dark:text-gray-400">
+                  {{ t("admin.groups.subscription.balanceFallback") }}
+                </label>
+                <Toggle
+                  data-testid="edit-balance-fallback"
+                  :aria-label="t('admin.groups.subscription.balanceFallback')"
+                  v-model="editForm.balance_fallback_enabled"
+                />
+              </div>
+              <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                {{ t("admin.groups.subscription.balanceFallbackHint") }}
+              </p>
             </div>
           </div>
         </div>
@@ -4950,6 +4980,7 @@ const createForm = reactive({
   long_context_pricing_enabled: true,
   force_openai_fast: false,
   free_openai_fast: false,
+  balance_fallback_enabled: false,
   model_pricing: [] as PricingFormEntry[],
   // 图片生成计费配置
   allow_image_generation: false,
@@ -5315,6 +5346,7 @@ const editForm = reactive({
   long_context_pricing_enabled: true,
   force_openai_fast: false,
   free_openai_fast: false,
+  balance_fallback_enabled: false,
   model_pricing: [] as PricingFormEntry[],
   // 图片生成计费配置
   allow_image_generation: false,
@@ -5792,6 +5824,7 @@ const closeCreateModal = () => {
   createForm.long_context_pricing_enabled = true;
   createForm.force_openai_fast = false;
   createForm.free_openai_fast = false;
+  createForm.balance_fallback_enabled = false;
   createForm.model_pricing = [];
   createForm.web_search_price_per_call = null;
   createForm.search_price_per_1k = null;
@@ -5921,6 +5954,9 @@ const handleCreateGroup = async () => {
         createForm.platform,
         createForm.free_openai_fast,
       ),
+      balance_fallback_enabled:
+        createForm.subscription_type === "subscription" &&
+        createForm.balance_fallback_enabled,
       model_pricing: groupPricingToAPI(
         createForm.model_pricing,
         createForm.platform,
@@ -6060,6 +6096,7 @@ const handleEdit = async (group: AdminGroup) => {
     group.long_context_pricing_enabled ?? true;
   editForm.force_openai_fast = group.force_openai_fast ?? false;
   editForm.free_openai_fast = group.free_openai_fast ?? false;
+  editForm.balance_fallback_enabled = group.balance_fallback_enabled ?? false;
   editForm.model_pricing = groupPricingFromAPI(group.model_pricing);
   editForm.allow_image_generation = group.allow_image_generation ?? false;
   editForm.allow_batch_image_generation =
@@ -6194,6 +6231,7 @@ const closeEditModal = () => {
   editForm.long_context_pricing_enabled = true;
   editForm.force_openai_fast = false;
   editForm.free_openai_fast = false;
+  editForm.balance_fallback_enabled = false;
   editForm.model_pricing = [];
   editForm.web_search_price_per_call = null;
   editForm.search_price_per_1k = null;
@@ -6257,6 +6295,9 @@ const handleUpdateGroup = async () => {
         editForm.platform,
         editForm.free_openai_fast,
       ),
+      balance_fallback_enabled:
+        editForm.subscription_type === "subscription" &&
+        editForm.balance_fallback_enabled,
       model_pricing: groupPricingToAPI(
         editForm.model_pricing,
         editForm.platform,

@@ -799,6 +799,7 @@ func TestNormalizeOpsErrorType(t *testing.T) {
 		// Empty type falls through to code-based mapping.
 		{"empty type with balance code", "", "INSUFFICIENT_BALANCE", "billing_error"},
 		{"empty type with subscription code", "", "SUBSCRIPTION_NOT_FOUND", "subscription_error"},
+		{"empty type with credit exhausted code", "", "CREDIT_EXHAUSTED", "billing_error"},
 		{"empty type no code", "", "", "api_error"},
 
 		// Known type overrides conflicting code-based mapping.
@@ -2167,4 +2168,9 @@ func TestNormalizeOpsErrorType_KeepsGeminiInBandSignalTypes(t *testing.T) {
 	} {
 		require.Equal(t, errType, normalizeOpsErrorType(errType, "PROHIBITED_CONTENT"), errType)
 	}
+}
+
+// Plan credit and balance both used up is the user's billing limit, not a failure of the service.
+func TestOpsCreditExhaustedIsALocalBusinessLimit(t *testing.T) {
+	require.True(t, isOpsLocalBusinessLimitError("CREDIT_EXHAUSTED", "plan credit and balance are both used up"))
 }

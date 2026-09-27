@@ -46,6 +46,7 @@ const (
 
 	// 上游错误码常量 — 错误分类 (normalizeOpsErrorType / classifyOpsPhase / classifyOpsIsBusinessLimited)
 	opsCodeInsufficientBalance   = "INSUFFICIENT_BALANCE"
+	opsCodeCreditExhausted       = "CREDIT_EXHAUSTED"
 	opsCodeUsageLimitExceeded    = "USAGE_LIMIT_EXCEEDED"
 	opsCodeSubscriptionNotFound  = "SUBSCRIPTION_NOT_FOUND"
 	opsCodeSubscriptionInvalid   = "SUBSCRIPTION_INVALID"
@@ -2148,7 +2149,7 @@ func normalizeOpsErrorType(errType string, code string) string {
 		return errType
 	}
 	switch strings.TrimSpace(code) {
-	case opsCodeInsufficientBalance:
+	case opsCodeInsufficientBalance, opsCodeCreditExhausted:
 		return "billing_error"
 	case opsCodeUsageLimitExceeded, opsCodeSubscriptionNotFound, opsCodeSubscriptionInvalid:
 		return "subscription_error"
@@ -2291,6 +2292,7 @@ func isOpsClientAuthError(code string, msg string) bool {
 func isOpsLocalBusinessLimitError(code string, msg string) bool {
 	switch strings.TrimSpace(code) {
 	case opsCodeInsufficientBalance,
+		opsCodeCreditExhausted,
 		opsCodeUsageLimitExceeded,
 		opsCodeSubscriptionNotFound,
 		opsCodeSubscriptionInvalid,

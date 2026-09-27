@@ -1058,6 +1058,8 @@ export default {
         dailyLimit: '每日限额（USD）',
         weeklyLimit: '每周限额（USD）',
         monthlyLimit: '每月限额（USD）',
+        balanceFallback: '套餐用完后扣余额',
+        balanceFallbackHint: '开启后，用户没有套餐、套餐到期或本期额度用完时，改扣账户余额（例如加量包、新用户赠送额度）；套餐和余额都用完时才拒绝请求。',
         defaultValidityDays: '默认有效期（天）',
         validityHint: '分配给用户时订阅的有效天数',
         noLimit: '无限制'

@@ -1773,6 +1773,26 @@ func (h *GatewayHandler) usageUnrestricted(c *gin.Context, ctx context.Context, 
 			}
 		}
 
+		// 余额兜底：套餐用完后改扣余额，所以同时给出余额，剩余额度为两者之和。
+		if apiKey.Group.BalanceFallbackEnabled {
+			latestUser, err := h.userService.GetByID(ctx, subject.UserID)
+			if err != nil {
+				h.errorResponse(c, http.StatusInternalServerError, "api_error", "Failed to get user info")
+				return
+			}
+			planRemaining := 0.0
+			if ok {
+				planRemaining = h.calculateSubscriptionRemaining(apiKey.Group, subscription)
+			}
+			resp["balance"] = latestUser.Balance
+			if planRemaining < 0 {
+				// -1：套餐不限额，余额不改变这一点。
+				resp["remaining"] = planRemaining
+			} else {
+				resp["remaining"] = planRemaining + latestUser.Balance
+			}
+		}
+
 		if usageData != nil {
 			resp["usage"] = usageData
 		}
@@ -2439,6 +2459,9 @@ func extractQuotaResetSeconds(err error) int {
 }
 
 func billingErrorDetails(err error) (status int, code, message string, retryAfter int) {
+	if errors.Is(err, service.ErrCreditExhausted) {
+		return http.StatusPaymentRequired, "CREDIT_EXHAUSTED", pkgerrors.Message(err), 0
+	}
 	if errors.Is(err, service.ErrBillingServiceUnavailable) {
 		msg := pkgerrors.Message(err)
 		if msg == "" {

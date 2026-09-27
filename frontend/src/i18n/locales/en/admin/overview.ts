@@ -1061,6 +1061,8 @@ export default {
         dailyLimit: 'Daily Limit (USD)',
         weeklyLimit: 'Weekly Limit (USD)',
         monthlyLimit: 'Monthly Limit (USD)',
+        balanceFallback: 'Charge the balance after the plan',
+        balanceFallbackHint: 'When on, a request is charged to the account balance (such as credit packs or the new-user bonus) once the user has no plan, the plan has expired, or this period’s credit is used up. Requests are refused only when both are used up.',
         defaultValidityDays: 'Default Validity (Days)',
         validityHint: 'Number of days the subscription is valid when assigned to a user',
         noLimit: 'No limit'

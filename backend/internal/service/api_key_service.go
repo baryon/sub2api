@@ -462,10 +462,12 @@ func (s *APIKeyService) incrementAPIKeyErrorCount(ctx context.Context, userID in
 // 对于订阅类型分组：检查用户是否有有效订阅
 // 对于标准类型分组：使用原有的 AllowedGroups 和 IsExclusive 逻辑
 func (s *APIKeyService) canUserBindGroup(ctx context.Context, user *User, group *Group) bool {
-	// 订阅类型分组：需要有效订阅
+	// 订阅类型分组：需要有效订阅；余额兜底分组没有套餐时也可以用余额，按标准分组的规则判断
 	if group.IsSubscriptionType() {
-		_, err := s.userSubRepo.GetActiveByUserIDAndGroupID(ctx, user.ID, group.ID)
-		return err == nil // 有有效订阅则允许
+		if _, err := s.userSubRepo.GetActiveByUserIDAndGroupID(ctx, user.ID, group.ID); err == nil {
+			return true // 有有效订阅则允许
+		}
+		return group.BalanceFallbackEnabled && user.CanBindGroup(group.ID, group.IsExclusive)
 	}
 	// 标准类型分组：使用原有逻辑
 	return user.CanBindGroup(group.ID, group.IsExclusive)
@@ -1144,9 +1146,12 @@ func (s *APIKeyService) GetAvailableGroups(ctx context.Context, userID int64) ([
 
 // canUserBindGroupInternal 内部方法，检查用户是否可以绑定分组（使用预加载的订阅数据）
 func (s *APIKeyService) canUserBindGroupInternal(user *User, group *Group, subscribedGroupIDs map[int64]bool) bool {
-	// 订阅类型分组：需要有效订阅
+	// 订阅类型分组：需要有效订阅；余额兜底分组没有套餐时按标准分组的规则判断
 	if group.IsSubscriptionType() {
-		return subscribedGroupIDs[group.ID]
+		if subscribedGroupIDs[group.ID] {
+			return true
+		}
+		return group.BalanceFallbackEnabled && user.CanBindGroup(group.ID, group.IsExclusive)
 	}
 	// 标准类型分组：使用原有逻辑
 	return user.CanBindGroup(group.ID, group.IsExclusive)

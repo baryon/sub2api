@@ -732,6 +732,20 @@ func (_c *GroupCreate) SetNillableFreeOpenaiFast(v *bool) *GroupCreate {
 	return _c
 }
 
+// SetBalanceFallbackEnabled sets the "balance_fallback_enabled" field.
+func (_c *GroupCreate) SetBalanceFallbackEnabled(v bool) *GroupCreate {
+	_c.mutation.SetBalanceFallbackEnabled(v)
+	return _c
+}
+
+// SetNillableBalanceFallbackEnabled sets the "balance_fallback_enabled" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableBalanceFallbackEnabled(v *bool) *GroupCreate {
+	if v != nil {
+		_c.SetBalanceFallbackEnabled(*v)
+	}
+	return _c
+}
+
 // SetRequireOauthOnly sets the "require_oauth_only" field.
 func (_c *GroupCreate) SetRequireOauthOnly(v bool) *GroupCreate {
 	_c.mutation.SetRequireOauthOnly(v)
@@ -1159,6 +1173,10 @@ func (_c *GroupCreate) defaults() error {
 		v := group.DefaultFreeOpenaiFast
 		_c.mutation.SetFreeOpenaiFast(v)
 	}
+	if _, ok := _c.mutation.BalanceFallbackEnabled(); !ok {
+		v := group.DefaultBalanceFallbackEnabled
+		_c.mutation.SetBalanceFallbackEnabled(v)
+	}
 	if _, ok := _c.mutation.RequireOauthOnly(); !ok {
 		v := group.DefaultRequireOauthOnly
 		_c.mutation.SetRequireOauthOnly(v)
@@ -1363,6 +1381,9 @@ func (_c *GroupCreate) check() error {
 	}
 	if _, ok := _c.mutation.FreeOpenaiFast(); !ok {
 		return &ValidationError{Name: "free_openai_fast", err: errors.New(`ent: missing required field "Group.free_openai_fast"`)}
+	}
+	if _, ok := _c.mutation.BalanceFallbackEnabled(); !ok {
+		return &ValidationError{Name: "balance_fallback_enabled", err: errors.New(`ent: missing required field "Group.balance_fallback_enabled"`)}
 	}
 	if _, ok := _c.mutation.RequireOauthOnly(); !ok {
 		return &ValidationError{Name: "require_oauth_only", err: errors.New(`ent: missing required field "Group.require_oauth_only"`)}
@@ -1656,6 +1677,10 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.FreeOpenaiFast(); ok {
 		_spec.SetField(group.FieldFreeOpenaiFast, field.TypeBool, value)
 		_node.FreeOpenaiFast = value
+	}
+	if value, ok := _c.mutation.BalanceFallbackEnabled(); ok {
+		_spec.SetField(group.FieldBalanceFallbackEnabled, field.TypeBool, value)
+		_node.BalanceFallbackEnabled = value
 	}
 	if value, ok := _c.mutation.RequireOauthOnly(); ok {
 		_spec.SetField(group.FieldRequireOauthOnly, field.TypeBool, value)
@@ -2744,6 +2769,18 @@ func (u *GroupUpsert) SetFreeOpenaiFast(v bool) *GroupUpsert {
 // UpdateFreeOpenaiFast sets the "free_openai_fast" field to the value that was provided on create.
 func (u *GroupUpsert) UpdateFreeOpenaiFast() *GroupUpsert {
 	u.SetExcluded(group.FieldFreeOpenaiFast)
+	return u
+}
+
+// SetBalanceFallbackEnabled sets the "balance_fallback_enabled" field.
+func (u *GroupUpsert) SetBalanceFallbackEnabled(v bool) *GroupUpsert {
+	u.Set(group.FieldBalanceFallbackEnabled, v)
+	return u
+}
+
+// UpdateBalanceFallbackEnabled sets the "balance_fallback_enabled" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateBalanceFallbackEnabled() *GroupUpsert {
+	u.SetExcluded(group.FieldBalanceFallbackEnabled)
 	return u
 }
 
@@ -3995,6 +4032,20 @@ func (u *GroupUpsertOne) SetFreeOpenaiFast(v bool) *GroupUpsertOne {
 func (u *GroupUpsertOne) UpdateFreeOpenaiFast() *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateFreeOpenaiFast()
+	})
+}
+
+// SetBalanceFallbackEnabled sets the "balance_fallback_enabled" field.
+func (u *GroupUpsertOne) SetBalanceFallbackEnabled(v bool) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetBalanceFallbackEnabled(v)
+	})
+}
+
+// UpdateBalanceFallbackEnabled sets the "balance_fallback_enabled" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateBalanceFallbackEnabled() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateBalanceFallbackEnabled()
 	})
 }
 
@@ -5441,6 +5492,20 @@ func (u *GroupUpsertBulk) SetFreeOpenaiFast(v bool) *GroupUpsertBulk {
 func (u *GroupUpsertBulk) UpdateFreeOpenaiFast() *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateFreeOpenaiFast()
+	})
+}
+
+// SetBalanceFallbackEnabled sets the "balance_fallback_enabled" field.
+func (u *GroupUpsertBulk) SetBalanceFallbackEnabled(v bool) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetBalanceFallbackEnabled(v)
+	})
+}
+
+// UpdateBalanceFallbackEnabled sets the "balance_fallback_enabled" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateBalanceFallbackEnabled() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateBalanceFallbackEnabled()
 	})
 }
 

@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"sync"
@@ -23,7 +24,9 @@ import (
 var errBillingCacheUnavailable = fmt.Errorf("billing cache unavailable")
 
 var (
-	ErrSubscriptionInvalid       = infraerrors.Forbidden("SUBSCRIPTION_INVALID", "subscription is invalid or expired")
+	ErrSubscriptionInvalid = infraerrors.Forbidden("SUBSCRIPTION_INVALID", "subscription is invalid or expired")
+	// 余额兜底分组：套餐额度与余额都用完。402：需要购买，而不是稍后重试。
+	ErrCreditExhausted           = infraerrors.New(402, "CREDIT_EXHAUSTED", "Plan credit and balance are both used up")
 	ErrBillingServiceUnavailable = infraerrors.ServiceUnavailable("BILLING_SERVICE_ERROR", "Billing service temporarily unavailable. Please retry later.")
 	// RPM 超限错误。gateway_handler 负责映射为 HTTP 429。
 	ErrGroupRPMExceeded = infraerrors.TooManyRequests("GROUP_RPM_EXCEEDED", "group requests-per-minute limit exceeded")
@@ -749,12 +752,18 @@ func (s *BillingCacheService) CheckBillingEligibility(ctx context.Context, user 
 	// 判断计费模式
 	isSubscriptionMode := group != nil && group.IsSubscriptionType() && subscription != nil
 
+	// 余额兜底分组：由套餐支付的请求照常检查套餐，用完即拒绝，这样套餐不会被超额扣费（长连接一直带着
+	// 同一个套餐）；下一个请求由鉴权改为余额支付。由余额支付的请求，余额也用完时报 CREDIT_EXHAUSTED。
+	balanceFallback := group != nil && group.IsSubscriptionType() && group.BalanceFallbackEnabled
 	if isSubscriptionMode {
 		if err := s.checkSubscriptionEligibility(ctx, user.ID, group, subscription); err != nil {
 			return err
 		}
 	} else {
 		if err := s.checkBalanceEligibility(ctx, user.ID); err != nil {
+			if balanceFallback {
+				return fallbackBalanceError(err)
+			}
 			return err
 		}
 	}
@@ -927,6 +936,14 @@ func (s *BillingCacheService) checkBalanceEligibility(ctx context.Context, userI
 	}
 
 	return nil
+}
+
+// fallbackBalanceError 余额兜底分组里余额不足即套餐与余额都已用完；计费服务故障照常返回。
+func fallbackBalanceError(err error) error {
+	if errors.Is(err, ErrInsufficientBalance) {
+		return ErrCreditExhausted
+	}
+	return err
 }
 
 // checkSubscriptionEligibility 检查订阅模式资格

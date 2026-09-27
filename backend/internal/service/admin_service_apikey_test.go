@@ -565,3 +565,25 @@ func TestAdminService_AdminUpdateAPIKeyGroupID_Unbind_NoAllowedGroupUpdate(t *te
 	require.False(t, userRepo.addGroupCalled)
 	require.False(t, got.AutoGrantedGroupAccess)
 }
+
+// A group with balance fallback lets the user pay from the balance, so an admin can bind a key to it
+// without a plan, as the user can; an exclusive one grants the user access, as a standard one does.
+func TestAdminService_AdminUpdateAPIKeyGroupID_BalanceFallbackGroup_AllowsWithoutPlan(t *testing.T) {
+	for _, exclusive := range []bool{false, true} {
+		existing := &APIKey{ID: 1, UserID: 42, Key: "sk-test", GroupID: nil}
+		apiKeyRepo := &apiKeyRepoStubForGroupUpdate{key: existing}
+		groupRepo := &groupRepoStubForGroupUpdate{group: &Group{
+			ID: 10, Name: "Otoha", Status: StatusActive, IsExclusive: exclusive,
+			SubscriptionType: SubscriptionTypeSubscription, BalanceFallbackEnabled: true,
+		}}
+		userRepo := &userRepoStubForGroupUpdate{}
+		userSubRepo := &userSubRepoStubForGroupUpdate{getActiveErr: ErrSubscriptionNotFound}
+		svc := &adminServiceImpl{apiKeyRepo: apiKeyRepo, groupRepo: groupRepo, userRepo: userRepo, userSubRepo: userSubRepo}
+
+		got, err := svc.AdminUpdateAPIKeyGroupID(context.Background(), 1, int64Ptr(10))
+
+		require.NoError(t, err)
+		require.Equal(t, int64(10), *got.APIKey.GroupID)
+		require.Equal(t, exclusive, userRepo.addGroupCalled, "access to an exclusive group is granted")
+	}
+}

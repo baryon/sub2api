@@ -126,3 +126,11 @@ func TestBillingErrorDetails_T10_QuotaExhaustedReturns429WithRetryAfter(t *testi
 		})
 	}
 }
+
+func TestBillingErrorDetails_MapsCreditExhaustedToPaymentRequired(t *testing.T) {
+	status, code, msg, retryAfter := billingErrorDetails(service.ErrCreditExhausted)
+	require.Equal(t, http.StatusPaymentRequired, status)
+	require.Equal(t, "CREDIT_EXHAUSTED", code)
+	require.NotEmpty(t, msg)
+	require.Zero(t, retryAfter, "buying credit, not waiting, is what helps")
+}

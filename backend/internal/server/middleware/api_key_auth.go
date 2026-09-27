@@ -192,6 +192,8 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 
 		var subscription *service.UserSubscription
 		isSubscriptionType := apiKey.Group != nil && apiKey.Group.IsSubscriptionType()
+		// 余额兜底（Otoha）：套餐没有、到期或超限时改扣余额，两者都没有才拒绝。
+		balanceFallback := isSubscriptionType && apiKey.Group.BalanceFallbackEnabled
 
 		// 倍率自省不需要订阅数据；/v1/usage 仍保留原有订阅读取行为。
 		if isSubscriptionType && subscriptionService != nil && !billingInfoRequest {
@@ -201,11 +203,16 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 				apiKey.Group.ID,
 			)
 			if subErr != nil {
-				if !skipBilling {
+				if !skipBilling && balanceFallback && !errors.Is(subErr, service.ErrSubscriptionNotFound) {
+					// 查询失败不等于没有套餐：不能因此改扣有套餐的用户的余额。
+					AbortWithError(c, 503, "BILLING_SERVICE_UNAVAILABLE", "Billing service temporarily unavailable. Please retry later.")
+					return
+				}
+				if !skipBilling && !balanceFallback {
 					AbortWithError(c, 403, "SUBSCRIPTION_NOT_FOUND", "No active subscription found for this group")
 					return
 				}
-				// skipBilling: 订阅不存在也放行，handler 会返回可用的数据
+				// skipBilling: 订阅不存在也放行，handler 会返回可用的数据；余额兜底：改扣余额
 			} else {
 				subscription = sub
 			}
@@ -246,21 +253,35 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 					subscription = refreshed
 					_, validateErr = subscriptionService.ValidateAndCheckLimits(subscription, apiKey.Group)
 				}
-				if validateErr != nil {
+				limitExceeded := errors.Is(validateErr, service.ErrDailyLimitExceeded) ||
+					errors.Is(validateErr, service.ErrWeeklyLimitExceeded) ||
+					errors.Is(validateErr, service.ErrMonthlyLimitExceeded)
+				if validateErr != nil && balanceFallback && (limitExceeded || errors.Is(validateErr, service.ErrSubscriptionExpired)) {
+					// 套餐用完或到期：本次请求改扣余额。
+					subscription = nil
+				} else if validateErr != nil {
 					code := "SUBSCRIPTION_INVALID"
 					status := 403
-					if errors.Is(validateErr, service.ErrDailyLimitExceeded) ||
-						errors.Is(validateErr, service.ErrWeeklyLimitExceeded) ||
-						errors.Is(validateErr, service.ErrMonthlyLimitExceeded) {
+					if limitExceeded {
 						code = "USAGE_LIMIT_EXCEEDED"
 						status = 429
 					}
 					AbortWithError(c, status, code, validateErr.Error())
 					return
 				}
-			} else {
-				// 非订阅模式 或 订阅模式但 subscriptionService 未注入：回退到余额检查
+			}
+			if subscription == nil {
+				// 余额兜底只对分组接纳的用户开放：套餐持有者凭套餐进入，其余用户按分组的授权规则。
+				if balanceFallback && !balanceFallbackAdmits(apiKey) {
+					AbortWithError(c, 403, "GROUP_NOT_ALLOWED", "API Key 所属专属分组不再允许当前用户使用")
+					return
+				}
+				// 非订阅模式、订阅模式但 subscriptionService 未注入、或余额兜底：回退到余额检查
 				if apiKeyBalanceBelowAuthThreshold(apiKey.User.Balance, cfg) {
+					if balanceFallback {
+						AbortWithError(c, 402, "CREDIT_EXHAUSTED", "Plan credit and balance are both used up")
+						return
+					}
 					AbortWithError(c, 403, "INSUFFICIENT_BALANCE", "Insufficient account balance")
 					return
 				}
@@ -421,6 +442,11 @@ func abortIfAPIKeyGroupNotAllowed(c *gin.Context, apiKey *service.APIKey) bool {
 	MarkIngressRejected(c, IngressRejectGroupNotAllowed)
 	AbortWithError(c, 403, "GROUP_NOT_ALLOWED", "API Key 所属专属分组不再允许当前用户使用")
 	return true
+}
+
+// balanceFallbackAdmits 没有可用套餐、改用余额时，用户是否是分组接纳的用户（非专属分组或在授权名单内）。
+func balanceFallbackAdmits(apiKey *service.APIKey) bool {
+	return apiKey.Group == nil || apiKey.User.CanBindGroup(apiKey.Group.ID, apiKey.Group.IsExclusive)
 }
 
 func validateAPIKeyGroupAllowed(apiKey *service.APIKey) bool {

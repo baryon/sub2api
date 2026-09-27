@@ -166,44 +166,65 @@ func APIKeyAuthWithSubscriptionGoogle(apiKeyService *service.APIKeyService, subs
 		}
 
 		isSubscriptionType := apiKey.Group != nil && apiKey.Group.IsSubscriptionType()
+		// 余额兜底（Otoha）：套餐没有、到期或超限时改扣余额，两者都没有才拒绝。
+		balanceFallback := isSubscriptionType && apiKey.Group.BalanceFallbackEnabled
+		var subscription *service.UserSubscription
 		if isSubscriptionType && subscriptionService != nil {
-			subscription, err := subscriptionService.GetActiveSubscription(
+			active, err := subscriptionService.GetActiveSubscription(
 				c.Request.Context(),
 				apiKey.User.ID,
 				apiKey.Group.ID,
 			)
-			if err != nil {
+			if err != nil && balanceFallback && !errors.Is(err, service.ErrSubscriptionNotFound) {
+				// 查询失败不等于没有套餐：不能因此改扣有套餐的用户的余额。
+				abortWithGoogleError(c, 503, "Billing service temporarily unavailable. Please retry later.")
+				return
+			}
+			if err != nil && !balanceFallback {
 				abortWithGoogleError(c, 403, "No active subscription found for this group")
 				return
 			}
-
-			needsMaintenance, err := subscriptionService.ValidateAndCheckLimits(subscription, apiKey.Group)
-			if needsMaintenance {
-				refreshed, maintenanceErr := subscriptionService.EnsureWindowMaintenance(c.Request.Context(), subscription)
-				if maintenanceErr != nil {
-					abortWithGoogleError(c, 500, "Failed to maintain subscription usage windows")
+			if err == nil {
+				subscription = active
+				needsMaintenance, validateErr := subscriptionService.ValidateAndCheckLimits(subscription, apiKey.Group)
+				if needsMaintenance {
+					refreshed, maintenanceErr := subscriptionService.EnsureWindowMaintenance(c.Request.Context(), subscription)
+					if maintenanceErr != nil {
+						abortWithGoogleError(c, 500, "Failed to maintain subscription usage windows")
+						return
+					}
+					subscription = refreshed
+					_, validateErr = subscriptionService.ValidateAndCheckLimits(subscription, apiKey.Group)
+				}
+				limitExceeded := errors.Is(validateErr, service.ErrDailyLimitExceeded) ||
+					errors.Is(validateErr, service.ErrWeeklyLimitExceeded) ||
+					errors.Is(validateErr, service.ErrMonthlyLimitExceeded)
+				if validateErr != nil && balanceFallback && (limitExceeded || errors.Is(validateErr, service.ErrSubscriptionExpired)) {
+					// 套餐用完或到期：本次请求改扣余额。
+					subscription = nil
+				} else if validateErr != nil {
+					status := 403
+					if limitExceeded {
+						status = 429
+					}
+					abortWithGoogleError(c, status, validateErr.Error())
 					return
 				}
-				subscription = refreshed
-				_, err = subscriptionService.ValidateAndCheckLimits(subscription, apiKey.Group)
 			}
-			if err != nil {
-				status := 403
-				if errors.Is(err, service.ErrDailyLimitExceeded) ||
-					errors.Is(err, service.ErrWeeklyLimitExceeded) ||
-					errors.Is(err, service.ErrMonthlyLimitExceeded) {
-					status = 429
-				}
-				abortWithGoogleError(c, status, err.Error())
-				return
-			}
-
+		}
+		if subscription == nil && balanceFallback && !balanceFallbackAdmits(apiKey) {
+			abortWithGoogleError(c, 403, "API Key 所属专属分组不再允许当前用户使用")
+			return
+		}
+		if subscription != nil {
 			c.Set(string(ContextKeySubscription), subscription)
-		} else {
-			if apiKeyBalanceBelowAuthThreshold(apiKey.User.Balance, cfg) {
-				abortWithGoogleError(c, 403, "Insufficient account balance")
+		} else if apiKeyBalanceBelowAuthThreshold(apiKey.User.Balance, cfg) {
+			if balanceFallback {
+				abortWithGoogleError(c, 402, "Plan credit and balance are both used up")
 				return
 			}
+			abortWithGoogleError(c, 403, "Insufficient account balance")
+			return
 		}
 
 		c.Set(string(ContextKeyAPIKey), apiKey)
@@ -258,11 +279,16 @@ func allowGoogleQueryKey(path string) bool {
 }
 
 func abortWithGoogleError(c *gin.Context, status int, message string) {
+	googleStatus := googleapi.HTTPStatusToGoogleStatus(status)
+	if status == 402 {
+		// 额度用完：需要购买，重试无用（RESOURCE_EXHAUSTED 会被部分 SDK 自动重试）。
+		googleStatus = "FAILED_PRECONDITION"
+	}
 	c.JSON(status, gin.H{
 		"error": gin.H{
 			"code":    status,
 			"message": message,
-			"status":  googleapi.HTTPStatusToGoogleStatus(status),
+			"status":  googleStatus,
 		},
 	})
 	c.Abort()
