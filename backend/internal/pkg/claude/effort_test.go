@@ -17,7 +17,10 @@ func TestEffortLevelsForModel(t *testing.T) {
 		{model: "claude-opus-4-6-thinking", want: []string{EffortLow, EffortMedium, EffortHigh, EffortMax}},
 		{model: "anthropic/claude-sonnet-4-6", want: []string{EffortLow, EffortMedium, EffortHigh, EffortMax}},
 		{model: "claude-opus-5", want: []string{EffortLow, EffortMedium, EffortHigh, EffortXHigh, EffortMax}},
+		{model: "anthropic/claude-opus-5.5", want: []string{EffortLow, EffortMedium, EffortHigh, EffortXHigh, EffortMax}},
 		{model: "claude-sonnet-5", want: []string{EffortLow, EffortMedium, EffortHigh, EffortXHigh, EffortMax}},
+		{model: "claude-sonnet-5-5", want: []string{EffortLow, EffortMedium, EffortHigh, EffortXHigh, EffortMax}},
+		{model: "us.anthropic.claude-sonnet-5-5", want: []string{EffortLow, EffortMedium, EffortHigh, EffortXHigh, EffortMax}},
 		{model: "claude-fable-5", want: []string{EffortLow, EffortMedium, EffortHigh, EffortXHigh, EffortMax}},
 		{model: "claude-opus-4-5-20251101", want: []string{EffortLow, EffortMedium, EffortHigh}},
 		{model: "claude-haiku-4-5-20251001", want: nil},
@@ -30,6 +33,33 @@ func TestEffortLevelsForModel(t *testing.T) {
 			t.Parallel()
 			require.Equal(t, tt.want, EffortLevelsForModel(tt.model))
 		})
+	}
+}
+
+func TestIsOpus55OpenRouterExactAlias(t *testing.T) {
+	t.Parallel()
+	for _, model := range []string{"claude-opus-5-5", "anthropic/claude-opus-5.5"} {
+		require.True(t, IsOpus55(model), model)
+	}
+	for _, model := range []string{"claude-opus-5", "anthropic/claude-opus-5.6", "anthropic/claude-opus-5.5-preview"} {
+		require.False(t, IsOpus55(model), model)
+	}
+}
+
+func TestIsSonnet55(t *testing.T) {
+	t.Parallel()
+	for _, model := range []string{
+		"claude-sonnet-5-5",
+		"anthropic/claude-sonnet-5.5",
+		"anthropic.claude-sonnet-5-5",
+		"us.anthropic.claude-sonnet-5-5",
+		"us-gov.anthropic.claude-sonnet-5-5",
+		"global.anthropic.claude-sonnet-5-5-thinking",
+	} {
+		require.True(t, IsSonnet55(model), model)
+	}
+	for _, model := range []string{"claude-sonnet-5", "claude-sonnet-5-5-preview", "claude-opus-5-5"} {
+		require.False(t, IsSonnet55(model), model)
 	}
 }
 
