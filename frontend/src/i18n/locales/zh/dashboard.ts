@@ -225,17 +225,17 @@ export default {
         codexDescription:
           '配置 Codex 通过 Sub2API Responses 使用 DeepSeek，包括网关压缩和可选的客户端 WebSocket 入口。',
         codexConfigTomlHint:
-          'provider name 保持为 "OpenAI"，Codex 才会启用 remote_compaction_v2。下载下方模型目录并保存到配置中的路径。supports_websockets 是客户端入口；DeepSeek 上游仍使用 HTTP /responses。',
+          'provider name 保持为 "OpenAI"，Codex 才会启用 remote_compaction_v2。保存 config.toml 后重启 Codex，客户端会加载远程目录。使用本地文件模式时，还需下载目录并保存到配置中的路径。supports_websockets 是客户端入口；DeepSeek 上游仍使用 HTTP /responses。',
         note: '所选客户端通过 DeepSeek API Key 分组发送请求。请勿提交包含 API Key 的配置文件。',
         codexNote:
-          '导出 SUB2API_API_KEY，将 config.toml 保存到 ~/.codex。启用 WebSocket 时，由 Sub2API 桥接到 DeepSeek HTTP /responses。',
+          '导出 SUB2API_API_KEY，将 config.toml 保存到 ~/.codex。启用 WebSocket 时，由 Sub2API 桥接到 DeepSeek HTTP /responses。下载的目录只包含模型元数据，不包含 API Key。',
         codexNoteWindows:
           '设置 $env:SUB2API_API_KEY，将 config.toml 保存到 %USERPROFILE%\\.codex。启用 WebSocket 时，由 Sub2API 桥接到 DeepSeek HTTP /responses。'
       },
       minimax: {
         description: '通过当前 MiniMax 分组配置 Claude Code、Codex 或 OpenCode。',
         codexDescription: '使用 API Key 配置 Codex，并通过当前 MiniMax 分组发送请求。',
-        codexConfigTomlHint: '保存 config.toml 和下方模型目录，然后重启 Codex。',
+        codexConfigTomlHint: '保存 config.toml 后重启 Codex，客户端会加载远程目录。使用本地文件模式时，还需下载目录并保存到配置中的路径。',
         codexNote: '启动 Codex 前先导出 SUB2API_API_KEY。下载的目录只包含模型元数据，不包含 API Key。'
       },
       composite: {
@@ -243,7 +243,7 @@ export default {
         codexDescription:
           '配置 Codex 通过 Sub2API Composite 分组发送 Responses API 请求；每个模型会按 Composite 路由转发到对应的上游账号。',
         codexConfigTomlHint:
-          'provider name 必须精确保持为 "OpenAI"，以便 Codex 启用 remote_compaction_v2。配置已包含 model_catalog_json；下载 Composite 模型目录并保存后重启 Codex。supports_websockets 由 Composite 路由和目标账号能力实时计算。',
+          'provider name 必须精确保持为 "OpenAI"，以便 Codex 启用 remote_compaction_v2。保存 config.toml 后重启 Codex，客户端会加载远程目录。使用本地文件模式时，还需下载目录并保存到配置中的路径。supports_websockets 由 Composite 路由和目标账号能力实时计算。',
         note: '所选客户端通过 Composite 分组发送请求，分组会按模型路由到配置的上游账号。请勿提交包含 API Key 的配置文件。',
         codexNote:
           '导出 SUB2API_API_KEY，将 config.toml 保存到 ~/.codex。Composite 会按模型路由选择上游账号，不需要使用 OpenAI ChatGPT 登录。',
@@ -251,27 +251,24 @@ export default {
           '设置 $env:SUB2API_API_KEY，将 config.toml 保存到 %USERPROFILE%\\.codex。Composite 会按模型路由选择上游账号，不需要使用 OpenAI ChatGPT 登录。'
       },
       routedCodex: {
-        description: '按当前分组配置 Codex 模型目录。',
-        configTomlHint: '保存 config.toml 和下方模型目录，然后重启 Codex。',
-        note: '启动 Codex 前先导出 SUB2API_API_KEY。'
+        description: '使用当前路由分组的完整模型目录配置 Codex。',
+        configTomlHint: '保存 config.toml 后重启 Codex，客户端会加载远程目录。使用本地文件模式时，还需下载目录并保存到配置中的路径。',
+        note: '启动 Codex 前先导出 SUB2API_API_KEY。下载的目录只包含模型元数据，不包含 API Key。'
       },
       codexModelCatalog: {
+        mode: '目录来源',
+        remote: '远程目录（Codex 0.156.0+）',
+        local: '本地文件（旧版客户端）',
+        oversized: '完整目录超过远程加载的 1 MiB 限制，已改为本地文件。请下载目录并保存到配置中的路径。',
         title: 'Codex 模型目录',
-        description: '获取当前 API 密钥可用的模型目录，下载并保存到下方路径。config.toml 已引用该文件；重启 Codex 后，/model 将显示目录中的模型。',
-        notFetched: '未获取',
-        loading: '获取中',
-        ready: '已获取',
-        errorStatus: '获取失败',
-        idleDescription: '先获取并下载目录，再保存到上面的路径。config.toml 会引用这个文件。',
-        loadingDescription: '正在通过当前 API 密钥请求模型目录。',
-        errorDescription: '模型目录没有获取成功，可以重试。',
-        errorDetail: '获取模型目录失败，请检查 API 密钥和 Base URL 是否有效，然后重试。',
-        modelsCount: '已获取 {count} 个模型。下载并保存到上面的路径，然后重启 Codex。',
-        fetch: '获取模型目录',
-        retry: '重新获取',
+        description: 'Codex 会使用配置中的认证信息加载并刷新远程目录。使用本地文件模式时，请在下方获取目录并保存到配置中的路径。',
+        modelsCount: '已获取 {count} 个模型',
+        errorDescription: '无法使用当前 API Key 获取模型目录。',
+        fetch: '获取目录',
+        retry: '重试',
         preview: '预览 JSON',
         hidePreview: '收起预览',
-        download: '下载 JSON'
+        download: '下载目录'
       },
       opencode: {
         title: 'OpenCode 配置示例',

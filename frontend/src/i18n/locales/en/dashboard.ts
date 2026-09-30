@@ -222,18 +222,18 @@ export default {
         codexDescription:
           'Configure Codex to use DeepSeek through Sub2API Responses, including gateway compaction and optional client WebSocket ingress.',
         codexConfigTomlHint:
-          'Keep the provider name exactly "OpenAI" so Codex enables remote_compaction_v2. Download the catalog below to the path in the config. supports_websockets is the client entry; DeepSeek upstream still uses HTTP /responses.',
+          'Keep the provider name exactly "OpenAI" so Codex enables remote_compaction_v2. Restart Codex to load the remote catalog. In local file mode, also download the catalog to the configured path. supports_websockets is the client entry; DeepSeek upstream still uses HTTP /responses.',
         note:
           'The selected client sends requests through the DeepSeek API-key group. Do not commit files containing your API key.',
         codexNote:
-          'Export SUB2API_API_KEY and save config.toml under ~/.codex. WebSocket turns, when enabled, are bridged by Sub2API to DeepSeek HTTP /responses.',
+          'Export SUB2API_API_KEY and save config.toml under ~/.codex. WebSocket turns, when enabled, are bridged by Sub2API to DeepSeek HTTP /responses. The downloaded catalog contains model metadata only, not your API key.',
         codexNoteWindows:
           'Set $env:SUB2API_API_KEY and save config.toml under %USERPROFILE%\\.codex. WebSocket turns, when enabled, are bridged by Sub2API to DeepSeek HTTP /responses.',
       },
       minimax: {
         description: 'Configure Claude Code, Codex, or OpenCode through the current MiniMax group.',
         codexDescription: 'Configure Codex with API key authentication through the current MiniMax group.',
-        codexConfigTomlHint: 'Save config.toml and the catalog below, then restart Codex.',
+        codexConfigTomlHint: 'Save config.toml and restart Codex to load the remote catalog. In local file mode, also download the catalog to the configured path.',
         codexNote: 'Export SUB2API_API_KEY before starting Codex. The downloaded catalog contains model metadata only, not your API key.',
       },
       composite: {
@@ -242,7 +242,7 @@ export default {
         codexDescription:
           'Configure Codex to send Responses API requests through your Sub2API Composite group. Each model is routed to its configured upstream account.',
         codexConfigTomlHint:
-          'Keep provider name exactly "OpenAI" so Codex enables remote_compaction_v2. The config includes model_catalog_json; download the Composite catalog, save it, then restart Codex. supports_websockets is derived from the Composite route and target account capabilities.',
+          'Keep provider name exactly "OpenAI" so Codex enables remote_compaction_v2. Restart Codex to load the remote catalog. In local file mode, also download the catalog to the configured path. supports_websockets is derived from the Composite route and target account capabilities.',
         note:
           'The selected client sends requests through the Composite group, which routes each model to its configured upstream account. Do not commit files containing your API key.',
         codexNote:
@@ -251,24 +251,19 @@ export default {
           'Set $env:SUB2API_API_KEY and save config.toml under %USERPROFILE%\\.codex. Composite selects the upstream account from the model route; no OpenAI ChatGPT login is required.',
       },
       routedCodex: {
-        description: 'Configure the Codex model catalog for this group.',
-        configTomlHint:
-          'Save config.toml and the catalog below, then restart Codex.',
-        note: 'Export SUB2API_API_KEY before starting Codex.',
+        description: 'Configure Codex with the complete model catalog for the current routed group.',
+        configTomlHint: 'Save config.toml and restart Codex to load the remote catalog. In local file mode, also download the catalog to the configured path.',
+        note: 'Export SUB2API_API_KEY before starting Codex. The downloaded catalog contains model metadata only, not your API key.',
       },
       codexModelCatalog: {
+        mode: 'Catalog source',
+        remote: 'Remote catalog (Codex 0.156.0+)',
+        local: 'Local file (older clients)',
+        oversized: 'The complete catalog exceeds the 1 MiB remote limit. Local file mode is selected; download it to the configured path.',
         title: 'Codex model catalog',
-        description:
-          'Fetch the models available to this API key, then download the catalog to the path below. config.toml references the file; /model shows its models after Codex restarts.',
-        notFetched: 'Not fetched',
-        loading: 'Fetching',
-        ready: 'Ready',
-        errorStatus: 'Failed',
-        idleDescription: 'Fetch and download the catalog, then save it to the path above. config.toml will reference this file.',
-        loadingDescription: 'Requesting the catalog with the current API key.',
+        description: 'Codex loads and refreshes the remote catalog using your configured authentication. For local file mode, fetch the catalog below and save it at the configured path.',
+        modelsCount: 'Fetched {count} models',
         errorDescription: 'The catalog could not be fetched. You can retry the request.',
-        errorDetail: 'Could not fetch the model catalog. Check the API key and Base URL, then retry.',
-        modelsCount: 'Fetched {count} models. Download it to the path above, then restart Codex.',
         fetch: 'Fetch catalog',
         retry: 'Retry',
         preview: 'Preview JSON',
