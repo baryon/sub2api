@@ -34,6 +34,7 @@ var claudeEffortFamilies = []struct {
 	{family: "claude-mythos-5", levels: effortLowMediumHighXHighMax},
 	{family: "claude-fable-5", levels: effortLowMediumHighXHighMax},
 	{family: "claude-sonnet-4-6", levels: effortLowMediumHighMax},
+	{family: "claude-sonnet-5-5", levels: effortLowMediumHighXHighMax},
 	{family: "claude-sonnet-5", levels: effortLowMediumHighXHighMax},
 	{family: "claude-opus-4-8", levels: effortLowMediumHighXHighMax},
 	{family: "claude-opus-4-7", levels: effortLowMediumHighXHighMax},
@@ -59,6 +60,11 @@ func IsClaudeModelID(model string) bool {
 // IsOpus55 recognizes the official model ID and its provider/date variants.
 func IsOpus55(model string) bool {
 	return normalizeClaudeModelID(model) == "claude-opus-5-5"
+}
+
+// IsSonnet55 recognizes the official Sonnet 5.5 ID and its provider/date variants.
+func IsSonnet55(model string) bool {
+	return normalizeClaudeModelID(model) == "claude-sonnet-5-5"
 }
 
 // EffortLevelsForModel returns the Anthropic effort values this Claude model
@@ -146,8 +152,17 @@ func normalizeClaudeModelID(model string) string {
 		id = strings.TrimSpace(id[slash+1:])
 		id = strings.TrimPrefix(id, "models/")
 	}
+	for _, prefix := range []string{"us.", "eu.", "apac.", "jp.", "au.", "us-gov.", "global."} {
+		id = strings.TrimPrefix(id, prefix)
+	}
 	id = strings.TrimPrefix(id, "anthropic.")
 	id = strings.TrimSuffix(id, "-thinking")
+	switch id {
+	case "claude-opus-5.5":
+		id = "claude-opus-5-5"
+	case "claude-sonnet-5.5":
+		id = "claude-sonnet-5-5"
+	}
 	if mapped, ok := ModelIDReverseOverrides[id]; ok {
 		id = mapped
 	}

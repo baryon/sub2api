@@ -413,6 +413,7 @@ func (s *GatewayService) buildUpstreamRequestAnthropicAPIKeyPassthrough(
 		req.Header.Del("x-goog-api-key")
 		setHeaderRaw(req.Header, "x-api-key", token)
 	}
+	filterSonnet55ToolsetBetaHeader(req.Header, body, gjson.GetBytes(body, "model").String())
 
 	return req, body, nil
 }
