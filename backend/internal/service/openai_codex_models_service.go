@@ -377,6 +377,7 @@ type configuredCodexModelMessages struct {
 // emitted: unlike ordinary OpenAI /v1/models entries, the Codex manifest parser
 // requires them to be present.
 type configuredCodexModelDescriptor struct {
+	officialMetadata                  json.RawMessage
 	Slug                              string                          `json:"slug"`
 	DisplayName                       string                          `json:"display_name"`
 	Description                       string                          `json:"description"`
@@ -510,14 +511,16 @@ func newConfiguredCodexModelDescriptor(modelID string) configuredCodexModelDescr
 		descriptor.ServiceTiers = configuredCodexServiceTiersForModel(modelID)
 		if isOpenAICodexReasoningGPTModel(modelID) {
 			defaultReasoningLevel := "medium"
-			if getNormalizedCodexModel(modelID) == "gpt-5.6-sol" {
+			if getNormalizedCodexModel(modelID) == "gpt-5.6-sol" || openai.IsGPT61SolModelSpelling(modelID) {
 				defaultReasoningLevel = "low"
 			}
 			descriptor.DefaultReasoningLevel = &defaultReasoningLevel
 			descriptor.SupportedReasoningLevels = configuredCodexGPTReasoningLevels(modelID)
 			descriptor.DefaultReasoningSummary = "none"
 			descriptor.TruncationPolicy = configuredCodexTruncationPolicy{Mode: "tokens", Limit: configuredCodexToolOutputMaxTokens}
-			if isOpenAIGPT56Model(modelID) || isOpenAIGPT6AstraModel(modelID) {
+			// GPT-6.1 Sol's bundled descriptor also uses this extended Codex window.
+			// Official metadata replaces the synthetic value immediately below.
+			if isOpenAIGPT56Model(modelID) || openai.IsGPT61SolModelSpelling(modelID) {
 				descriptor.MaxContextWindow = configuredCodexGPT56MaxContext
 			}
 			if isOpenAIGPT6AstraModel(modelID) {
@@ -543,6 +546,13 @@ func newConfiguredCodexModelDescriptor(modelID string) configuredCodexModelDescr
 		}
 	}
 
+	if openai.IsGPT61SolModelSpelling(modelID) {
+		if err := json.Unmarshal(openai.CodexGPT61SolMetadata, &descriptor); err != nil {
+			panic(err)
+		}
+		descriptor.Slug = modelID
+		descriptor.officialMetadata = openai.CodexGPT61SolMetadata
+	}
 	return descriptor
 }
 
@@ -642,8 +652,8 @@ func configuredCodexGPTReasoningLevels(modelID string) []configuredCodexReasonin
 			Description: "Maximum reasoning depth for complex tasks",
 		})
 	}
-	// Luna stops at max. Sol and Astra also expose Codex Ultra.
-	if isOpenAIGPT6AstraModel(modelID) || isOpenAIGPT6SolModel(modelID) || normalized == "gpt-5.6-sol" || normalized == "gpt-5.6-terra" {
+	// Luna stops at max. Astra, GPT-6 Sol, and GPT-6.1 Sol also expose Codex Ultra.
+	if isOpenAIGPT6AstraModel(modelID) || isOpenAIGPT6SolModel(modelID) || openai.IsGPT61SolModelSpelling(modelID) || normalized == "gpt-5.6-sol" || normalized == "gpt-5.6-terra" {
 		levels = append(levels, configuredCodexReasoningLevel{
 			Effort:      "ultra",
 			Description: "Maximum reasoning with automatic task delegation",
@@ -2073,6 +2083,7 @@ func CodexModelsManifestETag(body []byte) string {
 }
 
 var apiKeyCodexModelsWithoutResponsesLite = map[string]struct{}{
+	"gpt-6.1-sol":   {},
 	"gpt-6-astra":   {},
 	"gpt-6-sol":     {},
 	"gpt-6-luna":    {},
@@ -2649,4 +2660,43 @@ func buildCodexModelsManifestURL(endpoint string, appendModelsPath bool, clientV
 	query.Set("client_version", clientVersion)
 	requestURL.RawQuery = query.Encode()
 	return requestURL, nil
+}
+
+// MarshalJSON keeps fields added by the official client, including nested tool
+// instructions, while the generated descriptor still controls routing metadata.
+func (d configuredCodexModelDescriptor) MarshalJSON() ([]byte, error) {
+	type descriptor configuredCodexModelDescriptor
+	encoded, err := json.Marshal(descriptor(d))
+	if err != nil || len(d.officialMetadata) == 0 {
+		return encoded, err
+	}
+	var fields, official map[string]json.RawMessage
+	if err := json.Unmarshal(encoded, &fields); err != nil {
+		return nil, err
+	}
+	if err := json.Unmarshal(d.officialMetadata, &official); err != nil {
+		return nil, err
+	}
+	for key, value := range official {
+		if _, exists := fields[key]; !exists {
+			fields[key] = value
+		}
+	}
+	var messages, officialMessages map[string]json.RawMessage
+	if err := json.Unmarshal(fields["model_messages"], &messages); err != nil {
+		return nil, err
+	}
+	if err := json.Unmarshal(official["model_messages"], &officialMessages); err != nil {
+		return nil, err
+	}
+	for key, value := range officialMessages {
+		if _, exists := messages[key]; !exists {
+			messages[key] = value
+		}
+	}
+	fields["model_messages"], err = json.Marshal(messages)
+	if err != nil {
+		return nil, err
+	}
+	return json.Marshal(fields)
 }
