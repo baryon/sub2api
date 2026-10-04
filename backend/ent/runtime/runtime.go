@@ -24,6 +24,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/idempotencyrecord"
 	"github.com/Wei-Shaw/sub2api/ent/identityadoptiondecision"
+	"github.com/Wei-Shaw/sub2api/ent/otohacatalogmodel"
 	"github.com/Wei-Shaw/sub2api/ent/paymentauditlog"
 	"github.com/Wei-Shaw/sub2api/ent/paymentorder"
 	"github.com/Wei-Shaw/sub2api/ent/paymentproviderinstance"
@@ -1289,6 +1290,99 @@ func init() {
 	identityadoptiondecisionDescDecidedAt := identityadoptiondecisionFields[4].Descriptor()
 	// identityadoptiondecision.DefaultDecidedAt holds the default value on creation for the decided_at field.
 	identityadoptiondecision.DefaultDecidedAt = identityadoptiondecisionDescDecidedAt.Default.(func() time.Time)
+	otohacatalogmodelMixin := schema.OtohaCatalogModel{}.Mixin()
+	otohacatalogmodelMixinFields0 := otohacatalogmodelMixin[0].Fields()
+	_ = otohacatalogmodelMixinFields0
+	otohacatalogmodelFields := schema.OtohaCatalogModel{}.Fields()
+	_ = otohacatalogmodelFields
+	// otohacatalogmodelDescCreatedAt is the schema descriptor for created_at field.
+	otohacatalogmodelDescCreatedAt := otohacatalogmodelMixinFields0[0].Descriptor()
+	// otohacatalogmodel.DefaultCreatedAt holds the default value on creation for the created_at field.
+	otohacatalogmodel.DefaultCreatedAt = otohacatalogmodelDescCreatedAt.Default.(func() time.Time)
+	// otohacatalogmodelDescUpdatedAt is the schema descriptor for updated_at field.
+	otohacatalogmodelDescUpdatedAt := otohacatalogmodelMixinFields0[1].Descriptor()
+	// otohacatalogmodel.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	otohacatalogmodel.DefaultUpdatedAt = otohacatalogmodelDescUpdatedAt.Default.(func() time.Time)
+	// otohacatalogmodel.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	otohacatalogmodel.UpdateDefaultUpdatedAt = otohacatalogmodelDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// otohacatalogmodelDescModelID is the schema descriptor for model_id field.
+	otohacatalogmodelDescModelID := otohacatalogmodelFields[1].Descriptor()
+	// otohacatalogmodel.ModelIDValidator is a validator for the "model_id" field. It is called by the builders before save.
+	otohacatalogmodel.ModelIDValidator = func() func(string) error {
+		validators := otohacatalogmodelDescModelID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(model_id string) error {
+			for _, fn := range fns {
+				if err := fn(model_id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// otohacatalogmodelDescName is the schema descriptor for name field.
+	otohacatalogmodelDescName := otohacatalogmodelFields[2].Descriptor()
+	// otohacatalogmodel.DefaultName holds the default value on creation for the name field.
+	otohacatalogmodel.DefaultName = otohacatalogmodelDescName.Default.(string)
+	// otohacatalogmodel.NameValidator is a validator for the "name" field. It is called by the builders before save.
+	otohacatalogmodel.NameValidator = otohacatalogmodelDescName.Validators[0].(func(string) error)
+	// otohacatalogmodelDescDescription is the schema descriptor for description field.
+	otohacatalogmodelDescDescription := otohacatalogmodelFields[3].Descriptor()
+	// otohacatalogmodel.DefaultDescription holds the default value on creation for the description field.
+	otohacatalogmodel.DefaultDescription = otohacatalogmodelDescDescription.Default.(string)
+	// otohacatalogmodelDescEnabled is the schema descriptor for enabled field.
+	otohacatalogmodelDescEnabled := otohacatalogmodelFields[4].Descriptor()
+	// otohacatalogmodel.DefaultEnabled holds the default value on creation for the enabled field.
+	otohacatalogmodel.DefaultEnabled = otohacatalogmodelDescEnabled.Default.(bool)
+	// otohacatalogmodelDescSortOrder is the schema descriptor for sort_order field.
+	otohacatalogmodelDescSortOrder := otohacatalogmodelFields[5].Descriptor()
+	// otohacatalogmodel.DefaultSortOrder holds the default value on creation for the sort_order field.
+	otohacatalogmodel.DefaultSortOrder = otohacatalogmodelDescSortOrder.Default.(int)
+	// otohacatalogmodelDescTools is the schema descriptor for tools field.
+	otohacatalogmodelDescTools := otohacatalogmodelFields[7].Descriptor()
+	// otohacatalogmodel.DefaultTools holds the default value on creation for the tools field.
+	otohacatalogmodel.DefaultTools = otohacatalogmodelDescTools.Default.(bool)
+	// otohacatalogmodelDescContextTokens is the schema descriptor for context_tokens field.
+	otohacatalogmodelDescContextTokens := otohacatalogmodelFields[8].Descriptor()
+	// otohacatalogmodel.DefaultContextTokens holds the default value on creation for the context_tokens field.
+	otohacatalogmodel.DefaultContextTokens = otohacatalogmodelDescContextTokens.Default.(int)
+	// otohacatalogmodelDescMaxOutputTokens is the schema descriptor for max_output_tokens field.
+	otohacatalogmodelDescMaxOutputTokens := otohacatalogmodelFields[9].Descriptor()
+	// otohacatalogmodel.DefaultMaxOutputTokens holds the default value on creation for the max_output_tokens field.
+	otohacatalogmodel.DefaultMaxOutputTokens = otohacatalogmodelDescMaxOutputTokens.Default.(int)
+	// otohacatalogmodelDescDefaultReasoning is the schema descriptor for default_reasoning field.
+	otohacatalogmodelDescDefaultReasoning := otohacatalogmodelFields[11].Descriptor()
+	// otohacatalogmodel.DefaultDefaultReasoning holds the default value on creation for the default_reasoning field.
+	otohacatalogmodel.DefaultDefaultReasoning = otohacatalogmodelDescDefaultReasoning.Default.(string)
+	// otohacatalogmodel.DefaultReasoningValidator is a validator for the "default_reasoning" field. It is called by the builders before save.
+	otohacatalogmodel.DefaultReasoningValidator = otohacatalogmodelDescDefaultReasoning.Validators[0].(func(string) error)
+	// otohacatalogmodelDescSpeed is the schema descriptor for speed field.
+	otohacatalogmodelDescSpeed := otohacatalogmodelFields[12].Descriptor()
+	// otohacatalogmodel.DefaultSpeed holds the default value on creation for the speed field.
+	otohacatalogmodel.DefaultSpeed = otohacatalogmodelDescSpeed.Default.(string)
+	// otohacatalogmodel.SpeedValidator is a validator for the "speed" field. It is called by the builders before save.
+	otohacatalogmodel.SpeedValidator = otohacatalogmodelDescSpeed.Validators[0].(func(string) error)
+	// otohacatalogmodelDescComplexity is the schema descriptor for complexity field.
+	otohacatalogmodelDescComplexity := otohacatalogmodelFields[14].Descriptor()
+	// otohacatalogmodel.DefaultComplexity holds the default value on creation for the complexity field.
+	otohacatalogmodel.DefaultComplexity = otohacatalogmodelDescComplexity.Default.(string)
+	// otohacatalogmodel.ComplexityValidator is a validator for the "complexity" field. It is called by the builders before save.
+	otohacatalogmodel.ComplexityValidator = otohacatalogmodelDescComplexity.Validators[0].(func(string) error)
+	// otohacatalogmodelDescProfileSource is the schema descriptor for profile_source field.
+	otohacatalogmodelDescProfileSource := otohacatalogmodelFields[17].Descriptor()
+	// otohacatalogmodel.DefaultProfileSource holds the default value on creation for the profile_source field.
+	otohacatalogmodel.DefaultProfileSource = otohacatalogmodelDescProfileSource.Default.(string)
+	// otohacatalogmodel.ProfileSourceValidator is a validator for the "profile_source" field. It is called by the builders before save.
+	otohacatalogmodel.ProfileSourceValidator = otohacatalogmodelDescProfileSource.Validators[0].(func(string) error)
+	// otohacatalogmodelDescCostTier is the schema descriptor for cost_tier field.
+	otohacatalogmodelDescCostTier := otohacatalogmodelFields[18].Descriptor()
+	// otohacatalogmodel.DefaultCostTier holds the default value on creation for the cost_tier field.
+	otohacatalogmodel.DefaultCostTier = otohacatalogmodelDescCostTier.Default.(string)
+	// otohacatalogmodel.CostTierValidator is a validator for the "cost_tier" field. It is called by the builders before save.
+	otohacatalogmodel.CostTierValidator = otohacatalogmodelDescCostTier.Validators[0].(func(string) error)
 	paymentauditlogFields := schema.PaymentAuditLog{}.Fields()
 	_ = paymentauditlogFields
 	// paymentauditlogDescOrderID is the schema descriptor for order_id field.

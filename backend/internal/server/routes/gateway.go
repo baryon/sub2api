@@ -70,6 +70,11 @@ func RegisterGatewayRoutes(
 		dispatchCodexModelsGateway(c, h.OpenAIGateway.CodexModels, h.Gateway.CodexModels)
 	}
 	modelsHandler := func(c *gin.Context) {
+		// The Otoha app reads its group's model catalog (TASK-54); groups without one keep the plain list.
+		if handler.IsOtohaClientRequest(c) {
+			h.Gateway.OtohaModels(c)
+			return
+		}
 		if c.Query("client_version") != "" {
 			codexModelsHandler(c)
 			return

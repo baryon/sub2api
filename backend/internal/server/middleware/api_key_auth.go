@@ -169,7 +169,8 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 		// Async image task polling only reads data that already belongs to the
 		// authenticated key and must remain available after the completed
 		// generation consumes the key's remaining balance.
-		skipBilling := c.Request.URL.Path == "/v1/usage" || billingInfoRequest || isAsyncImageTaskRead(c.Request.Method, c.Request.URL.Path)
+		skipBilling := c.Request.URL.Path == "/v1/usage" || billingInfoRequest || isAsyncImageTaskRead(c.Request.Method, c.Request.URL.Path) ||
+			isOtohaCatalogRead(c)
 
 		// ── 4. SimpleMode → early return ─────────────────────────────
 
@@ -472,4 +473,16 @@ func validateAPIKeyGroupAvailable(apiKey *service.APIKey) (string, string, bool)
 		return "GROUP_DISABLED", "API Key 所属分组已停用", false
 	}
 	return "", "", true
+}
+
+// isOtohaCatalogRead reports a read of the Otoha model catalog (GET /v1/models or /models with client=otoha). Like
+// /v1/usage it needs a valid key but no credit: the app shows models and prices to a user who has to buy more.
+func isOtohaCatalogRead(c *gin.Context) bool {
+	if c == nil || c.Request == nil || c.Request.Method != http.MethodGet {
+		return false
+	}
+	if path := c.Request.URL.Path; path != "/v1/models" && path != "/models" {
+		return false
+	}
+	return strings.EqualFold(strings.TrimSpace(c.Query("client")), "otoha")
 }

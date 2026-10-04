@@ -858,6 +858,8 @@ var ProviderSet = wire.NewSet(
 	ProvideAuthCacheInvalidationWorker,
 	NewGroupService,
 	NewCompositeRouteResolver,
+	NewOtohaCatalogService,
+	wire.Bind(new(OtohaCatalogReader), new(*OtohaCatalogService)),
 	NewAccountService,
 	NewProxyService,
 	NewRedeemService,
@@ -971,7 +973,6 @@ var ProviderSet = wire.NewSet(
 	ProvidePaymentConfigService,
 	ProvidePaymentService,
 	NewOtohaService,
-	ProvideOtohaCatalogReader,
 	ProvidePaymentOrderExpiryService,
 	ProvideBalanceNotifyService,
 	ProvideChannelMonitorService,
@@ -1012,17 +1013,6 @@ func ProvidePaymentService(entClient *dbent.Client, registry *payment.Registry, 
 		svc.SetFulfillmentHook(otohaService)
 	}
 	return svc
-}
-
-// noOtohaCatalog stands in until the Otoha model catalog (TASK-54) is wired: no group has a catalog, so the
-// configuration leaves `catalog` out.
-type noOtohaCatalog struct{}
-
-func (noOtohaCatalog) CatalogForGroup(context.Context, int64) (*OtohaCatalog, error) { return nil, nil }
-
-// ProvideOtohaCatalogReader gives the Otoha model catalog to the claim configuration. TASK-54 replaces it.
-func ProvideOtohaCatalogReader() OtohaCatalogReader {
-	return noOtohaCatalog{}
 }
 
 // ProvidePaymentOrderExpiryService creates and starts PaymentOrderExpiryService.

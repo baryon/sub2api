@@ -1098,6 +1098,57 @@ var (
 			},
 		},
 	}
+	// OtohaCatalogModelsColumns holds the columns for the "otoha_catalog_models" table.
+	OtohaCatalogModelsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "model_id", Type: field.TypeString, Size: 200},
+		{Name: "name", Type: field.TypeString, Size: 200, Default: ""},
+		{Name: "description", Type: field.TypeString, Default: "", SchemaType: map[string]string{"postgres": "text"}},
+		{Name: "enabled", Type: field.TypeBool, Default: true},
+		{Name: "sort_order", Type: field.TypeInt, Default: 0},
+		{Name: "inputs", Type: field.TypeJSON, Nullable: true},
+		{Name: "tools", Type: field.TypeBool, Default: false},
+		{Name: "context_tokens", Type: field.TypeInt, Default: 0},
+		{Name: "max_output_tokens", Type: field.TypeInt, Default: 0},
+		{Name: "reasoning_levels", Type: field.TypeJSON, Nullable: true},
+		{Name: "default_reasoning", Type: field.TypeString, Size: 32, Default: ""},
+		{Name: "speed", Type: field.TypeString, Size: 20, Default: ""},
+		{Name: "strengths", Type: field.TypeJSON, Nullable: true},
+		{Name: "complexity", Type: field.TypeString, Size: 20, Default: ""},
+		{Name: "roles", Type: field.TypeJSON, Nullable: true},
+		{Name: "uses", Type: field.TypeJSON, Nullable: true},
+		{Name: "profile_source", Type: field.TypeString, Size: 20, Default: ""},
+		{Name: "cost_tier", Type: field.TypeString, Size: 20, Default: ""},
+		{Name: "group_id", Type: field.TypeInt64},
+	}
+	// OtohaCatalogModelsTable holds the schema information for the "otoha_catalog_models" table.
+	OtohaCatalogModelsTable = &schema.Table{
+		Name:       "otoha_catalog_models",
+		Columns:    OtohaCatalogModelsColumns,
+		PrimaryKey: []*schema.Column{OtohaCatalogModelsColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "otoha_catalog_models_groups_group",
+				Columns:    []*schema.Column{OtohaCatalogModelsColumns[21]},
+				RefColumns: []*schema.Column{GroupsColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "otohacatalogmodel_group_id_model_id",
+				Unique:  true,
+				Columns: []*schema.Column{OtohaCatalogModelsColumns[21], OtohaCatalogModelsColumns[3]},
+			},
+			{
+				Name:    "otohacatalogmodel_group_id_sort_order",
+				Unique:  false,
+				Columns: []*schema.Column{OtohaCatalogModelsColumns[21], OtohaCatalogModelsColumns[7]},
+			},
+		},
+	}
 	// PaymentAuditLogsColumns holds the columns for the "payment_audit_logs" table.
 	PaymentAuditLogsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt64, Increment: true},
@@ -2109,6 +2160,7 @@ var (
 		GroupsTable,
 		IdempotencyRecordsTable,
 		IdentityAdoptionDecisionsTable,
+		OtohaCatalogModelsTable,
 		PaymentAuditLogsTable,
 		PaymentOrdersTable,
 		PaymentProviderInstancesTable,
@@ -2205,6 +2257,10 @@ func init() {
 	IdentityAdoptionDecisionsTable.ForeignKeys[1].RefTable = PendingAuthSessionsTable
 	IdentityAdoptionDecisionsTable.Annotation = &entsql.Annotation{
 		Table: "identity_adoption_decisions",
+	}
+	OtohaCatalogModelsTable.ForeignKeys[0].RefTable = GroupsTable
+	OtohaCatalogModelsTable.Annotation = &entsql.Annotation{
+		Table: "otoha_catalog_models",
 	}
 	PaymentAuditLogsTable.Annotation = &entsql.Annotation{
 		Table: "payment_audit_logs",

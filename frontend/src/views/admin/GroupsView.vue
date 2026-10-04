@@ -422,6 +422,17 @@
               </button>
               <button
                 v-if="!authStore.isSimpleMode"
+                data-testid="group-otoha-catalog"
+                @click="handleOtohaCatalog(row)"
+                class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-gray-100 hover:text-pink-600 dark:hover:bg-dark-700 dark:hover:text-pink-400"
+              >
+                <Icon name="book" size="sm" />
+                <span class="text-xs">{{
+                  t("admin.otohaCatalog.action")
+                }}</span>
+              </button>
+              <button
+                v-if="!authStore.isSimpleMode"
                 data-testid="group-rate-multipliers"
                 @click="handleRateMultipliers(row)"
                 class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-gray-100 hover:text-purple-600 dark:hover:bg-dark-700 dark:hover:text-purple-400"
@@ -4276,6 +4287,13 @@
       </template>
     </BaseDialog>
 
+    <!-- Otoha model catalog -->
+    <OtohaCatalogModal
+      :show="showOtohaCatalogModal"
+      :group="otohaCatalogGroup"
+      @close="showOtohaCatalogModal = false"
+    />
+
     <!-- Group Rate Multipliers Modal -->
     <GroupRateMultipliersModal
       :show="showRateMultipliersModal"
@@ -4329,6 +4347,7 @@ import Select from "@/components/common/Select.vue";
 import PlatformIcon from "@/components/common/PlatformIcon.vue";
 import Icon from "@/components/icons/Icon.vue";
 import GroupRateMultipliersModal from "@/components/admin/group/GroupRateMultipliersModal.vue";
+import OtohaCatalogModal from "@/components/admin/group/OtohaCatalogModal.vue";
 import GroupRPMOverridesModal from "@/components/admin/group/GroupRPMOverridesModal.vue";
 import GroupCapacityBadge from "@/components/common/GroupCapacityBadge.vue";
 import ReasoningEffortPolicyFields from "@/components/admin/group/ReasoningEffortPolicyFields.vue";
@@ -4868,6 +4887,8 @@ const sortSubmitting = ref(false);
 const editingGroup = ref<AdminGroup | null>(null);
 const deletingGroup = ref<AdminGroup | null>(null);
 const duplicatingGroupIds = reactive(new Set<number>());
+const showOtohaCatalogModal = ref(false);
+const otohaCatalogGroup = ref<AdminGroup | null>(null);
 const showRateMultipliersModal = ref(false);
 const rateMultipliersGroup = ref<AdminGroup | null>(null);
 const showRPMOverridesModal = ref(false);
@@ -6452,6 +6473,11 @@ const removeEditMessagesDispatchMapping = (row: MessagesDispatchMappingRow) => {
   if (index !== -1) {
     editForm.exact_model_mappings.splice(index, 1);
   }
+};
+
+const handleOtohaCatalog = (group: AdminGroup) => {
+  otohaCatalogGroup.value = group;
+  showOtohaCatalogModal.value = true;
 };
 
 const handleRateMultipliers = (group: AdminGroup) => {

@@ -58,6 +58,7 @@ type GatewayHandler struct {
 	maxAccountSwitchesGemini  int
 	cfg                       *config.Config
 	settingService            *service.SettingService
+	otohaCatalog              service.OtohaCatalogReader
 }
 
 // NewGatewayHandler creates a new GatewayHandler
@@ -1614,6 +1615,9 @@ func (h *GatewayHandler) Usage(c *gin.Context) {
 		}
 	}
 
+	// Otoha app (?client=otoha): this period's usage per model, added to either response below.
+	h.prepareOtohaUsage(c, apiKey)
+
 	// 判断模式: key 有总额度或速率限制 → quota_limited，否则 → unrestricted
 	isQuotaLimited := apiKey.Quota > 0 || apiKey.HasRateLimits()
 
@@ -1781,6 +1785,7 @@ func (h *GatewayHandler) usageQuotaLimited(c *gin.Context, ctx context.Context, 
 	if modelStats != nil {
 		resp["model_stats"] = modelStats
 	}
+	addOtohaUsage(c, resp)
 
 	c.JSON(http.StatusOK, resp)
 }
@@ -1842,6 +1847,7 @@ func (h *GatewayHandler) usageUnrestricted(c *gin.Context, ctx context.Context, 
 		if modelStats != nil {
 			resp["model_stats"] = modelStats
 		}
+		addOtohaUsage(c, resp)
 		c.JSON(http.StatusOK, resp)
 		return
 	}
@@ -1870,6 +1876,7 @@ func (h *GatewayHandler) usageUnrestricted(c *gin.Context, ctx context.Context, 
 	if modelStats != nil {
 		resp["model_stats"] = modelStats
 	}
+	addOtohaUsage(c, resp)
 	c.JSON(http.StatusOK, resp)
 }
 
