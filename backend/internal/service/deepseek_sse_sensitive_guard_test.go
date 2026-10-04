@@ -169,7 +169,7 @@ func runDeepSeekSSEGuardProtocol(
 		return recorder.Body.String(), err
 	case deepSeekSSESensitiveProtocolResponses:
 		svc := &OpenAIGatewayService{cfg: &config.Config{}}
-		_, err := svc.handleDeepSeekResponsesStream(context.Background(), resp, c, account, time.Now(), "", "")
+		_, err := svc.handleDeepSeekResponsesStream(context.Background(), resp, c, account, time.Now(), "")
 		return recorder.Body.String(), err
 	case deepSeekSSESensitiveProtocolAnthropic:
 		svc := &GatewayService{cfg: &config.Config{}}

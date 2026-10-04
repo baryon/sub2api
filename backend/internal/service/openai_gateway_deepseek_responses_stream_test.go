@@ -33,7 +33,7 @@ func TestHandleDeepSeekResponsesStreamDataIntervalTimeoutStopsReader(t *testing.
 
 	started := time.Now()
 	result, err := svc.handleDeepSeekResponsesStream(
-		context.Background(), resp, c, deepSeekForwardTestAccount(), started, "", "",
+		context.Background(), resp, c, deepSeekForwardTestAccount(), started, "",
 	)
 
 	require.ErrorIs(t, err, errDeepSeekSSEDataIntervalTimeout)

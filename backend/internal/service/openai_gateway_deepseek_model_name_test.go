@@ -14,36 +14,52 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TASK-65: DeepSeek's native Responses relay names the model the client asked for when the account maps it to
-// another upstream name; everything else on the line stays byte for byte.
+// TASK-65: DeepSeek's native Responses relay names the model the client asked for whenever DeepSeek's answer names
+// another one (an account mapping, or DeepSeek's canonical name for an alias); everything else stays byte for byte.
 
-func TestRenameDeepSeekResponsesModelInWireLine(t *testing.T) {
-	svc := &OpenAIGatewayService{}
+func TestNameDeepSeekResponsesModelInWireLine(t *testing.T) {
 	created := `data: {"type":"response.created","response":{"id":"r1","model":"deepseek-flash","output":[]}}`
-	renamed := `data: {"type":"response.created","response":{"id":"r1","model":"deepseek-v4-flash","output":[]}}`
+	named := `data: {"type":"response.created","response":{"id":"r1","model":"deepseek-v4-flash","output":[]}}`
+	const client = "deepseek-v4-flash"
 	for _, tc := range []struct {
-		name, line, upstream, client, want string
+		name, line, client, want string
 	}{
-		{"LF ending", created + "\n", "deepseek-flash", "deepseek-v4-flash", renamed + "\n"},
-		{"CRLF ending", created + "\r\n", "deepseek-flash", "deepseek-v4-flash", renamed + "\r\n"},
-		{"last line without ending", created, "deepseek-flash", "deepseek-v4-flash", renamed},
-		{"data without a space", strings.Replace(created, "data: ", "data:", 1) + "\n", "deepseek-flash", "deepseek-v4-flash",
-			strings.Replace(renamed, "data: ", "data:", 1) + "\n"},
-		{"data with a tab", strings.Replace(created, "data: ", "data:\t", 1) + "\n", "deepseek-flash", "deepseek-v4-flash",
-			strings.Replace(renamed, "data: ", "data:\t", 1) + "\n"},
-		{"event line", "event: response.created\n", "deepseek-flash", "deepseek-v4-flash", "event: response.created\n"},
-		{"blank line", "\n", "deepseek-flash", "deepseek-v4-flash", "\n"},
-		{"event without a model", `data: {"type":"response.output_text.delta","delta":"deepseek-flash"}` + "\n", "deepseek-flash", "deepseek-v4-flash",
+		{"LF ending", created + "\n", client, named + "\n"},
+		{"CRLF ending", created + "\r\n", client, named + "\r\n"},
+		{"last line without ending", created, client, named},
+		{"data without a space", strings.Replace(created, "data: ", "data:", 1) + "\n", client, strings.Replace(named, "data: ", "data:", 1) + "\n"},
+		{"data with a tab", strings.Replace(created, "data: ", "data:\t", 1) + "\n", client, strings.Replace(named, "data: ", "data:\t", 1) + "\n"},
+		{"top-level model", `data: {"type":"x","model":"deepseek-flash"}` + "\n", client, `data: {"type":"x","model":"deepseek-v4-flash"}` + "\n"},
+		{"event line", "event: response.created\n", client, "event: response.created\n"},
+		{"blank line", "\n", client, "\n"},
+		{"event without a model", `data: {"type":"response.output_text.delta","delta":"deepseek-flash"}` + "\n", client,
 			`data: {"type":"response.output_text.delta","delta":"deepseek-flash"}` + "\n"},
-		{"not JSON", "data: deepseek-flash\n", "deepseek-flash", "deepseek-v4-flash", "data: deepseek-flash\n"},
-		{"unmapped", created + "\n", "deepseek-flash", "deepseek-flash", created + "\n"},
-		{"no client name", created + "\n", "deepseek-flash", "", created + "\n"},
+		{"model mentioned only in text", `data: {"type":"response.output_text.delta","delta":"\"model\":\"deepseek-flash\""}` + "\n", client,
+			`data: {"type":"response.output_text.delta","delta":"\"model\":\"deepseek-flash\""}` + "\n"},
+		{"not JSON", `data: "model" deepseek-flash` + "\n", client, `data: "model" deepseek-flash` + "\n"},
+		{"answer already names the requested model", named + "\n", client, named + "\n"},
+		{"no client name", created + "\n", "", created + "\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			got := svc.renameDeepSeekResponsesModelInWireLine([]byte(tc.line), tc.upstream, tc.client)
+			got := nameDeepSeekResponsesModelInWireLine([]byte(tc.line), tc.client)
 			require.Equal(t, tc.want, string(got))
 		})
 	}
+}
+
+func TestNameDeepSeekResponsesModelForClientKeepsTheOriginal(t *testing.T) {
+	body := []byte(`{"id":"r1","object":"response","model":"deepseek-flash","output":[{"type":"reasoning","content":[{"type":"reasoning_text","text":"x"}],"summary":[]}]}`)
+	original := string(body)
+
+	named, changed := nameDeepSeekResponsesModelForClient(body, "deepseek-v4-flash")
+
+	require.True(t, changed)
+	require.Equal(t, strings.Replace(original, `"model":"deepseek-flash"`, `"model":"deepseek-v4-flash"`, 1), string(named))
+	require.Equal(t, original, string(body), "usage and billing keep reading DeepSeek's original bytes")
+
+	same, changed := nameDeepSeekResponsesModelForClient(body, "deepseek-flash")
+	require.False(t, changed)
+	require.Equal(t, original, string(same))
 }
 
 func TestHandleDeepSeekResponsesStreamRenamesModelAcrossChunksAndCRLF(t *testing.T) {
@@ -66,7 +82,7 @@ func TestHandleDeepSeekResponsesStreamRenamesModelAcrossChunksAndCRLF(t *testing
 	svc := &OpenAIGatewayService{cfg: &config.Config{}}
 
 	result, err := svc.handleDeepSeekResponsesStream(context.Background(), resp, c, deepSeekForwardTestAccount(), time.Now(),
-		"deepseek-v4-flash", "deepseek-flash")
+		"deepseek-v4-flash")
 
 	require.NoError(t, err)
 	require.Equal(t, "response.completed", result.terminalEvent)

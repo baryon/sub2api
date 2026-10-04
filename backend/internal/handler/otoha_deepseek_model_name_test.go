@@ -46,7 +46,7 @@ const otohaDeepSeekFlashJSON = `{"id":"resp_ds_65","object":"response","created_
 
 // callOtohaDeepSeekResponses sends one /v1/responses request through an Otoha composite key to a DeepSeek API-key
 // account with the given model mapping, and returns what the client received and the usage record.
-func callOtohaDeepSeekResponses(t *testing.T, modelMapping map[string]any, upstream *otohaNativeUpstream, requestBody string) (*httptest.ResponseRecorder, *service.UsageLog) {
+func callOtohaDeepSeekResponses(t *testing.T, modelMapping map[string]any, upstream *otohaNativeUpstream, requestBody string, adjust ...func(*gin.Context)) (*httptest.ResponseRecorder, *service.UsageLog) {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
 	group := otohaNativeGroup(false)
@@ -78,6 +78,9 @@ func callOtohaDeepSeekResponses(t *testing.T, modelMapping map[string]any, upstr
 	c, rec := otohaNativeContext("/v1/responses", requestBody, group, service.PlatformDeepSeek)
 	c.Request.Header.Del("x-api-key")
 	c.Request.Header.Set("Authorization", "Bearer sk-otoha-key")
+	for _, fn := range adjust {
+		fn(c)
+	}
 	h.Responses(c)
 
 	select {
@@ -141,7 +144,70 @@ func TestOtohaDeepSeekResponsesJSONNamesTheRequestedModel(t *testing.T) {
 	requireOtohaDeepSeekFlashBilling(t, log)
 }
 
-func TestOtohaDeepSeekResponsesUnmappedModelIsUntouched(t *testing.T) {
+// otohaDeepSeekLiveMapping is the live Otoha account's mapping: every name maps to itself. DeepSeek still answers a
+// request for deepseek-v4-flash with its canonical name deepseek-flash.
+func otohaDeepSeekLiveMapping() map[string]any {
+	return map[string]any{"deepseek-flash": "deepseek-flash", "deepseek-v4-pro": "deepseek-v4-pro", "deepseek-v4-flash": "deepseek-v4-flash"}
+}
+
+func TestOtohaDeepSeekResponsesCanonicalAnswerNamesTheRequestedModel(t *testing.T) {
+	for _, tc := range []struct {
+		name, contentType, upstreamBody, stream string
+	}{
+		{"stream", "text/event-stream", otohaDeepSeekFlashStream, "true"},
+		{"json", "application/json", otohaDeepSeekFlashJSON, "false"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			upstream := &otohaNativeUpstream{contentType: tc.contentType, body: tc.upstreamBody}
+			rec, log := callOtohaDeepSeekResponses(t, otohaDeepSeekLiveMapping(), upstream,
+				`{"model":"deepseek-v4-flash","input":"Say hello.","reasoning":{"effort":"high"},"stream":`+tc.stream+`}`)
+
+			require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+			require.Equal(t, "deepseek-v4-flash", gjson.GetBytes(upstream.sent, "model").String(), "the identity mapping sends the name unchanged")
+			want := strings.ReplaceAll(tc.upstreamBody, `"model":"deepseek-flash"`, `"model":"deepseek-v4-flash"`)
+			require.Equal(t, want, rec.Body.String(), "the answer names the requested model; nothing else changes")
+			// Billing and the usage record as before this change: the channel's deepseek-v4-flash price (1000 in at
+			// $0.20/M, 500 out at $0.80/M) times the group rate 1.5, and the record keeps DeepSeek's own answer name
+			// and flags that it differs from the name sent.
+			require.NotNil(t, log)
+			require.Equal(t, "deepseek-v4-flash", log.Model)
+			require.Equal(t, "deepseek-v4-flash", log.RequestedModel)
+			require.NotNil(t, log.UpstreamModel)
+			require.Equal(t, "deepseek-v4-flash", *log.UpstreamModel)
+			require.NotNil(t, log.UpstreamResponseModel)
+			require.Equal(t, "deepseek-flash", *log.UpstreamResponseModel, "the record keeps what DeepSeek answered, not the renamed model")
+			require.NotNil(t, log.UpstreamModelMismatch)
+			require.True(t, *log.UpstreamModelMismatch)
+			require.InDelta(t, 1000*0.2e-6+500*0.8e-6, log.TotalCost, 1e-12)
+			require.InDelta(t, (1000*0.2e-6+500*0.8e-6)*1.5, log.ActualCost, 1e-12)
+		})
+	}
+}
+
+// A composite route can serve a public name from another upstream model; the route middleware has already put the
+// upstream name into the body when the handler runs. The answer still goes back under the public name the client
+// sent.
+func TestOtohaDeepSeekResponsesCompositeRouteAnswerNamesThePublicModel(t *testing.T) {
+	upstream := &otohaNativeUpstream{contentType: "text/event-stream", body: otohaDeepSeekFlashStream}
+	rec, log := callOtohaDeepSeekResponses(t, otohaDeepSeekLiveMapping(), upstream,
+		`{"model":"deepseek-v4-flash","input":"Say hello.","stream":true}`,
+		func(c *gin.Context) {
+			c.Request = c.Request.WithContext(service.WithCompositeRouteDecision(c.Request.Context(), service.CompositeRouteDecision{
+				Matched: true, Source: service.CompositeRouteSourceExplicit, GroupID: otohaNativeGroupID, PublicModel: "otoha-flash",
+				TargetPlatform: service.PlatformDeepSeek, UpstreamModel: "deepseek-v4-flash", Endpoint: service.CompositeRouteEndpointResponses,
+			}))
+		})
+
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	require.Equal(t, "deepseek-v4-flash", gjson.GetBytes(upstream.sent, "model").String())
+	want := strings.ReplaceAll(otohaDeepSeekFlashStream, `"model":"deepseek-flash"`, `"model":"otoha-flash"`)
+	require.Equal(t, want, rec.Body.String())
+	require.NotNil(t, log)
+	require.NotNil(t, log.UpstreamResponseModel)
+	require.Equal(t, "deepseek-flash", *log.UpstreamResponseModel)
+}
+
+func TestOtohaDeepSeekResponsesAnswerNamingTheRequestedModelIsUntouched(t *testing.T) {
 	for _, tc := range []struct {
 		name, contentType, upstreamBody, stream string
 	}{
@@ -155,7 +221,7 @@ func TestOtohaDeepSeekResponsesUnmappedModelIsUntouched(t *testing.T) {
 
 			require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 			require.Equal(t, "deepseek-flash", gjson.GetBytes(upstream.sent, "model").String())
-			require.Equal(t, tc.upstreamBody, rec.Body.String(), "no mapping, nothing rewritten")
+			require.Equal(t, tc.upstreamBody, rec.Body.String(), "the answer already names the requested model, nothing rewritten")
 		})
 	}
 }
