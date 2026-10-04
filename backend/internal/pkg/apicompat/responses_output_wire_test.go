@@ -17,9 +17,11 @@ func TestCompletedMessageOutputTextCarriesAnnotations(t *testing.T) {
 	require.NoError(t, err)
 	var decoded map[string]any
 	require.NoError(t, json.Unmarshal(raw, &decoded))
-	content := decoded["content"].([]any)
+	content, ok := decoded["content"].([]any)
+	require.True(t, ok)
 	require.Len(t, content, 1)
-	part := content[0].(map[string]any)
+	part, ok := content[0].(map[string]any)
+	require.True(t, ok)
 	require.Equal(t, "output_text", part["type"])
 	require.Equal(t, "你好", part["text"])
 	require.Equal(t, []any{}, part["annotations"])
