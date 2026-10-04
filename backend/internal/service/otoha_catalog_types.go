@@ -64,3 +64,8 @@ type OtohaModelPrice struct {
 type OtohaCatalogReader interface {
 	CatalogForGroup(ctx context.Context, groupID int64) (*OtohaCatalog, error)
 }
+
+// SubscriptionPlanNamer gives a subscription plan's name by its id (TASK-60: what `/v1/usage` calls the plan).
+type SubscriptionPlanNamer interface {
+	PlanName(ctx context.Context, id int64) (string, error)
+}

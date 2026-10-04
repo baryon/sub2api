@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"net/http"
 	"strings"
 	"time"
@@ -27,6 +28,24 @@ func IsOtohaClientRequest(c *gin.Context) bool {
 // SetOtohaCatalog gives the handler the Otoha catalog reader.
 func (h *GatewayHandler) SetOtohaCatalog(reader service.OtohaCatalogReader) {
 	h.otohaCatalog = reader
+}
+
+// SetPlanNames gives the handler the plan names `/v1/usage` reports (TASK-60).
+func (h *GatewayHandler) SetPlanNames(names service.SubscriptionPlanNamer) {
+	h.planNames = names
+}
+
+// subscriptionPlanName is the name of the plan a subscription was bought as; empty when it has none or the
+// plan cannot be read.
+func (h *GatewayHandler) subscriptionPlanName(ctx context.Context, subscription *service.UserSubscription) string {
+	if h.planNames == nil || subscription == nil || subscription.PlanID == nil {
+		return ""
+	}
+	name, err := h.planNames.PlanName(ctx, *subscription.PlanID)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(name)
 }
 
 // OtohaModels returns the Otoha catalog of the key's group; a group without one gets the plain model list.

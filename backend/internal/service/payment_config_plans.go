@@ -270,6 +270,15 @@ func (s *PaymentConfigService) DeletePlan(ctx context.Context, id int64) error {
 }
 
 // GetPlan returns a subscription plan by ID.
+// PlanName is a plan's name by its id (TASK-60).
+func (s *PaymentConfigService) PlanName(ctx context.Context, id int64) (string, error) {
+	plan, err := s.GetPlan(ctx, id)
+	if err != nil {
+		return "", err
+	}
+	return plan.Name, nil
+}
+
 func (s *PaymentConfigService) GetPlan(ctx context.Context, id int64) (*dbent.SubscriptionPlan, error) {
 	plan, err := s.entClient.SubscriptionPlan.Get(ctx, id)
 	if err != nil {

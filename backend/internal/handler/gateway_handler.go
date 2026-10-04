@@ -60,6 +60,7 @@ type GatewayHandler struct {
 	cfg                       *config.Config
 	settingService            *service.SettingService
 	otohaCatalog              service.OtohaCatalogReader
+	planNames                 service.SubscriptionPlanNamer
 }
 
 // NewGatewayHandler creates a new GatewayHandler
@@ -1805,6 +1806,10 @@ func (h *GatewayHandler) usageUnrestricted(c *gin.Context, ctx context.Context, 
 		// 订阅信息可能不在 context 中（/v1/usage 路径跳过了中间件的计费检查）
 		subscription, ok := middleware2.GetSubscriptionFromContext(c)
 		if ok {
+			// The plan the subscription was bought as, where it has one (TASK-60); else the group's name.
+			if name := h.subscriptionPlanName(ctx, subscription); name != "" {
+				resp["planName"] = name
+			}
 			remaining := h.calculateSubscriptionRemaining(apiKey.Group, subscription)
 			// The subscription's own allowance (the plan it was bought with) where it has one, else the group's.
 			limits := subscription.EffectiveLimits(apiKey.Group)

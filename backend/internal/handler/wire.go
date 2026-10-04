@@ -118,12 +118,16 @@ func ProvideGatewayHandler(
 	settingService *service.SettingService,
 	coordinator *securityaudit.Coordinator,
 	otohaCatalog service.OtohaCatalogReader,
+	paymentConfig *service.PaymentConfigService,
 ) *GatewayHandler {
 	h := NewGatewayHandler(gatewayService, openAIGatewayService, geminiCompatService, antigravityGatewayService,
 		userService, concurrencyService, billingCacheService, usageService, apiKeyService, usageRecordWorkerPool,
 		errorPassthroughService, contentModerationService, userMsgQueueService, cfg, settingService)
 	h.securityAuditCoordinator = coordinator
 	h.SetOtohaCatalog(otohaCatalog)
+	if paymentConfig != nil {
+		h.SetPlanNames(paymentConfig)
+	}
 	return h
 }
 
