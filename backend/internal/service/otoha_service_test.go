@@ -571,3 +571,15 @@ func TestOtohaAccountSummaryPassesSubscriptionErrorsOn(t *testing.T) {
 	_, err := f.svc.AccountSummary(context.Background(), 1)
 	require.Error(t, err)
 }
+
+func TestOtohaEnsureDesktopKeyReportsAMissingOrStoppedGroupAsNotAvailable(t *testing.T) {
+	f := newOtohaFixture(t)
+	f.groups[otohaTestGroupID].Status = StatusDisabled
+	_, err := f.svc.EnsureDesktopKey(context.Background(), 1)
+	requireOtohaReason(t, err, "OTOHA_NOT_CONFIGURED")
+
+	delete(f.groups, otohaTestGroupID)
+	_, err = f.svc.EnsureDesktopKey(context.Background(), 1)
+	requireOtohaReason(t, err, "OTOHA_NOT_CONFIGURED")
+	require.Empty(t, f.repo.keys)
+}

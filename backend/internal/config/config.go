@@ -3912,7 +3912,6 @@ func GetServerAddress() string {
 	return fmt.Sprintf("%s:%d", host, port)
 }
 
-// ValidateAbsoluteHTTPURL 验证是否为有效的绝对 HTTP(S) URL
 func (c OtohaConfig) validate() error {
 	if c.GroupID < 0 {
 		return fmt.Errorf("otoha.group_id must not be negative")
@@ -3938,6 +3937,7 @@ func (c OtohaConfig) validate() error {
 	return nil
 }
 
+// ValidateAbsoluteHTTPURL 验证是否为有效的绝对 HTTP(S) URL
 func ValidateAbsoluteHTTPURL(raw string) error {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {

@@ -44,7 +44,7 @@ var (
 	ErrOtohaNoAccess = infraerrors.Forbidden("OTOHA_NO_ACCESS",
 		"This account has no Otoha plan or balance yet. Buy a plan or add balance, then try again")
 	ErrOtohaKeyDisabled = infraerrors.Forbidden("OTOHA_KEY_DISABLED",
-		"The Otoha Desktop key on this account is turned off. Turn it on under API keys, then try again")
+		"The Otoha Desktop key on this account cannot be used: it is turned off, expired or out of quota. Check it under API keys, then try again")
 	// ErrOtohaClaimInvalid is the one answer for every code that cannot be exchanged — wrong, used, expired, or
 	// whose key or account has since changed — so the endpoint never tells whether a code existed.
 	ErrOtohaClaimInvalid = infraerrors.BadRequest("OTOHA_CLAIM_INVALID",
@@ -179,6 +179,17 @@ func (s *OtohaService) EnsureDesktopKey(ctx context.Context, userID int64) (*API
 	if !s.Enabled() {
 		return nil, ErrOtohaNotConfigured
 	}
+	group, err := s.groups.GetByID(ctx, s.cfg.GroupID)
+	switch {
+	case errors.Is(err, ErrGroupNotFound):
+		slog.Error("otoha group not found; check otoha.group_id", "group_id", s.cfg.GroupID)
+		return nil, ErrOtohaNotConfigured
+	case err != nil:
+		return nil, fmt.Errorf("load otoha group: %w", err)
+	case !group.IsActive():
+		slog.Error("otoha group is not active", "group_id", s.cfg.GroupID, "status", group.Status)
+		return nil, ErrOtohaNotConfigured
+	}
 	if _, err := s.issuer.GetBindableGroupForUser(ctx, userID, s.cfg.GroupID); err != nil {
 		if errors.Is(err, ErrGroupNotAllowed) {
 			return nil, ErrOtohaNoAccess
@@ -216,6 +227,11 @@ func (s *OtohaService) OnPaymentFulfilled(ctx context.Context, done PaymentFulfi
 		return
 	}
 	if _, err := s.EnsureDesktopKey(ctx, done.UserID); err != nil {
+		if errors.Is(err, ErrOtohaNoAccess) {
+			// A top-up by someone who cannot use the Otoha group: nothing to do.
+			slog.Debug("otoha desktop key not needed after payment", "order_id", done.OrderID, "user_id", done.UserID)
+			return
+		}
 		slog.Warn("otoha desktop key not ensured after payment",
 			"order_id", done.OrderID, "user_id", done.UserID, "order_type", done.OrderType, "error", err)
 	}
@@ -270,6 +286,7 @@ func (s *OtohaService) RedeemClaim(ctx context.Context, code string) (*OtohaConf
 	if !ok {
 		return nil, ErrOtohaClaimInvalid
 	}
+	// The code is spent here; a storage failure after this point answers 500 and the user makes a new code.
 	claim, err := s.repo.ConsumeClaim(ctx, hashOtohaClaimCode(normalized), s.now())
 	if err != nil {
 		if errors.Is(err, ErrOtohaClaimNotUsable) {
@@ -537,9 +554,9 @@ func formatOtohaClaimCode(normalized string) string {
 	var b strings.Builder
 	for i := 0; i < len(normalized); i += otohaClaimGroupSize {
 		if i > 0 {
-			b.WriteByte('-')
+			_ = b.WriteByte('-')
 		}
-		b.WriteString(normalized[i:min(i+otohaClaimGroupSize, len(normalized))])
+		_, _ = b.WriteString(normalized[i:min(i+otohaClaimGroupSize, len(normalized))])
 	}
 	return b.String()
 }
@@ -560,7 +577,7 @@ func normalizeOtohaClaimCode(code string) (string, bool) {
 		if r > 127 || !strings.ContainsRune(otohaClaimAlphabet, r) {
 			return "", false
 		}
-		b.WriteRune(r)
+		_, _ = b.WriteRune(r)
 		if b.Len() > otohaClaimCodeLength {
 			return "", false
 		}

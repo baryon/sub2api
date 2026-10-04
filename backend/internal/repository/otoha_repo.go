@@ -28,7 +28,9 @@ func NewOtohaRepository(client *dbent.Client, db *sql.DB) service.OtohaRepositor
 }
 
 // EnsureNamedAPIKey serialises callers per user with a transaction-scoped advisory lock, so a webhook and a
-// result-page poll fulfilling at the same moment still leave one key.
+// result-page poll fulfilling at the same moment still leave one key. The key is the system's, issued for a
+// payment: it is created here rather than through APIKeyService.Create, so the per-user key count and creation
+// rate limits do not apply; it has no IP rules, and the service clears its auth cache entry.
 func (r *otohaRepository) EnsureNamedAPIKey(ctx context.Context, userID, groupID int64, name, candidateKey string) (*service.APIKey, bool, error) {
 	tx, err := r.client.Tx(ctx)
 	if err != nil {

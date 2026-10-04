@@ -139,6 +139,7 @@ func TestOtohaRepoClaimIsUsableOnceAndOnlyBeforeItExpires(t *testing.T) {
 	const racers = 6
 	var wg sync.WaitGroup
 	wins := make(chan *service.OtohaClaim, racers)
+	losses := make(chan error, racers)
 	for range racers {
 		wg.Add(1)
 		go func() {
@@ -148,12 +149,16 @@ func TestOtohaRepoClaimIsUsableOnceAndOnlyBeforeItExpires(t *testing.T) {
 				wins <- claim
 				return
 			}
-			require.ErrorIs(t, err, service.ErrOtohaClaimNotUsable)
+			losses <- err
 		}()
 	}
 	wg.Wait()
 	close(wins)
+	close(losses)
 	require.Len(t, wins, 1)
+	for err := range losses {
+		require.ErrorIs(t, err, service.ErrOtohaClaimNotUsable)
+	}
 	won := <-wins
 	require.Equal(t, f.user.ID, won.UserID)
 	require.Equal(t, key.ID, won.APIKeyID)

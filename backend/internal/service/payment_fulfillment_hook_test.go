@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/internal/payment"
 	"github.com/stretchr/testify/require"
 )
@@ -92,4 +93,26 @@ func TestFailedFulfillmentDoesNotTellTheHook(t *testing.T) {
 
 	require.Error(t, svc.ExecuteSubscriptionFulfillment(ctx, order.ID))
 	require.Empty(t, hook.calls)
+}
+
+type contextCapturingHook struct {
+	ctxErr      error
+	hasDeadline bool
+}
+
+func (h *contextCapturingHook) OnPaymentFulfilled(ctx context.Context, _ PaymentFulfillment) {
+	h.ctxErr = ctx.Err()
+	_, h.hasDeadline = ctx.Deadline()
+}
+
+func TestFulfillmentHookGetsItsOwnBoundedContext(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // the webhook client went away right after completion
+	hook := &contextCapturingHook{}
+	svc := &PaymentService{}
+	svc.SetFulfillmentHook(hook)
+
+	svc.runFulfillmentHook(ctx, &dbent.PaymentOrder{ID: 1, UserID: 2, OrderType: payment.OrderTypeBalance})
+	require.NoError(t, hook.ctxErr, "a cancelled request does not cancel the hook")
+	require.True(t, hook.hasDeadline, "the hook cannot hold the payment up indefinitely")
 }

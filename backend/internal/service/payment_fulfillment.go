@@ -30,6 +30,8 @@ var ErrOrderNotFound = errors.New("payment order not found")
 
 const paymentFulfillmentLeaseDuration = 5 * time.Minute
 
+const paymentFulfillmentHookTimeout = 5 * time.Second
+
 type paymentFulfillmentLease struct {
 	version time.Time
 }
@@ -441,7 +443,11 @@ func (s *PaymentService) runFulfillmentHook(ctx context.Context, o *dbent.Paymen
 			slog.Error("payment fulfillment hook panicked", "order_id", o.ID, "panic", r)
 		}
 	}()
-	s.fulfillmentHook.OnPaymentFulfilled(ctx, PaymentFulfillment{
+	// The order is already completed: a client that went away must not cut the hook short, and a slow hook must
+	// not hold the webhook answer up for long.
+	hookCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), paymentFulfillmentHookTimeout)
+	defer cancel()
+	s.fulfillmentHook.OnPaymentFulfilled(hookCtx, PaymentFulfillment{
 		OrderID:             o.ID,
 		UserID:              o.UserID,
 		OrderType:           o.OrderType,

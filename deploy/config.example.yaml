@@ -1360,7 +1360,7 @@ image_storage:
 # 售卖 Otoha AI 服务的分组。设置 group_id 后：用户为该分组的套餐付款或充值成功时，
 # 自动在该分组下建一把名为 "Otoha Desktop" 的 key；用户可在 /otoha 页面生成领取码、
 # 下载配置文件，Otoha App 用领取码换取配置（POST /api/v1/otoha/claim）。
-# group_id 为 0 时以上接口关闭。环境变量：OTOHA_GROUP_ID、OTOHA_GATEWAY_BASE_URL、OTOHA_DEFAULT_MODEL。
+# 只在专供 Otoha 的实例上设置：充值成功也会为能使用该分组的用户建 key。group_id 为 0 时以上接口关闭。环境变量：OTOHA_GROUP_ID、OTOHA_GATEWAY_BASE_URL、OTOHA_DEFAULT_MODEL。
 otoha:
   group_id: 0
   # 写入 App 配置的模型网关地址，只填协议和域名，例如 https://api.otohaai.com
