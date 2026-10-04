@@ -178,16 +178,18 @@ type checkoutPlan struct {
 	DailyLimitUSD      *float64 `json:"daily_limit_usd"`
 	WeeklyLimitUSD     *float64 `json:"weekly_limit_usd"`
 	MonthlyLimitUSD    *float64 `json:"monthly_limit_usd"`
-	ModelScopes        []string `json:"supported_model_scopes"`
-	Name               string   `json:"name"`
-	Description        string   `json:"description"`
-	Price              float64  `json:"price"`
-	OriginalPrice      *float64 `json:"original_price,omitempty"`
-	Currency           string   `json:"currency,omitempty"`
-	ValidityDays       int      `json:"validity_days"`
-	ValidityUnit       string   `json:"validity_unit"`
-	Features           []string `json:"features"`
-	ProductName        string   `json:"product_name"`
+	// HasOwnAllowance: the plan sets an allowance of its own (a tier, TASK-57), so it can be an upgrade.
+	HasOwnAllowance bool     `json:"has_own_allowance"`
+	ModelScopes     []string `json:"supported_model_scopes"`
+	Name            string   `json:"name"`
+	Description     string   `json:"description"`
+	Price           float64  `json:"price"`
+	OriginalPrice   *float64 `json:"original_price,omitempty"`
+	Currency        string   `json:"currency,omitempty"`
+	ValidityDays    int      `json:"validity_days"`
+	ValidityUnit    string   `json:"validity_unit"`
+	Features        []string `json:"features"`
+	ProductName     string   `json:"product_name"`
 }
 
 // checkoutPlanFromPlan is a plan as the checkout page shows it. Its limits are what the buyer gets: the plan's
@@ -202,8 +204,9 @@ func checkoutPlanFromPlan(p *dbent.SubscriptionPlan, gi service.PlanGroupInfo) c
 		PeakEnd: gi.PeakEnd, PeakRateMultiplier: gi.PeakRateMultiplier,
 		DailyLimitUSD:  limits.DailyUSD,
 		WeeklyLimitUSD: limits.WeeklyUSD, MonthlyLimitUSD: limits.MonthlyUSD,
-		ModelScopes: gi.ModelScopes,
-		Name:        p.Name, Description: p.Description, Price: p.Price, OriginalPrice: p.OriginalPrice,
+		HasOwnAllowance: service.PlanHasOwnAllowance(p.DailyLimitUsd, p.WeeklyLimitUsd, p.MonthlyLimitUsd),
+		ModelScopes:     gi.ModelScopes,
+		Name:            p.Name, Description: p.Description, Price: p.Price, OriginalPrice: p.OriginalPrice,
 		Currency:     p.Currency,
 		ValidityDays: p.ValidityDays, ValidityUnit: p.ValidityUnit, Features: parseFeatures(p.Features),
 		ProductName: p.ProductName,

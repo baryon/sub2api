@@ -29,6 +29,7 @@ func TestOtohaAccountSummaryShowsThePlansOwnAllowance(t *testing.T) {
 	require.Equal(t, 120.0, *summary.Plan.MonthlyLimitUSD, "the plan's allowance, not the group's 50")
 	require.NotNil(t, summary.Plan.PlanID)
 	require.Equal(t, planID, *summary.Plan.PlanID)
+	require.True(t, summary.Plan.HasOwnAllowance)
 }
 
 func TestOtohaAccountSummaryOfAnOlderSubscriptionHasNoPlanID(t *testing.T) {
@@ -39,5 +40,6 @@ func TestOtohaAccountSummaryOfAnOlderSubscriptionHasNoPlanID(t *testing.T) {
 	summary, err := f.svc.AccountSummary(context.Background(), 1)
 	require.NoError(t, err)
 	require.Nil(t, summary.Plan.PlanID)
+	require.False(t, summary.Plan.HasOwnAllowance)
 	require.Equal(t, 50.0, *summary.Plan.MonthlyLimitUSD, "the group's limit, as before")
 }

@@ -254,7 +254,7 @@ func TestClassifyPlanPurchase(t *testing.T) {
 	require.Equal(t, planPurchaseLater, classifyPlanPurchase(active(pro), now, plus, pro), "a cheaper plan waits for the current one to end")
 	proTwin := tier(4, 50, 130)
 	require.Equal(t, planPurchaseLater, classifyPlanPurchase(active(pro), now, proTwin, pro), "same price, another plan: also after the current one ends")
-	require.Equal(t, planPurchaseUpgrade, classifyPlanPurchase(active(plus), now, pro, nil), "the current plan was deleted: switch now")
+	require.Equal(t, planPurchaseLater, classifyPlanPurchase(active(plus), now, pro, nil), "the current plan was deleted: no price to compare, so after it ends")
 
 	suspended := active(pro)
 	suspended.Status = SubscriptionStatusSuspended
@@ -289,7 +289,8 @@ func TestClassifyPlanPurchaseKeepsTheOldRulesOutsideTieredPlans(t *testing.T) {
 	onPlus := &UserSubscription{Status: SubscriptionStatusActive, StartsAt: now.Add(-24 * time.Hour), ExpiresAt: now.AddDate(0, 0, 20)}
 	plus.apply(onPlus)
 	inEuro := &subscriptionPlanTerms{PlanID: 6, Price: 15, Currency: "EUR", ValidityDays: 30, Limits: SubscriptionLimits{MonthlyUSD: allowanceFloat(30)}}
-	require.Equal(t, planPurchaseRenew, classifyPlanPurchase(onPlus, now, inEuro, plus), "prices in different currencies are not compared")
+	require.Equal(t, planPurchaseLater, classifyPlanPurchase(onPlus, now, inEuro, plus), "prices in different currencies cannot be compared")
+	require.Equal(t, planPurchaseLater, classifyPlanPurchase(onPlus, now, monthly, plus), "a plan without its own allowance cannot replace a running tier")
 }
 
 // The upgrade credit never exceeds what the old plan cost for the time left, so an allowance larger than the
@@ -308,7 +309,7 @@ func TestPlanUpgradeCreditIsCappedByThePricePaidForTheTimeLeft(t *testing.T) {
 	cheap.Price = 100
 	require.InDelta(t, 15, upgradeCredit(sub, nil, &cheap, now), 1e-6, "below the cap: the unused allowance")
 
-	require.InDelta(t, 15, upgradeCredit(sub, nil, nil, now), 1e-6, "the old plan was deleted: no price to cap with")
+	require.Zero(t, upgradeCredit(sub, nil, nil, now), "the old plan's price is unknown: nothing")
 
 	suspended := *sub
 	suspended.Status = SubscriptionStatusSuspended

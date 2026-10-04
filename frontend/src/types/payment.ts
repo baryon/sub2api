@@ -139,6 +139,8 @@ export interface SubscriptionPlan {
   plan_daily_limit_usd?: number | null
   plan_weekly_limit_usd?: number | null
   plan_monthly_limit_usd?: number | null
+  /** Checkout: the plan sets an allowance of its own (a tier). */
+  has_own_allowance?: boolean
   supported_model_scopes?: string[]
   name: string
   description: string

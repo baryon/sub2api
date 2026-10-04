@@ -90,6 +90,12 @@ func PlanEffectiveLimits(daily, weekly, monthly *float64, group PlanGroupInfo) S
 	return own.EffectiveLimits(&Group{DailyLimitUSD: group.DailyLimitUSD, WeeklyLimitUSD: group.WeeklyLimitUSD, MonthlyLimitUSD: group.MonthlyLimitUSD})
 }
 
+// PlanHasOwnAllowance reports whether a plan sets an allowance of its own in any window, which makes it a tier
+// that upgrades and later changes apply to (TASK-57).
+func PlanHasOwnAllowance(daily, weekly, monthly *float64) bool {
+	return positiveLimit(daily) || positiveLimit(weekly) || positiveLimit(monthly)
+}
+
 // --- Plan CRUD ---
 
 // PlanGroupInfo holds the group details needed for subscription plan display.

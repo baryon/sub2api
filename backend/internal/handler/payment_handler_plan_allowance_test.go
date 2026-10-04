@@ -23,6 +23,7 @@ func TestCheckoutPlanShowsEachPlansOwnAllowance(t *testing.T) {
 	require.Nil(t, got.WeeklyLimitUSD)
 	require.Equal(t, "Plus", got.Name)
 	require.Equal(t, "Otoha", got.GroupName)
+	require.True(t, got.HasOwnAllowance, "the buy page tells tiers from plain plans")
 
 	got = checkoutPlanFromPlan(&dbent.SubscriptionPlan{ID: 3, GroupID: 7, Name: "Max", Price: 150, MonthlyLimitUsd: &max}, gi)
 	require.InDelta(t, 400, *got.MonthlyLimitUSD, 1e-9)
@@ -30,4 +31,7 @@ func TestCheckoutPlanShowsEachPlansOwnAllowance(t *testing.T) {
 	legacy := checkoutPlanFromPlan(&dbent.SubscriptionPlan{ID: 9, GroupID: 7, Name: "Old", Price: 10}, gi)
 	require.Same(t, gi.MonthlyLimitUSD, legacy.MonthlyLimitUSD, "a plan without an allowance shows the group's, as before")
 	require.Same(t, gi.DailyLimitUSD, legacy.DailyLimitUSD)
+	require.False(t, legacy.HasOwnAllowance)
+	zero := 0.0
+	require.False(t, checkoutPlanFromPlan(&dbent.SubscriptionPlan{ID: 10, GroupID: 7, Name: "Zero", Price: 1, MonthlyLimitUsd: &zero}, gi).HasOwnAllowance)
 }

@@ -433,6 +433,30 @@ func TestExtendingARunningPlanWithoutAPurchaseKeepsItsAllowance(t *testing.T) {
 	require.InDelta(t, 120, *extended.MonthlyLimitUSD, 1e-9)
 }
 
+// While a tier runs, a plan that cannot be compared with it (no allowance of its own, another currency, or the
+// current plan was deleted) waits until the current plan ends, so it can neither stretch a cheap plan's term
+// nor drop a dear plan's allowance.
+func TestPlanThatCannotBeComparedWithTheRunningTierWaits(t *testing.T) {
+	f := newPlanChangeFixture(t)
+	f.seed(f.pro, 5*24*time.Hour, 10)
+	euro, err := f.client.SubscriptionPlan.Create().SetGroupID(planChangeGroupID).SetName("Max EUR").SetPrice(140).SetCurrency("EUR").
+		SetValidityDays(30).SetValidityUnit("day").SetForSale(true).SetMonthlyLimitUsd(400).Save(f.ctx)
+	require.NoError(t, err)
+
+	for _, plan := range []*dbent.SubscriptionPlan{f.plain, euro} {
+		_, err := f.svc.validateSubOrder(f.ctx, CreateOrderRequest{UserID: f.userID, OrderType: payment.OrderTypeSubscription, PlanID: plan.ID})
+		require.Equal(t, "PLAN_DOWNGRADE_NOT_ALLOWED", infraerrors.Reason(err), plan.Name)
+		o := f.order(plan)
+		require.Equal(t, "PLAN_DOWNGRADE_NOT_ALLOWED", infraerrors.Reason(f.svc.ExecuteSubscriptionFulfillment(f.ctx, o.ID)), plan.Name)
+	}
+	require.InDelta(t, 120, *f.subscription().MonthlyLimitUSD, 1e-9)
+
+	require.NoError(t, f.client.SubscriptionPlan.DeleteOneID(f.pro.ID).Exec(f.ctx))
+	_, err = f.svc.validateSubOrder(f.ctx, CreateOrderRequest{UserID: f.userID, OrderType: payment.OrderTypeSubscription, PlanID: f.plus.ID})
+	require.Equal(t, "PLAN_DOWNGRADE_NOT_ALLOWED", infraerrors.Reason(err), "the current plan was deleted")
+	require.InDelta(t, 3, f.balance(), 1e-9)
+}
+
 func TestPlanOrderForAnUpgradeOrWithoutAPlanIsAllowed(t *testing.T) {
 	f := newPlanChangeFixture(t)
 	_, err := f.svc.validateSubOrder(f.ctx, CreateOrderRequest{UserID: f.userID, OrderType: payment.OrderTypeSubscription, PlanID: f.plus.ID})

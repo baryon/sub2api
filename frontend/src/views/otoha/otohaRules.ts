@@ -18,14 +18,16 @@ export function otohaPlans(plans: SubscriptionPlan[] | undefined, groupId: numbe
 export type PlanAction = 'buy' | 'renew' | 'upgrade' | 'later'
 
 /**
- * What buying a plan does for the user's current Otoha plan: renew the same plan (adds a period), upgrade to a
- * dearer plan (starts now; the old plan's unused allowance goes to the balance), or a cheaper plan or another at
- * the same price, which is only available once the current plan ends. Without a current plan, or when the current
- * plan is not among those on sale, it is a plain purchase.
+ * What buying a plan does for the user's current Otoha plan, following the server's rules: renew the same plan
+ * (adds a period); upgrade to a dearer plan that has its own allowance (starts now; the old plan's unused
+ * allowance goes to the balance); anything else while the current plan runs — a cheaper plan, another at the
+ * same price, one without its own allowance or in another currency — only once the current plan ends. A current
+ * plan without its own allowance makes every plan a plain purchase; when the current plan is not on sale, the
+ * server decides.
  */
 export function planAction(
   plan: SubscriptionPlan,
-  current: Pick<OtohaAccountPlan, 'plan_id' | 'name'> | null | undefined,
+  current: Pick<OtohaAccountPlan, 'plan_id' | 'name' | 'has_own_allowance'> | null | undefined,
   plans: SubscriptionPlan[],
 ): PlanAction {
   if (!current) return 'buy'
@@ -33,8 +35,11 @@ export function planAction(
     return current.name === plan.name ? 'renew' : 'buy'
   }
   if (current.plan_id === plan.id) return 'renew'
+  if (!current.has_own_allowance) return 'buy'
   const currentPlan = plans.find((p) => p.id === current.plan_id)
   if (!currentPlan) return 'buy'
+  const sameCurrency = (plan.currency || '').toUpperCase() === (currentPlan.currency || '').toUpperCase()
+  if (!plan.has_own_allowance || !sameCurrency) return 'later'
   return plan.price > currentPlan.price ? 'upgrade' : 'later'
 }
 
