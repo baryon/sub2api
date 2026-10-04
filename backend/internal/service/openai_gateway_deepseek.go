@@ -160,10 +160,43 @@ func (s *OpenAIGatewayService) writeDeepSeekResponsesHeaders(c *gin.Context, res
 	}
 }
 
+// renameDeepSeekResponsesModelInWireLine gives the client the model name it asked for in one SSE wire line (line
+// ending included) when the account maps it to another upstream name. Like the OpenAI Responses relay, only the
+// protocol model fields (model, response.model) change; the "data:" prefix, the rest of the JSON and the line ending
+// stay byte for byte.
+func (s *OpenAIGatewayService) renameDeepSeekResponsesModelInWireLine(wireLine []byte, upstreamModel, clientModel string) []byte {
+	if upstreamModel == "" || clientModel == "" || upstreamModel == clientModel {
+		return wireLine
+	}
+	content := bytes.TrimRight(wireLine, "\r\n")
+	if !bytes.Contains(content, []byte(`"model"`)) {
+		return wireLine
+	}
+	line := string(content)
+	data, ok := extractOpenAISSEDataLine(line)
+	if !ok {
+		return wireLine
+	}
+	renamed, ok := strings.CutPrefix(s.replaceModelInSSELine("data: "+data, upstreamModel, clientModel), "data: ")
+	if !ok || renamed == data {
+		return wireLine
+	}
+	prefix := line[:len(line)-len(data)]
+	out := make([]byte, 0, len(prefix)+len(renamed)+len(wireLine)-len(content))
+	out = append(out, prefix...)
+	out = append(out, renamed...)
+	return append(out, wireLine[len(content):]...)
+}
+
+// handleDeepSeekResponsesJSON relays a non-streamed DeepSeek Responses answer. When clientModel differs from
+// upstreamModel (account model mapping), the answer's model is renamed to clientModel for the client only; usage,
+// the observed upstream model and billing use DeepSeek's original body.
 func (s *OpenAIGatewayService) handleDeepSeekResponsesJSON(
 	resp *http.Response,
 	c *gin.Context,
 	account *Account,
+	clientModel string,
+	upstreamModel string,
 ) (*deepSeekResponsesRelayResult, error) {
 	sanitizeDeepSeekResponseHeadersInPlace(account, resp.Header)
 	body, err := ReadUpstreamResponseBody(resp.Body, s.cfg, c, openAITooLargeError)
@@ -224,6 +257,9 @@ func (s *OpenAIGatewayService) handleDeepSeekResponsesJSON(
 	} else {
 		writeBody = restored
 	}
+	if clientModel != "" && upstreamModel != "" && clientModel != upstreamModel {
+		writeBody = s.replaceModelInResponseBody(writeBody, upstreamModel, clientModel)
+	}
 
 	s.writeDeepSeekResponsesHeaders(c, resp, false)
 	c.Data(resp.StatusCode, c.Writer.Header().Get("Content-Type"), writeBody)
@@ -238,12 +274,18 @@ func (s *OpenAIGatewayService) handleDeepSeekResponsesJSON(
 	return result, nil
 }
 
+// handleDeepSeekResponsesStream relays DeepSeek's Responses stream line by line. When clientModel differs from
+// upstreamModel (account model mapping), each written line names clientModel instead (see
+// renameDeepSeekResponsesModelInWireLine); events are parsed for usage and the observed upstream model before the
+// rename.
 func (s *OpenAIGatewayService) handleDeepSeekResponsesStream(
 	ctx context.Context,
 	resp *http.Response,
 	c *gin.Context,
 	account *Account,
 	startTime time.Time,
+	clientModel string,
+	upstreamModel string,
 ) (*deepSeekResponsesRelayResult, error) {
 	sanitizeDeepSeekResponseHeadersInPlace(account, resp.Header)
 	observer := upstreamResponseModelObserverFromContext(c)
@@ -520,6 +562,7 @@ func (s *OpenAIGatewayService) handleDeepSeekResponsesStream(
 						return protocolFailure(processErr)
 					}
 				}
+				wireLine = s.renameDeepSeekResponsesModelInWireLine(wireLine, upstreamModel, clientModel)
 				if guardErr := sensitiveGuard.PushWireLine(wireLine, func(safeWire []byte) error {
 					writeWire(safeWire)
 					return nil
@@ -544,7 +587,8 @@ func (s *OpenAIGatewayService) handleDeepSeekResponsesStream(
 				}
 			}
 			if len(pendingLine) > 0 {
-				if guardErr := sensitiveGuard.PushWireLine(pendingLine, func(safeWire []byte) error {
+				tailLine := s.renameDeepSeekResponsesModelInWireLine(pendingLine, upstreamModel, clientModel)
+				if guardErr := sensitiveGuard.PushWireLine(tailLine, func(safeWire []byte) error {
 					writeWire(safeWire)
 					return nil
 				}); guardErr != nil {
@@ -676,9 +720,9 @@ func (s *OpenAIGatewayService) forwardDeepSeekResponses(
 	serviceTier := extractOpenAIServiceTierFromBody(upstreamBody)
 	var relayResult *deepSeekResponsesRelayResult
 	if clientStream {
-		relayResult, err = s.handleDeepSeekResponsesStream(ctx, resp, c, account, startTime)
+		relayResult, err = s.handleDeepSeekResponsesStream(ctx, resp, c, account, startTime, originalModel, upstreamModel)
 	} else {
-		relayResult, err = s.handleDeepSeekResponsesJSON(resp, c, account)
+		relayResult, err = s.handleDeepSeekResponsesJSON(resp, c, account, originalModel, upstreamModel)
 	}
 	if relayResult == nil {
 		return nil, err
