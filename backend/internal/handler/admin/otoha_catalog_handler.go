@@ -65,6 +65,7 @@ type OtohaCatalogEntryRequest struct {
 	Use              []string          `json:"use"`
 	ProfileSource    string            `json:"profile_source"`
 	CostTier         string            `json:"cost_tier"`
+	API              string            `json:"api"`
 }
 
 func (r OtohaCatalogEntryRequest) input() service.OtohaCatalogEntryInput {
@@ -90,6 +91,7 @@ func (r OtohaCatalogEntryRequest) input() service.OtohaCatalogEntryInput {
 		Use:              r.Use,
 		ProfileSource:    r.ProfileSource,
 		CostTier:         r.CostTier,
+		API:              r.API,
 	}
 }
 

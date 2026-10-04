@@ -134,7 +134,7 @@ func (p fakeOtohaPricer) UpstreamPrice(_ context.Context, _ *Group, modelID stri
 
 type fakeOtohaRouting map[string]bool
 
-func (r fakeOtohaRouting) Route(_ context.Context, _ *Group, modelID string) OtohaModelRoute {
+func (r fakeOtohaRouting) Route(_ context.Context, _ *Group, modelID, _ string) OtohaModelRoute {
 	if routable, known := r[modelID]; known && !routable {
 		return OtohaModelRoute{Problem: OtohaCatalogProblemNoAccount}
 	}
@@ -383,7 +383,7 @@ func TestOtohaCatalogJSONCarriesNoInternalFields(t *testing.T) {
 		"id": true, "name": true, "description": true, "inputs": true, "images": true, "tools": true,
 		"context": true, "maxOutput": true, "reasoning": true, "defaultReasoning": true, "cost": true,
 		"price": true, "speed": true, "strengths": true, "complexity": true, "roles": true, "use": true,
-		"profileSource": true,
+		"profileSource": true, "api": true,
 	}
 	for key := range decoded.Models[0] {
 		require.True(t, allowed[key], "unexpected field %q in the app's catalog", key)

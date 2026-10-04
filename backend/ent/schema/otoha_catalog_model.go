@@ -79,6 +79,10 @@ func (OtohaCatalogModel) Fields() []ent.Field {
 			MaxLen(20).
 			Default("").
 			Comment("Empty derives the tier from the sale price."),
+		field.String("api").
+			MaxLen(32).
+			Default("").
+			Comment("Format the app calls the model in; empty derives it from the routed provider (TASK-64)."),
 	}
 }
 

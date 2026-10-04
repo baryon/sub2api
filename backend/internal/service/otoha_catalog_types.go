@@ -49,6 +49,10 @@ type OtohaCatalogModel struct {
 	Use []string `json:"use,omitempty"`
 	// ProfileSource says what the profile rests on: "vendor", "evaluation" or "admin".
 	ProfileSource string `json:"profileSource,omitempty"`
+	// API is the format the app calls the model in, with the same key and gateway (TASK-64):
+	// "anthropic-messages" (POST /v1/messages), "deepseek-responses" (DeepSeek's own Responses dialect, passed
+	// through, POST /v1/responses) or "openai-responses" (POST /v1/responses). Every model the server lists has one.
+	API string `json:"api,omitempty"`
 }
 
 // OtohaModelPrice is a model's sale price in US dollars per million tokens.

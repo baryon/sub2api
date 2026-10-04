@@ -135,6 +135,11 @@ func CostTier(v string) predicate.OtohaCatalogModel {
 	return predicate.OtohaCatalogModel(sql.FieldEQ(FieldCostTier, v))
 }
 
+// API applies equality check predicate on the "api" field. It's identical to APIEQ.
+func API(v string) predicate.OtohaCatalogModel {
+	return predicate.OtohaCatalogModel(sql.FieldEQ(FieldAPI, v))
+}
+
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.
 func CreatedAtEQ(v time.Time) predicate.OtohaCatalogModel {
 	return predicate.OtohaCatalogModel(sql.FieldEQ(FieldCreatedAt, v))
@@ -943,6 +948,71 @@ func CostTierEqualFold(v string) predicate.OtohaCatalogModel {
 // CostTierContainsFold applies the ContainsFold predicate on the "cost_tier" field.
 func CostTierContainsFold(v string) predicate.OtohaCatalogModel {
 	return predicate.OtohaCatalogModel(sql.FieldContainsFold(FieldCostTier, v))
+}
+
+// APIEQ applies the EQ predicate on the "api" field.
+func APIEQ(v string) predicate.OtohaCatalogModel {
+	return predicate.OtohaCatalogModel(sql.FieldEQ(FieldAPI, v))
+}
+
+// APINEQ applies the NEQ predicate on the "api" field.
+func APINEQ(v string) predicate.OtohaCatalogModel {
+	return predicate.OtohaCatalogModel(sql.FieldNEQ(FieldAPI, v))
+}
+
+// APIIn applies the In predicate on the "api" field.
+func APIIn(vs ...string) predicate.OtohaCatalogModel {
+	return predicate.OtohaCatalogModel(sql.FieldIn(FieldAPI, vs...))
+}
+
+// APINotIn applies the NotIn predicate on the "api" field.
+func APINotIn(vs ...string) predicate.OtohaCatalogModel {
+	return predicate.OtohaCatalogModel(sql.FieldNotIn(FieldAPI, vs...))
+}
+
+// APIGT applies the GT predicate on the "api" field.
+func APIGT(v string) predicate.OtohaCatalogModel {
+	return predicate.OtohaCatalogModel(sql.FieldGT(FieldAPI, v))
+}
+
+// APIGTE applies the GTE predicate on the "api" field.
+func APIGTE(v string) predicate.OtohaCatalogModel {
+	return predicate.OtohaCatalogModel(sql.FieldGTE(FieldAPI, v))
+}
+
+// APILT applies the LT predicate on the "api" field.
+func APILT(v string) predicate.OtohaCatalogModel {
+	return predicate.OtohaCatalogModel(sql.FieldLT(FieldAPI, v))
+}
+
+// APILTE applies the LTE predicate on the "api" field.
+func APILTE(v string) predicate.OtohaCatalogModel {
+	return predicate.OtohaCatalogModel(sql.FieldLTE(FieldAPI, v))
+}
+
+// APIContains applies the Contains predicate on the "api" field.
+func APIContains(v string) predicate.OtohaCatalogModel {
+	return predicate.OtohaCatalogModel(sql.FieldContains(FieldAPI, v))
+}
+
+// APIHasPrefix applies the HasPrefix predicate on the "api" field.
+func APIHasPrefix(v string) predicate.OtohaCatalogModel {
+	return predicate.OtohaCatalogModel(sql.FieldHasPrefix(FieldAPI, v))
+}
+
+// APIHasSuffix applies the HasSuffix predicate on the "api" field.
+func APIHasSuffix(v string) predicate.OtohaCatalogModel {
+	return predicate.OtohaCatalogModel(sql.FieldHasSuffix(FieldAPI, v))
+}
+
+// APIEqualFold applies the EqualFold predicate on the "api" field.
+func APIEqualFold(v string) predicate.OtohaCatalogModel {
+	return predicate.OtohaCatalogModel(sql.FieldEqualFold(FieldAPI, v))
+}
+
+// APIContainsFold applies the ContainsFold predicate on the "api" field.
+func APIContainsFold(v string) predicate.OtohaCatalogModel {
+	return predicate.OtohaCatalogModel(sql.FieldContainsFold(FieldAPI, v))
 }
 
 // HasGroup applies the HasEdge predicate on the "group" edge.

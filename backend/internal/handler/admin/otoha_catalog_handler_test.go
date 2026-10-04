@@ -96,7 +96,7 @@ func TestOtohaCatalogAdminCreateTakesEveryField(t *testing.T) {
 		"model_id":"gpt-6-luna","name":"Luna","description":"d","enabled":false,"inputs":["text","image"],"tools":true,
 		"context":1000,"max_output":100,"reasoning":["low","high"],"default_reasoning":"low","speed":"fast",
 		"strengths":{"coding":"strong"},"complexity":"complex","roles":["lead"],"use":["coding"],"profile_source":"vendor",
-		"cost_tier":"high"}`)
+		"cost_tier":"high","api":"anthropic-messages"}`)
 	require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
 	require.Equal(t, int64(7), stub.groupID)
 	in := stub.input
@@ -117,6 +117,7 @@ func TestOtohaCatalogAdminCreateTakesEveryField(t *testing.T) {
 	require.Equal(t, []string{"coding"}, in.Use)
 	require.Equal(t, "vendor", in.ProfileSource)
 	require.Equal(t, "high", in.CostTier)
+	require.Equal(t, "anthropic-messages", in.API)
 
 	var body struct {
 		Data service.OtohaCatalogEntry `json:"data"`

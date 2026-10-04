@@ -107,17 +107,17 @@ func TestOtohaRoutingAsksTheGatewayThatServesTheGroup(t *testing.T) {
 	routing := otohaDiagnoserRouting{gateway: gateway, openai: openai}
 	ctx := context.Background()
 
-	require.Equal(t, OtohaCatalogProblemNoAccount, routing.Route(ctx, &Group{ID: 1, Platform: PlatformOpenAI}, "gpt-6-luna").Problem)
-	require.Equal(t, OtohaCatalogProblemNoAccount, routing.Route(ctx, &Group{ID: 1, Platform: PlatformDeepseek}, "deepseek-v4").Problem)
-	require.Equal(t, OtohaModelRoute{}, routing.Route(ctx, &Group{ID: 1, Platform: PlatformAnthropic}, "claude-opus"),
+	require.Equal(t, OtohaCatalogProblemNoAccount, routing.Route(ctx, &Group{ID: 1, Platform: PlatformOpenAI}, "gpt-6-luna", "").Problem)
+	require.Equal(t, OtohaCatalogProblemNoAccount, routing.Route(ctx, &Group{ID: 1, Platform: PlatformDeepseek}, "deepseek-v4", "").Problem)
+	require.Equal(t, OtohaModelRoute{API: OtohaAPIAnthropicMessages}, routing.Route(ctx, &Group{ID: 1, Platform: PlatformAnthropic}, "claude-opus", ""),
 		"a group of one provider serves the model as itself")
 	require.Equal(t, []string{"openai:gpt-6-luna", "deepseek:deepseek-v4"}, openai.calls)
 	require.Equal(t, []string{"anthropic:claude-opus"}, gateway.calls)
 
-	require.Equal(t, OtohaModelRoute{Platform: PlatformAnthropic}, routing.Route(ctx, &Group{ID: 1, Platform: PlatformComposite}, "claude-sonnet-4-5"),
+	require.Equal(t, OtohaModelRoute{Platform: PlatformAnthropic, API: OtohaAPIAnthropicMessages}, routing.Route(ctx, &Group{ID: 1, Platform: PlatformComposite}, "claude-sonnet-4-5", ""),
 		"without routes a composite group goes by the model name, and asks that provider's gateway")
 	require.Equal(t, "anthropic:claude-sonnet-4-5", gateway.calls[len(gateway.calls)-1])
-	require.Equal(t, OtohaModelRoute{}, otohaDiagnoserRouting{}.Route(ctx, &Group{ID: 1, Platform: PlatformOpenAI}, "x"),
+	require.Equal(t, OtohaModelRoute{API: OtohaAPIOpenAIResponses}, otohaDiagnoserRouting{}.Route(ctx, &Group{ID: 1, Platform: PlatformOpenAI}, "x", ""),
 		"without a gateway the check does not hide models")
 }
 

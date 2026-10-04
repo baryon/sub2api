@@ -47,6 +47,13 @@ export default {
     billedAs: 'Priced as {model}',
     tierLine: 'Tier: {tier}',
     priceVaries: 'Accounts price it differently; the highest is shown',
+    calledAs: 'App calls it in the {format}',
+    api: {
+      auto: 'Automatic (by provider)',
+      anthropicMessages: 'Claude format',
+      deepseekResponses: 'DeepSeek format',
+      openaiResponses: 'OpenAI format'
+    },
     providerUnknown: 'Cannot tell',
     textOnly: 'Text only',
     reasoningRange: 'Reasoning {levels}',
@@ -56,7 +63,8 @@ export default {
       disabled: 'Turned off',
       not_allowed: 'Not allowed in group',
       no_route: 'Provider unknown',
-      not_via_responses: 'App cannot call it',
+      no_native_api: 'App does not speak its format',
+      api_unreachable: 'Chosen format does not reach it',
       channel_restricted: 'Channel does not allow it',
       no_account: 'No account for it',
       no_price: 'No price'
@@ -66,9 +74,11 @@ export default {
       no_account: 'No account in the group can serve this model.',
       no_account_at: 'No {provider} account in the group can serve this model.',
       no_route: 'The group cannot tell which provider should serve this model. Set its provider in the group\'s Composite Routes.',
-      not_via_responses: 'The app calls models only through the OpenAI Responses API, which this provider\'s accounts do not take.',
       channel_restricted: 'The group\'s channel allows only the models it prices, and this is not one of them. Add it to the channel pricing.',
-      not_via_responses_at: 'The app calls models only through the OpenAI Responses API, which {provider} accounts do not take.',
+      no_native_api: 'The app does not speak this provider\'s own format, so the model is not shown. For some providers the gateway converts (Gemini, for example, takes the Claude format): choose the format in the editor, and show the model once you have checked that it works.',
+      no_native_api_at: 'The app does not speak the format of {provider}, so the model is not shown. For some providers the gateway converts (Gemini, for example, takes the Claude format): choose the format in the editor, and show the model once you have checked that it works.',
+      api_unreachable: 'The format chosen for this model does not reach the provider\'s accounts. Set it back to automatic or choose another.',
+      api_unreachable_at: 'The format chosen for this model does not reach the {provider} accounts. Set it back to automatic or choose another.',
       no_price: 'The price table has no price for this model. Set one in the group\'s per-model pricing.'
     },
     tier: {
@@ -184,6 +194,9 @@ export default {
       price: 'Price',
       saleNow: 'Price shown in the app: {price}',
       routedTo: 'This model is served by {provider}.',
+      calledAs: 'The app calls it in the {format}.',
+      api: 'How the app calls it',
+      apiHint: 'Usually automatic: Claude models in the Claude format, DeepSeek in the DeepSeek format, GPT, Grok and others in the OpenAI format. Choose one only when the provider\'s own format is not available.',
       upstreamNow: 'Price in the group (before the rate): {price}',
       noUpstreamPrice: 'The price table has no price for this model.',
       priceHint: 'Price = the model\'s price in the group (the group\'s per-model pricing, else the channel price or the built-in price table) × group rate, the same as what is charged. To change it, use the group\'s per-model pricing.',

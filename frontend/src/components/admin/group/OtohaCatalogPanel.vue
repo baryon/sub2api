@@ -102,6 +102,9 @@
             <td class="whitespace-nowrap px-3 py-2">
               <div class="font-medium text-gray-900 dark:text-white">{{ entry.name || entry.model_id }}</div>
               <div class="font-mono text-xs text-gray-500 dark:text-gray-400">{{ entry.model_id }}</div>
+              <div v-if="entry.effective_api" class="text-xs text-gray-500 dark:text-gray-400">
+                {{ t('admin.otohaCatalog.calledAs', { format: apiLabel(entry.effective_api) }) }}
+              </div>
             </td>
             <td v-if="isMixed" class="whitespace-nowrap px-3 py-2" :data-testid="`otoha-catalog-provider-${entry.model_id}`">
               <template v-if="entry.route_platform">
@@ -199,6 +202,7 @@
           <div class="text-sm font-medium text-gray-900 dark:text-white">{{ model.name }}</div>
           <div class="font-mono text-gray-500">{{ model.id }}</div>
           <div class="mt-1">{{ formatPrice(model.price) }} · {{ t('admin.otohaCatalog.tier.' + model.cost) }}</div>
+          <div v-if="model.api">{{ t('admin.otohaCatalog.calledAs', { format: apiLabel(model.api) }) }}</div>
           <div v-if="model.abilities.length">{{ t('admin.otohaCatalog.preview.abilities') }}: {{ model.abilities.join(t('admin.otohaCatalog.preview.separator')) }}</div>
           <div v-if="model.uses.length">{{ t('admin.otohaCatalog.preview.use') }}: {{ model.uses.join(t('admin.otohaCatalog.preview.separator')) }}</div>
         </li>
@@ -350,15 +354,26 @@
           <div v-else>{{ t('admin.otohaCatalog.editor.noUpstreamPrice') }}</div>
           <div v-if="editorSale" class="font-medium">{{ t('admin.otohaCatalog.editor.saleNow', { price: formatPrice(editorSale) }) }}</div>
           <div v-if="isMixed && editorRoute">{{ t('admin.otohaCatalog.editor.routedTo', { provider: platformLabel(editorRoute) }) }}</div>
+          <div v-if="editorAPI">{{ t('admin.otohaCatalog.editor.calledAs', { format: apiLabel(editorAPI) }) }}</div>
           <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.otohaCatalog.editor.priceHint') }}</p>
         </div>
-        <label class="block sm:w-1/3">
-          <span class="input-label">{{ t('admin.otohaCatalog.editor.tier') }}</span>
-          <select v-model="form.cost_tier" class="input w-full">
-            <option value="">{{ t('admin.otohaCatalog.tier.auto') }}</option>
-            <option v-for="tier in TIERS" :key="tier" :value="tier">{{ t('admin.otohaCatalog.tier.' + tier) }}</option>
-          </select>
-        </label>
+        <div class="grid gap-3 sm:grid-cols-2">
+          <label class="block">
+            <span class="input-label">{{ t('admin.otohaCatalog.editor.tier') }}</span>
+            <select v-model="form.cost_tier" class="input w-full">
+              <option value="">{{ t('admin.otohaCatalog.tier.auto') }}</option>
+              <option v-for="tier in TIERS" :key="tier" :value="tier">{{ t('admin.otohaCatalog.tier.' + tier) }}</option>
+            </select>
+          </label>
+          <label class="block">
+            <span class="input-label">{{ t('admin.otohaCatalog.editor.api') }}</span>
+            <select v-model="form.api" class="input w-full" data-testid="otoha-catalog-api">
+              <option value="">{{ t('admin.otohaCatalog.api.auto') }}</option>
+              <option v-for="api in APIS" :key="api" :value="api">{{ apiLabel(api) }}</option>
+            </select>
+            <span class="input-hint">{{ t('admin.otohaCatalog.editor.apiHint') }}</span>
+          </label>
+        </div>
       </section>
 
       <p v-if="formError" class="input-error-text" role="alert">{{ formError }}</p>
@@ -391,6 +406,7 @@ import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { adminAPI } from '@/api/admin'
 import type {
+  OtohaCatalogAPI,
   OtohaCatalogAdminEntry,
   OtohaCatalogAdminView,
   OtohaCatalogEntryInput,
@@ -413,6 +429,12 @@ const LEVELS = ['strong', 'usable', 'avoid'] as const
 const USES = ['default', 'writing', 'planning', 'fast', 'summarize', 'deep', 'coding', 'web'] as const
 const PROFILE_SOURCES = ['vendor', 'evaluation', 'admin'] as const
 const TIERS = ['low', 'standard', 'high'] as const
+const APIS = ['anthropic-messages', 'deepseek-responses', 'openai-responses'] as const
+const API_LABEL_KEYS: Record<string, string> = {
+  'anthropic-messages': 'anthropicMessages',
+  'deepseek-responses': 'deepseekResponses',
+  'openai-responses': 'openaiResponses'
+}
 const TOKENS_MAX = 100_000_000
 const MODEL_ID_MAX = 200
 const NAME_MAX = 200
@@ -459,6 +481,9 @@ const reasoningText = ref('')
 const editorUpstream = ref<OtohaModelPrice | null>(null)
 // In a mixed group, the provider the edited model goes to.
 const editorRoute = ref('')
+// The format the app calls the edited model in when the admin leaves it automatic ('' when it has none).
+const editorRouteAPI = ref<OtohaCatalogAPI>('')
+const editorAPI = computed<OtohaCatalogAPI>(() => form.api || editorRouteAPI.value)
 
 const entries = computed(() => view.value?.entries ?? [])
 const isMixed = computed(() => view.value?.group_platform === 'composite')
@@ -501,6 +526,7 @@ const previewModels = computed(() =>
       name: model.name,
       price: model.price as OtohaModelPrice,
       cost: String(model.cost ?? ''),
+      api: typeof model.api === 'string' ? model.api : '',
       abilities,
       uses
     }
@@ -553,7 +579,8 @@ function emptyInput(modelId: string): OtohaCatalogEntryInput {
     roles: [],
     use: [],
     profile_source: '',
-    cost_tier: ''
+    cost_tier: '',
+    api: ''
   }
 }
 
@@ -604,6 +631,11 @@ function formatPrice(price: OtohaModelPrice | null | undefined): string {
   return `${formatAmount(price.input)} / ${formatAmount(price.output)}`
 }
 
+function apiLabel(api: string): string {
+  const key = API_LABEL_KEYS[api]
+  return key ? t('admin.otohaCatalog.api.' + key) : api
+}
+
 function statusLabel(entry: OtohaCatalogAdminEntry): string {
   return entry.in_catalog ? t('admin.otohaCatalog.status.shown') : t('admin.otohaCatalog.status.' + entry.problem)
 }
@@ -625,10 +657,11 @@ function statusHint(entry: OtohaCatalogAdminEntry): string {
       return entry.route_platform
         ? t('admin.otohaCatalog.statusHint.no_account_at', { provider: platformLabel(entry.route_platform) })
         : t('admin.otohaCatalog.statusHint.no_account')
-    case 'not_via_responses':
+    case 'no_native_api':
+    case 'api_unreachable':
       return entry.route_platform
-        ? t('admin.otohaCatalog.statusHint.not_via_responses_at', { provider: platformLabel(entry.route_platform) })
-        : t('admin.otohaCatalog.statusHint.not_via_responses')
+        ? t('admin.otohaCatalog.statusHint.' + entry.problem + '_at', { provider: platformLabel(entry.route_platform) })
+        : t('admin.otohaCatalog.statusHint.' + entry.problem)
     default:
       return ''
   }
@@ -652,7 +685,8 @@ function inputFromEntry(entry: OtohaCatalogEntryInput): OtohaCatalogEntryInput {
     roles: [...(entry.roles ?? [])],
     use: [...(entry.use ?? [])],
     profile_source: entry.profile_source ?? '',
-    cost_tier: entry.cost_tier ?? ''
+    cost_tier: entry.cost_tier ?? '',
+    api: entry.api ?? ''
   }
 }
 
@@ -696,6 +730,7 @@ async function openCreate() {
     fillForm(inputFromEntry(draft.entry))
     editorUpstream.value = draft.upstream_price
     editorRoute.value = draft.route_platform ?? ''
+    editorRouteAPI.value = draft.route_api ?? ''
     prefillNotice.value = draft.metadata_found
       ? t('admin.otohaCatalog.editor.prefillDone')
       : t('admin.otohaCatalog.editor.prefillMissing')
@@ -704,6 +739,7 @@ async function openCreate() {
     fillForm(emptyInput(modelId))
     editorUpstream.value = null
     editorRoute.value = ''
+    editorRouteAPI.value = ''
     prefillNotice.value = t('admin.otohaCatalog.editor.prefillFailed')
   } finally {
     prefilling.value = false
@@ -718,6 +754,9 @@ function openEdit(entry: OtohaCatalogAdminEntry) {
   fillForm(inputFromEntry(entry))
   editorUpstream.value = entry.upstream_price
   editorRoute.value = entry.route_platform ?? ''
+  // Without an admin choice the effective format is the automatic one. With a choice the automatic format is not
+  // known here, so clearing the choice shows no format until the entry is saved or filled from upstream again.
+  editorRouteAPI.value = entry.api ? '' : (entry.effective_api ?? '')
   editingId.value = entry.id
   editorOpen.value = true
 }
@@ -735,6 +774,7 @@ async function fillFromUpstream() {
     const draft = await adminAPI.otohaCatalog.prefill(props.group.id, form.model_id.trim())
     editorUpstream.value = draft.upstream_price
     editorRoute.value = draft.route_platform ?? ''
+    editorRouteAPI.value = draft.route_api ?? ''
     if (draft.metadata_found) {
       applyUpstreamAbilities(inputFromEntry(draft.entry))
       prefillNotice.value = t('admin.otohaCatalog.editor.prefillDone')

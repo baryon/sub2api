@@ -337,6 +337,20 @@ func (_u *OtohaCatalogModelUpdate) SetNillableCostTier(v *string) *OtohaCatalogM
 	return _u
 }
 
+// SetAPI sets the "api" field.
+func (_u *OtohaCatalogModelUpdate) SetAPI(v string) *OtohaCatalogModelUpdate {
+	_u.mutation.SetAPI(v)
+	return _u
+}
+
+// SetNillableAPI sets the "api" field if the given value is not nil.
+func (_u *OtohaCatalogModelUpdate) SetNillableAPI(v *string) *OtohaCatalogModelUpdate {
+	if v != nil {
+		_u.SetAPI(*v)
+	}
+	return _u
+}
+
 // SetGroup sets the "group" edge to the Group entity.
 func (_u *OtohaCatalogModelUpdate) SetGroup(v *Group) *OtohaCatalogModelUpdate {
 	return _u.SetGroupID(v.ID)
@@ -424,6 +438,11 @@ func (_u *OtohaCatalogModelUpdate) check() error {
 	if v, ok := _u.mutation.CostTier(); ok {
 		if err := otohacatalogmodel.CostTierValidator(v); err != nil {
 			return &ValidationError{Name: "cost_tier", err: fmt.Errorf(`ent: validator failed for field "OtohaCatalogModel.cost_tier": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.API(); ok {
+		if err := otohacatalogmodel.APIValidator(v); err != nil {
+			return &ValidationError{Name: "api", err: fmt.Errorf(`ent: validator failed for field "OtohaCatalogModel.api": %w`, err)}
 		}
 	}
 	if _u.mutation.GroupCleared() && len(_u.mutation.GroupIDs()) > 0 {
@@ -544,6 +563,9 @@ func (_u *OtohaCatalogModelUpdate) sqlSave(ctx context.Context) (_node int, err 
 	}
 	if value, ok := _u.mutation.CostTier(); ok {
 		_spec.SetField(otohacatalogmodel.FieldCostTier, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.API(); ok {
+		_spec.SetField(otohacatalogmodel.FieldAPI, field.TypeString, value)
 	}
 	if _u.mutation.GroupCleared() {
 		edge := &sqlgraph.EdgeSpec{
@@ -901,6 +923,20 @@ func (_u *OtohaCatalogModelUpdateOne) SetNillableCostTier(v *string) *OtohaCatal
 	return _u
 }
 
+// SetAPI sets the "api" field.
+func (_u *OtohaCatalogModelUpdateOne) SetAPI(v string) *OtohaCatalogModelUpdateOne {
+	_u.mutation.SetAPI(v)
+	return _u
+}
+
+// SetNillableAPI sets the "api" field if the given value is not nil.
+func (_u *OtohaCatalogModelUpdateOne) SetNillableAPI(v *string) *OtohaCatalogModelUpdateOne {
+	if v != nil {
+		_u.SetAPI(*v)
+	}
+	return _u
+}
+
 // SetGroup sets the "group" edge to the Group entity.
 func (_u *OtohaCatalogModelUpdateOne) SetGroup(v *Group) *OtohaCatalogModelUpdateOne {
 	return _u.SetGroupID(v.ID)
@@ -1001,6 +1037,11 @@ func (_u *OtohaCatalogModelUpdateOne) check() error {
 	if v, ok := _u.mutation.CostTier(); ok {
 		if err := otohacatalogmodel.CostTierValidator(v); err != nil {
 			return &ValidationError{Name: "cost_tier", err: fmt.Errorf(`ent: validator failed for field "OtohaCatalogModel.cost_tier": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.API(); ok {
+		if err := otohacatalogmodel.APIValidator(v); err != nil {
+			return &ValidationError{Name: "api", err: fmt.Errorf(`ent: validator failed for field "OtohaCatalogModel.api": %w`, err)}
 		}
 	}
 	if _u.mutation.GroupCleared() && len(_u.mutation.GroupIDs()) > 0 {
@@ -1138,6 +1179,9 @@ func (_u *OtohaCatalogModelUpdateOne) sqlSave(ctx context.Context) (_node *Otoha
 	}
 	if value, ok := _u.mutation.CostTier(); ok {
 		_spec.SetField(otohacatalogmodel.FieldCostTier, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.API(); ok {
+		_spec.SetField(otohacatalogmodel.FieldAPI, field.TypeString, value)
 	}
 	if _u.mutation.GroupCleared() {
 		edge := &sqlgraph.EdgeSpec{

@@ -261,6 +261,20 @@ func (_c *OtohaCatalogModelCreate) SetNillableCostTier(v *string) *OtohaCatalogM
 	return _c
 }
 
+// SetAPI sets the "api" field.
+func (_c *OtohaCatalogModelCreate) SetAPI(v string) *OtohaCatalogModelCreate {
+	_c.mutation.SetAPI(v)
+	return _c
+}
+
+// SetNillableAPI sets the "api" field if the given value is not nil.
+func (_c *OtohaCatalogModelCreate) SetNillableAPI(v *string) *OtohaCatalogModelCreate {
+	if v != nil {
+		_c.SetAPI(*v)
+	}
+	return _c
+}
+
 // SetGroup sets the "group" edge to the Group entity.
 func (_c *OtohaCatalogModelCreate) SetGroup(v *Group) *OtohaCatalogModelCreate {
 	return _c.SetGroupID(v.ID)
@@ -357,6 +371,10 @@ func (_c *OtohaCatalogModelCreate) defaults() {
 		v := otohacatalogmodel.DefaultCostTier
 		_c.mutation.SetCostTier(v)
 	}
+	if _, ok := _c.mutation.API(); !ok {
+		v := otohacatalogmodel.DefaultAPI
+		_c.mutation.SetAPI(v)
+	}
 }
 
 // check runs all checks and user-defined validators on the builder.
@@ -442,6 +460,14 @@ func (_c *OtohaCatalogModelCreate) check() error {
 	if v, ok := _c.mutation.CostTier(); ok {
 		if err := otohacatalogmodel.CostTierValidator(v); err != nil {
 			return &ValidationError{Name: "cost_tier", err: fmt.Errorf(`ent: validator failed for field "OtohaCatalogModel.cost_tier": %w`, err)}
+		}
+	}
+	if _, ok := _c.mutation.API(); !ok {
+		return &ValidationError{Name: "api", err: errors.New(`ent: missing required field "OtohaCatalogModel.api"`)}
+	}
+	if v, ok := _c.mutation.API(); ok {
+		if err := otohacatalogmodel.APIValidator(v); err != nil {
+			return &ValidationError{Name: "api", err: fmt.Errorf(`ent: validator failed for field "OtohaCatalogModel.api": %w`, err)}
 		}
 	}
 	if len(_c.mutation.GroupIDs()) == 0 {
@@ -553,6 +579,10 @@ func (_c *OtohaCatalogModelCreate) createSpec() (*OtohaCatalogModel, *sqlgraph.C
 	if value, ok := _c.mutation.CostTier(); ok {
 		_spec.SetField(otohacatalogmodel.FieldCostTier, field.TypeString, value)
 		_node.CostTier = value
+	}
+	if value, ok := _c.mutation.API(); ok {
+		_spec.SetField(otohacatalogmodel.FieldAPI, field.TypeString, value)
+		_node.API = value
 	}
 	if nodes := _c.mutation.GroupIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
@@ -908,6 +938,18 @@ func (u *OtohaCatalogModelUpsert) SetCostTier(v string) *OtohaCatalogModelUpsert
 // UpdateCostTier sets the "cost_tier" field to the value that was provided on create.
 func (u *OtohaCatalogModelUpsert) UpdateCostTier() *OtohaCatalogModelUpsert {
 	u.SetExcluded(otohacatalogmodel.FieldCostTier)
+	return u
+}
+
+// SetAPI sets the "api" field.
+func (u *OtohaCatalogModelUpsert) SetAPI(v string) *OtohaCatalogModelUpsert {
+	u.Set(otohacatalogmodel.FieldAPI, v)
+	return u
+}
+
+// UpdateAPI sets the "api" field to the value that was provided on create.
+func (u *OtohaCatalogModelUpsert) UpdateAPI() *OtohaCatalogModelUpsert {
+	u.SetExcluded(otohacatalogmodel.FieldAPI)
 	return u
 }
 
@@ -1289,6 +1331,20 @@ func (u *OtohaCatalogModelUpsertOne) SetCostTier(v string) *OtohaCatalogModelUps
 func (u *OtohaCatalogModelUpsertOne) UpdateCostTier() *OtohaCatalogModelUpsertOne {
 	return u.Update(func(s *OtohaCatalogModelUpsert) {
 		s.UpdateCostTier()
+	})
+}
+
+// SetAPI sets the "api" field.
+func (u *OtohaCatalogModelUpsertOne) SetAPI(v string) *OtohaCatalogModelUpsertOne {
+	return u.Update(func(s *OtohaCatalogModelUpsert) {
+		s.SetAPI(v)
+	})
+}
+
+// UpdateAPI sets the "api" field to the value that was provided on create.
+func (u *OtohaCatalogModelUpsertOne) UpdateAPI() *OtohaCatalogModelUpsertOne {
+	return u.Update(func(s *OtohaCatalogModelUpsert) {
+		s.UpdateAPI()
 	})
 }
 
@@ -1836,6 +1892,20 @@ func (u *OtohaCatalogModelUpsertBulk) SetCostTier(v string) *OtohaCatalogModelUp
 func (u *OtohaCatalogModelUpsertBulk) UpdateCostTier() *OtohaCatalogModelUpsertBulk {
 	return u.Update(func(s *OtohaCatalogModelUpsert) {
 		s.UpdateCostTier()
+	})
+}
+
+// SetAPI sets the "api" field.
+func (u *OtohaCatalogModelUpsertBulk) SetAPI(v string) *OtohaCatalogModelUpsertBulk {
+	return u.Update(func(s *OtohaCatalogModelUpsert) {
+		s.SetAPI(v)
+	})
+}
+
+// UpdateAPI sets the "api" field to the value that was provided on create.
+func (u *OtohaCatalogModelUpsertBulk) UpdateAPI() *OtohaCatalogModelUpsertBulk {
+	return u.Update(func(s *OtohaCatalogModelUpsert) {
+		s.UpdateAPI()
 	})
 }
 

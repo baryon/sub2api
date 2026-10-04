@@ -1383,6 +1383,12 @@ func init() {
 	otohacatalogmodel.DefaultCostTier = otohacatalogmodelDescCostTier.Default.(string)
 	// otohacatalogmodel.CostTierValidator is a validator for the "cost_tier" field. It is called by the builders before save.
 	otohacatalogmodel.CostTierValidator = otohacatalogmodelDescCostTier.Validators[0].(func(string) error)
+	// otohacatalogmodelDescAPI is the schema descriptor for api field.
+	otohacatalogmodelDescAPI := otohacatalogmodelFields[19].Descriptor()
+	// otohacatalogmodel.DefaultAPI holds the default value on creation for the api field.
+	otohacatalogmodel.DefaultAPI = otohacatalogmodelDescAPI.Default.(string)
+	// otohacatalogmodel.APIValidator is a validator for the "api" field. It is called by the builders before save.
+	otohacatalogmodel.APIValidator = otohacatalogmodelDescAPI.Validators[0].(func(string) error)
 	paymentauditlogFields := schema.PaymentAuditLog{}.Fields()
 	_ = paymentauditlogFields
 	// paymentauditlogDescOrderID is the schema descriptor for order_id field.

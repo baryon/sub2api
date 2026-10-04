@@ -75,6 +75,8 @@ type otohaCompositeFixture struct {
 	metadata  *recordingOtohaMetadata
 	repo      *fakeOtohaCatalogRepo
 	svc       *OtohaCatalogService
+	// channels is the group's channel, which billing reads too.
+	channels *ChannelService
 }
 
 // newOtohaCompositeFixture builds the catalog over the real composite resolver and the real price resolver: the
@@ -107,10 +109,14 @@ func newOtohaCompositeFixture(t *testing.T) *otohaCompositeFixture {
 			{Platform: PlatformOpenAI, Models: []string{"house-model"}, InputPrice: otohaFloat(0.5e-6), OutputPrice: otohaFloat(1e-6)},
 			{Platform: PlatformOpenAI, Models: []string{"gpt-6-luna-2026"}, InputPrice: otohaFloat(1.5e-6), OutputPrice: otohaFloat(6e-6)},
 			{Platform: PlatformOpenAI, Models: []string{"gpt-6-luna-pro"}, InputPrice: otohaFloat(5e-6), OutputPrice: otohaFloat(20e-6)},
+			{Platform: PlatformDeepseek, Models: []string{"deepseek-v4-flash"}, InputPrice: otohaFloat(0.15e-6), OutputPrice: otohaFloat(0.6e-6)},
+			{Platform: PlatformGrok, Models: []string{"grok-4.7"}, InputPrice: otohaFloat(3e-6), OutputPrice: otohaFloat(9e-6)},
+			{Platform: PlatformAnthropic, Models: []string{"deepseek-v4-flash", "grok-4.7"}, InputPrice: otohaFloat(100e-6), OutputPrice: otohaFloat(100e-6)},
 		},
 	}
 	channels := &ChannelService{}
 	channels.cache.Store(populateChannelCache([]Channel{channel}, map[int64]string{otohaCompositeGroupID: PlatformComposite}))
+	f.channels = channels
 
 	resolver := NewCompositeRouteResolver(otohaRoutesFunc(func() ([]CompositeModelRoute, error) { return f.routes, f.resolveErr }))
 	resolver.SetModelOwnershipResolver(func(_ context.Context, groupID int64, model string) (CompositeModelOwnership, error) {
@@ -198,8 +204,8 @@ func TestOtohaCompositeCatalogListsEachProvidersModelsAtWhatBillingCharges(t *te
 	require.Equal(t, 30.0, opus.SalePrice.Input)
 
 	gemini := byModel["gemini-2.5-pro"]
-	require.Equal(t, OtohaCatalogProblemNotViaResponses, gemini.Problem,
-		"/v1/responses does not reach Gemini accounts: the Responses handler would send them an Anthropic request")
+	require.Equal(t, OtohaCatalogProblemNoNativeAPI, gemini.Problem,
+		"the app speaks no Gemini format of its own (TASK-64)")
 	require.Equal(t, PlatformGemini, gemini.RoutePlatform)
 
 	mystery := byModel["mystery-model"]
@@ -241,8 +247,8 @@ func TestOtohaCompositeRouteToAProviderWithoutResponsesIsHidden(t *testing.T) {
 	f.add(t, "otoha-gemini")
 
 	_, byModel := f.view(t)
-	require.Equal(t, OtohaCatalogProblemNotViaResponses, byModel["otoha-gemini"].Problem,
-		"a Gemini account is not reachable through /v1/responses even when the group has one")
+	require.Equal(t, OtohaCatalogProblemNoNativeAPI, byModel["otoha-gemini"].Problem,
+		"a Gemini model has no format the app speaks natively, even when the group has a Gemini account")
 	require.Equal(t, 2.5, byModel["otoha-gemini"].SalePrice.Input)
 }
 
@@ -357,7 +363,7 @@ func TestOtohaCatalogOfAGeminiGroupHidesWhatResponsesCannotReach(t *testing.T) {
 
 	view, err := f.svc.AdminView(context.Background(), otohaGroupID)
 	require.NoError(t, err)
-	require.Equal(t, OtohaCatalogProblemNotViaResponses, view.Entries[0].Problem)
+	require.Equal(t, OtohaCatalogProblemNoNativeAPI, view.Entries[0].Problem)
 	require.Empty(t, view.Entries[0].RoutePlatform, "a single-provider group needs no provider column")
 	require.Empty(t, view.Preview.Models)
 }

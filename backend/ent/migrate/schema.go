@@ -1121,6 +1121,7 @@ var (
 		{Name: "uses", Type: field.TypeJSON, Nullable: true},
 		{Name: "profile_source", Type: field.TypeString, Size: 20, Default: ""},
 		{Name: "cost_tier", Type: field.TypeString, Size: 20, Default: ""},
+		{Name: "api", Type: field.TypeString, Size: 32, Default: ""},
 		{Name: "group_id", Type: field.TypeInt64},
 	}
 	// OtohaCatalogModelsTable holds the schema information for the "otoha_catalog_models" table.
@@ -1131,7 +1132,7 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "otoha_catalog_models_groups_group",
-				Columns:    []*schema.Column{OtohaCatalogModelsColumns[21]},
+				Columns:    []*schema.Column{OtohaCatalogModelsColumns[22]},
 				RefColumns: []*schema.Column{GroupsColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
@@ -1140,12 +1141,12 @@ var (
 			{
 				Name:    "otohacatalogmodel_group_id_model_id",
 				Unique:  true,
-				Columns: []*schema.Column{OtohaCatalogModelsColumns[21], OtohaCatalogModelsColumns[3]},
+				Columns: []*schema.Column{OtohaCatalogModelsColumns[22], OtohaCatalogModelsColumns[3]},
 			},
 			{
 				Name:    "otohacatalogmodel_group_id_sort_order",
 				Unique:  false,
-				Columns: []*schema.Column{OtohaCatalogModelsColumns[21], OtohaCatalogModelsColumns[7]},
+				Columns: []*schema.Column{OtohaCatalogModelsColumns[22], OtohaCatalogModelsColumns[7]},
 			},
 		},
 	}

@@ -56,6 +56,8 @@ const (
 	FieldProfileSource = "profile_source"
 	// FieldCostTier holds the string denoting the cost_tier field in the database.
 	FieldCostTier = "cost_tier"
+	// FieldAPI holds the string denoting the api field in the database.
+	FieldAPI = "api"
 	// EdgeGroup holds the string denoting the group edge name in mutations.
 	EdgeGroup = "group"
 	// Table holds the table name of the otohacatalogmodel in the database.
@@ -93,6 +95,7 @@ var Columns = []string{
 	FieldUses,
 	FieldProfileSource,
 	FieldCostTier,
+	FieldAPI,
 }
 
 // ValidColumn reports if the column name is valid (part of the table columns).
@@ -150,6 +153,10 @@ var (
 	DefaultCostTier string
 	// CostTierValidator is a validator for the "cost_tier" field. It is called by the builders before save.
 	CostTierValidator func(string) error
+	// DefaultAPI holds the default value on creation for the "api" field.
+	DefaultAPI string
+	// APIValidator is a validator for the "api" field. It is called by the builders before save.
+	APIValidator func(string) error
 )
 
 // OrderOption defines the ordering options for the OtohaCatalogModel queries.
@@ -238,6 +245,11 @@ func ByProfileSource(opts ...sql.OrderTermOption) OrderOption {
 // ByCostTier orders the results by the cost_tier field.
 func ByCostTier(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldCostTier, opts...).ToFunc()
+}
+
+// ByAPI orders the results by the api field.
+func ByAPI(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldAPI, opts...).ToFunc()
 }
 
 // ByGroupField orders the results by group field.

@@ -61,6 +61,8 @@ type OtohaCatalogModel struct {
 	ProfileSource string `json:"profile_source,omitempty"`
 	// Empty derives the tier from the sale price.
 	CostTier string `json:"cost_tier,omitempty"`
+	// Format the app calls the model in; empty derives it from the routed provider (TASK-64).
+	API string `json:"api,omitempty"`
 	// Edges holds the relations/edges for other nodes in the graph.
 	// The values are being populated by the OtohaCatalogModelQuery when eager-loading is set.
 	Edges        OtohaCatalogModelEdges `json:"edges"`
@@ -98,7 +100,7 @@ func (*OtohaCatalogModel) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullBool)
 		case otohacatalogmodel.FieldID, otohacatalogmodel.FieldGroupID, otohacatalogmodel.FieldSortOrder, otohacatalogmodel.FieldContextTokens, otohacatalogmodel.FieldMaxOutputTokens:
 			values[i] = new(sql.NullInt64)
-		case otohacatalogmodel.FieldModelID, otohacatalogmodel.FieldName, otohacatalogmodel.FieldDescription, otohacatalogmodel.FieldDefaultReasoning, otohacatalogmodel.FieldSpeed, otohacatalogmodel.FieldComplexity, otohacatalogmodel.FieldProfileSource, otohacatalogmodel.FieldCostTier:
+		case otohacatalogmodel.FieldModelID, otohacatalogmodel.FieldName, otohacatalogmodel.FieldDescription, otohacatalogmodel.FieldDefaultReasoning, otohacatalogmodel.FieldSpeed, otohacatalogmodel.FieldComplexity, otohacatalogmodel.FieldProfileSource, otohacatalogmodel.FieldCostTier, otohacatalogmodel.FieldAPI:
 			values[i] = new(sql.NullString)
 		case otohacatalogmodel.FieldCreatedAt, otohacatalogmodel.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
@@ -259,6 +261,12 @@ func (_m *OtohaCatalogModel) assignValues(columns []string, values []any) error 
 			} else if value.Valid {
 				_m.CostTier = value.String
 			}
+		case otohacatalogmodel.FieldAPI:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field api", values[i])
+			} else if value.Valid {
+				_m.API = value.String
+			}
 		default:
 			_m.selectValues.Set(columns[i], values[i])
 		}
@@ -362,6 +370,9 @@ func (_m *OtohaCatalogModel) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("cost_tier=")
 	builder.WriteString(_m.CostTier)
+	builder.WriteString(", ")
+	builder.WriteString("api=")
+	builder.WriteString(_m.API)
 	builder.WriteByte(')')
 	return builder.String()
 }

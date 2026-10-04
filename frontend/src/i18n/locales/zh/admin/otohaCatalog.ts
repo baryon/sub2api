@@ -47,6 +47,13 @@ export default {
     billedAs: '按 {model} 计价',
     tierLine: '价位：{tier}',
     priceVaries: '各账号计价不同，显示最高价',
+    calledAs: 'App 用 {format}调用',
+    api: {
+      auto: '自动（按服务商）',
+      anthropicMessages: 'Claude 格式',
+      deepseekResponses: 'DeepSeek 格式',
+      openaiResponses: 'OpenAI 格式'
+    },
     providerUnknown: '无法确定',
     textOnly: '仅文字',
     reasoningRange: '推理 {levels}',
@@ -56,7 +63,8 @@ export default {
       disabled: '已停用',
       not_allowed: '分组不允许',
       no_route: '无法确定服务商',
-      not_via_responses: 'App 无法调用',
+      no_native_api: 'App 不支持其格式',
+      api_unreachable: '所选调用方式不可用',
       channel_restricted: '渠道不允许',
       no_account: '没有可用账号',
       no_price: '没有价格'
@@ -66,9 +74,11 @@ export default {
       no_account: '分组里没有能处理这个模型的账号。',
       no_account_at: '分组里没有能处理这个模型的 {provider} 账号。',
       no_route: '分组不知道该把这个模型交给哪家服务商。请在分组的「Composite 路由」里为它指定服务商。',
-      not_via_responses: 'App 只用 OpenAI Responses 接口调用模型，这家服务商的账号不支持。',
       channel_restricted: '分组所在的渠道只允许它定了价的模型，这个模型不在其中。请在渠道定价里加上它。',
-      not_via_responses_at: 'App 只用 OpenAI Responses 接口调用模型，{provider} 的账号不支持。',
+      no_native_api: 'App 不支持这家服务商自己的格式，所以没有上架。有的服务商可以由网关转换（例如 Gemini 可用 Claude 格式）：在编辑里选择调用方式，确认能用后再上架。',
+      no_native_api_at: 'App 不支持 {provider} 自己的格式，所以没有上架。有的服务商可以由网关转换（例如 Gemini 可用 Claude 格式）：在编辑里选择调用方式，确认能用后再上架。',
+      api_unreachable: '给这个模型选的调用方式到不了这家服务商的账号。请改回自动或换一种方式。',
+      api_unreachable_at: '给这个模型选的调用方式到不了 {provider} 的账号。请改回自动或换一种方式。',
       no_price: '价格表里没有这个模型的价格。请在分组设置的「分组逐模型定价」里为它设价格。'
     },
     tier: {
@@ -184,6 +194,9 @@ export default {
       price: '价格',
       saleNow: 'App 显示的售价：{price}',
       routedTo: '这个模型由 {provider} 提供。',
+      calledAs: 'App 用 {format}调用这个模型。',
+      api: 'App 调用方式',
+      apiHint: '一般保持自动：Claude 用 Claude 格式，DeepSeek 用 DeepSeek 格式，GPT、Grok 等用 OpenAI 格式。只有服务商自己的格式用不了时才手动选择。',
       upstreamNow: '分组价格（倍率前）：{price}',
       noUpstreamPrice: '价格表里没有这个模型的价格。',
       priceHint: '售价 = 这个模型在分组里的价格（分组逐模型定价，没有时用渠道价格或内置价格表）× 分组倍率，与实际扣费一致。要改价格，请在分组设置的「分组逐模型定价」里设置。',

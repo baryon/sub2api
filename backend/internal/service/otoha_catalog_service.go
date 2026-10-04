@@ -45,13 +45,23 @@ const (
 	OtohaCatalogProblemNotAllowed = "not_allowed"
 	OtohaCatalogProblemNoAccount  = "no_account"
 	OtohaCatalogProblemNoPrice    = "no_price"
-	// A composite group cannot tell which provider serves the model for /v1/responses (no route, and its name
-	// does not say, or accounts of two providers claim it); the request would be refused.
+	// A composite group cannot tell which provider serves the model on the endpoint the app calls it through (no
+	// route, and its name does not say, or accounts of two providers claim it); the request would be refused.
 	OtohaCatalogProblemNoRoute = "no_route"
-	// The model goes to a provider whose accounts /v1/responses, the only API the app calls, does not reach.
-	OtohaCatalogProblemNotViaResponses = "not_via_responses"
+	// The model goes to a provider whose own format the app does not speak (Gemini, TypeSafe), and the admin has not
+	// chosen one.
+	OtohaCatalogProblemNoNativeAPI = "no_native_api"
+	// The admin chose a format whose endpoint does not reach the provider the model goes to.
+	OtohaCatalogProblemAPIUnreachable = "api_unreachable"
 	// The group's channel limits requests to the models it prices, and does not price this one.
 	OtohaCatalogProblemChannelRestricted = "channel_restricted"
+
+	// The format the app calls a model in (OtohaCatalogModel.API, TASK-64), each through the same key and gateway:
+	// Anthropic Messages on POST /v1/messages, DeepSeek's own Responses dialect and OpenAI Responses on
+	// POST /v1/responses.
+	OtohaAPIAnthropicMessages = "anthropic-messages"
+	OtohaAPIDeepSeekResponses = "deepseek-responses"
+	OtohaAPIOpenAIResponses   = "openai-responses"
 
 	otohaCatalogCacheTTL = 30 * time.Second
 
@@ -75,6 +85,7 @@ var (
 	otohaProfileSources   = []string{"vendor", "evaluation", "admin"}
 	otohaInputs           = []string{"text", "image", "audio", "video", "file"}
 	otohaCostTiers        = []string{OtohaCostLow, OtohaCostStandard, OtohaCostHigh}
+	otohaAPIs             = []string{OtohaAPIAnthropicMessages, OtohaAPIDeepSeekResponses, OtohaAPIOpenAIResponses}
 	otohaReasoningPattern = regexp.MustCompile(`^[a-z][a-z0-9_-]{0,31}$`)
 
 	// A strong domain suggests the purchase design's use; the app's first catalog shape reads only `use`.
@@ -109,7 +120,9 @@ type OtohaCatalogEntry struct {
 	Use              []string          `json:"use"`
 	ProfileSource    string            `json:"profile_source"`
 	// CostTier is the admin's price tier; empty derives it from the sale price.
-	CostTier  string    `json:"cost_tier"`
+	CostTier string `json:"cost_tier"`
+	// API is the admin's choice of the format the app calls the model in; empty derives it from the provider.
+	API       string    `json:"api"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 }
@@ -133,6 +146,7 @@ type OtohaCatalogEntryInput struct {
 	Use              []string
 	ProfileSource    string
 	CostTier         string
+	API              string
 }
 
 // OtohaModelMetadata is what upstream says about a model, used to prefill an entry.
@@ -165,6 +179,9 @@ type OtohaCatalogAdminEntry struct {
 	// maps it); PriceVaries is set when the group's accounts bill it as models of different prices, the highest shown.
 	BilledModel string `json:"billed_model"`
 	PriceVaries bool   `json:"price_varies"`
+	// EffectiveAPI is the format the app calls the model in: the admin's, else the provider's own; empty when the
+	// provider has none the app speaks.
+	EffectiveAPI string `json:"effective_api"`
 
 	lookupFailed bool
 }
@@ -189,6 +206,8 @@ type OtohaCatalogPrefill struct {
 	CostTier      string            `json:"cost_tier"`
 	// RoutePlatform is, in a composite group, the provider the model is routed to.
 	RoutePlatform string `json:"route_platform"`
+	// RouteAPI is the format the app would call the model in, derived from the provider.
+	RouteAPI string `json:"route_api"`
 }
 
 // OtohaModelUsage is one model's usage through a key in a period, priced at what the user pays.
@@ -230,11 +249,15 @@ type OtohaModelMetadataSource interface {
 	ModelMetadata(ctx context.Context, group *Group, modelID string) (OtohaModelMetadata, error)
 }
 
-// OtohaModelRoute is where a group sends the app's requests (`/v1/responses`) for a model.
+// OtohaModelRoute is where a group sends the app's requests for a model, on the endpoint of the format the app calls
+// it in.
 type OtohaModelRoute struct {
 	// Problem is empty when the group can serve the model, else OtohaCatalogProblemNoRoute,
-	// OtohaCatalogProblemNotViaResponses, OtohaCatalogProblemChannelRestricted or OtohaCatalogProblemNoAccount.
+	// OtohaCatalogProblemNoNativeAPI, OtohaCatalogProblemAPIUnreachable, OtohaCatalogProblemChannelRestricted or
+	// OtohaCatalogProblemNoAccount.
 	Problem string
+	// API is the format the app calls the model in (OtohaAPIAnthropicMessages, ...); empty when it cannot be told.
+	API string
 	// Platform is, in a composite group, the provider the requests go to; empty when it cannot be told, and for
 	// a group of one provider.
 	Platform string
@@ -266,13 +289,39 @@ func (r OtohaModelRoute) routedContext(ctx context.Context, modelID string) cont
 		PublicModel:    modelID,
 		TargetPlatform: r.Platform,
 		UpstreamModel:  r.forwardedModel(modelID),
-		Endpoint:       CompositeRouteEndpointResponses,
+		Endpoint:       otohaAPIEndpoint(r.API),
 	})
 }
 
-// OtohaModelRouting tells where the group sends a model and whether an account is configured to serve it there.
+// OtohaNativeAPIForPlatform is the format the app calls a provider's models in: Anthropic Messages for Claude
+// (Anthropic, and Antigravity, which serves Claude through Messages), DeepSeek's own Responses for DeepSeek, OpenAI
+// Responses for OpenAI, Grok and the other providers the OpenAI gateway serves. Empty for a provider whose format the
+// app does not speak (Gemini, TypeSafe).
+func OtohaNativeAPIForPlatform(platform string) string {
+	switch platform {
+	case PlatformAnthropic, PlatformAntigravity:
+		return OtohaAPIAnthropicMessages
+	case PlatformDeepseek:
+		return OtohaAPIDeepSeekResponses
+	case PlatformOpenAI, PlatformGrok, PlatformKimi, PlatformZhipu, PlatformMiniMax, PlatformOpenCodeGo:
+		return OtohaAPIOpenAIResponses
+	default:
+		return ""
+	}
+}
+
+// otohaAPIEndpoint is the gateway endpoint a format is called on.
+func otohaAPIEndpoint(api string) string {
+	if api == OtohaAPIAnthropicMessages {
+		return CompositeRouteEndpointMessages
+	}
+	return CompositeRouteEndpointResponses
+}
+
+// OtohaModelRouting tells where the group sends a model, in which format the app calls it (api, when the admin chose
+// one, else the provider's own), and whether an account is configured to serve it there.
 type OtohaModelRouting interface {
-	Route(ctx context.Context, group *Group, modelID string) OtohaModelRoute
+	Route(ctx context.Context, group *Group, modelID, api string) OtohaModelRoute
 }
 
 // OtohaCatalogService edits group catalogs and builds the catalog the app reads.
@@ -295,6 +344,7 @@ type otohaCatalogItem struct {
 	entry    OtohaCatalogEntry
 	upstream OtohaModelPrice
 	use      []string
+	api      string
 }
 
 // otohaCatalogSnapshot is a group's evaluated catalog: hasCatalog is false when the group has no entries;
@@ -556,9 +606,9 @@ func (s *OtohaCatalogService) Prefill(ctx context.Context, groupID int64, modelI
 	if err != nil {
 		return nil, err
 	}
-	route := s.route(ctx, group, modelID)
+	route := s.route(ctx, group, modelID, "")
 	routedCtx := route.routedContext(ctx, modelID)
-	draft := &OtohaCatalogPrefill{RoutePlatform: route.Platform}
+	draft := &OtohaCatalogPrefill{RoutePlatform: route.Platform, RouteAPI: route.API}
 	input := OtohaCatalogEntryInput{ModelID: modelID, Enabled: true}
 	if s.metadata != nil {
 		if md, mdErr := s.metadata.ModelMetadata(routedCtx, group, modelID); mdErr == nil {
@@ -643,12 +693,21 @@ func (s *OtohaCatalogService) groupEntry(ctx context.Context, groupID, entryID i
 	return nil, ErrOtohaCatalogEntryNotFound
 }
 
-// route asks where the group sends the model; without a routing check every model is served as itself.
-func (s *OtohaCatalogService) route(ctx context.Context, group *Group, modelID string) OtohaModelRoute {
-	if s.routing == nil {
-		return OtohaModelRoute{}
+// route asks where the group sends the model and in which format the app calls it; without a routing check every
+// model is served as itself, in the admin's format or the group's provider's.
+func (s *OtohaCatalogService) route(ctx context.Context, group *Group, modelID, api string) OtohaModelRoute {
+	route := OtohaModelRoute{}
+	if s.routing != nil {
+		route = s.routing.Route(ctx, group, modelID, api)
 	}
-	return s.routing.Route(ctx, group, modelID)
+	if route.API == "" {
+		// The admin's choice stands even when the model cannot be routed, so the admin page shows it.
+		route.API = api
+	}
+	if route.API == "" && route.Problem == "" && group != nil {
+		route.API = OtohaNativeAPIForPlatform(group.Platform)
+	}
+	return route
 }
 
 func (s *OtohaCatalogService) upstreamPrice(ctx context.Context, group *Group, modelID string) (OtohaModelPrice, bool) {
@@ -705,9 +764,10 @@ func (s *OtohaCatalogService) evaluate(ctx context.Context, group *Group, entrie
 	items := make([]otohaCatalogItem, 0, len(entries))
 	for _, entry := range entries {
 		item := OtohaCatalogAdminEntry{OtohaCatalogEntry: entry, EffectiveUse: otohaEffectiveUse(entry)}
-		route := s.route(ctx, group, entry.ModelID)
+		route := s.route(ctx, group, entry.ModelID, entry.API)
 		forwarded := route.forwardedModel(entry.ModelID)
 		item.RoutePlatform = route.Platform
+		item.EffectiveAPI = route.API
 		item.lookupFailed = route.Failed
 		if forwarded != entry.ModelID {
 			item.RouteModel = forwarded
@@ -734,7 +794,7 @@ func (s *OtohaCatalogService) evaluate(ctx context.Context, group *Group, entrie
 			item.Problem = OtohaCatalogProblemNoPrice
 		default:
 			item.InCatalog = true
-			items = append(items, otohaCatalogItem{entry: entry, upstream: upstream, use: item.EffectiveUse})
+			items = append(items, otohaCatalogItem{entry: entry, upstream: upstream, use: item.EffectiveUse, api: route.API})
 		}
 		out = append(out, item)
 	}
@@ -746,7 +806,9 @@ func buildOtohaCatalog(items []otohaCatalogItem, rate float64) *OtohaCatalog {
 	catalog := &OtohaCatalog{Schema: OtohaCatalogSchemaVersion, Models: make([]OtohaCatalogModel, 0, len(items))}
 	for _, item := range items {
 		sale := otohaSalePrice(item.upstream, rate)
-		catalog.Models = append(catalog.Models, otohaCatalogModel(item.entry, sale, otohaEffectiveCost(item.entry, sale), item.use))
+		model := otohaCatalogModel(item.entry, sale, otohaEffectiveCost(item.entry, sale), item.use)
+		model.API = item.api
+		catalog.Models = append(catalog.Models, model)
 	}
 	catalog.Revision = otohaCatalogRevision(catalog)
 	return catalog
@@ -957,6 +1019,9 @@ func normalizeOtohaCatalogEntryInput(input OtohaCatalogEntryInput) (OtohaCatalog
 		return entry, err
 	}
 	if entry.CostTier, err = normalizeOtohaChoice(input.CostTier, otohaCostTiers, "price tier"); err != nil {
+		return entry, err
+	}
+	if entry.API, err = normalizeOtohaChoice(input.API, otohaAPIs, "format"); err != nil {
 		return entry, err
 	}
 	if entry.Roles, err = normalizeOtohaList(input.Roles, otohaRoles, "role"); err != nil {

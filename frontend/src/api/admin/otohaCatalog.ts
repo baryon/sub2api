@@ -10,7 +10,8 @@ export type OtohaCatalogProblem =
   | 'disabled'
   | 'not_allowed'
   | 'no_route'
-  | 'not_via_responses'
+  | 'no_native_api'
+  | 'api_unreachable'
   | 'channel_restricted'
   | 'no_account'
   | 'no_price'
@@ -22,6 +23,9 @@ export interface OtohaModelPrice {
   output: number
   cachedInput?: number
 }
+
+/** The format the app calls a model in; '' derives it from the provider. */
+export type OtohaCatalogAPI = '' | 'anthropic-messages' | 'deepseek-responses' | 'openai-responses'
 
 export interface OtohaCatalogEntryInput {
   model_id: string
@@ -41,6 +45,7 @@ export interface OtohaCatalogEntryInput {
   use: string[]
   profile_source: string
   cost_tier: string
+  api: OtohaCatalogAPI
 }
 
 export interface OtohaCatalogEntry extends OtohaCatalogEntryInput {
@@ -66,6 +71,8 @@ export interface OtohaCatalogAdminEntry extends OtohaCatalogEntry {
   billed_model: string
   /** The group's accounts bill the model at different prices; the highest is shown. */
   price_varies: boolean
+  /** The format the app calls the model in: the admin's choice, else the provider's own ('' when none). */
+  effective_api: OtohaCatalogAPI
 }
 
 export interface OtohaCatalogModel {
@@ -96,6 +103,8 @@ export interface OtohaCatalogPrefill {
   sale_price: OtohaModelPrice | null
   cost_tier: string
   route_platform: string
+  /** The format the app would call the model in, from the provider. */
+  route_api: OtohaCatalogAPI
 }
 
 export interface OtohaCatalogSettings {

@@ -35,6 +35,7 @@ func TestOtohaCatalogRepositoryRoundTrip(t *testing.T) {
 		Reasoning: []string{"low", "medium"}, DefaultReasoning: "medium", Speed: "fast",
 		Strengths: map[string]string{"coding": "strong", "writing": "usable"}, Complexity: "complex",
 		Roles: []string{"lead", "execute"}, Use: []string{"default"}, ProfileSource: "vendor", CostTier: "standard",
+		API: "deepseek-responses",
 	}
 	require.NoError(t, repo.Create(ctx, full))
 	require.NotZero(t, full.ID)
@@ -69,10 +70,13 @@ func TestOtohaCatalogRepositoryRoundTrip(t *testing.T) {
 	require.Equal(t, full.Use, got.Use)
 	require.Equal(t, full.ProfileSource, got.ProfileSource)
 	require.Equal(t, full.CostTier, got.CostTier)
+	require.Equal(t, full.API, got.API)
 	require.Empty(t, list[0].Inputs)
+	require.Empty(t, list[0].API, "an entry without a chosen format derives it")
 
 	got.Enabled = false
 	got.CostTier = ""
+	got.API = "openai-responses"
 	got.Strengths = nil
 	got.Roles = nil
 	require.NoError(t, repo.Update(ctx, &got))
@@ -82,6 +86,7 @@ func TestOtohaCatalogRepositoryRoundTrip(t *testing.T) {
 	require.Equal(t, "gpt-6-luna", list[0].ModelID)
 	require.False(t, list[0].Enabled)
 	require.Empty(t, list[0].CostTier)
+	require.Equal(t, "openai-responses", list[0].API)
 	require.Empty(t, list[0].Strengths, "cleared fields stay cleared")
 	require.Empty(t, list[0].Roles)
 

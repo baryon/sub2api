@@ -218,11 +218,12 @@ func mergeOtohaAccountMetadata(md OtohaModelMetadata, synced []UpstreamModelMeta
 	return md
 }
 
-// otohaDiagnoserRouting tells where the group sends the app's `/v1/responses` requests for a model, the way the
-// gateway does, and asks the gateway that serves that provider whether an account is configured for the model (the
-// check that turns "no account" into model_not_found; transient state such as rate limits does not hide a model).
-// A composite group resolves the provider per model: an explicit route, else the provider whose accounts claim the
-// model, else the provider its name belongs to.
+// otohaDiagnoserRouting tells where the group sends the app's requests for a model, the way the gateway does on the
+// endpoint of the format the app calls the model in (TASK-64: Claude on /v1/messages, the others on /v1/responses),
+// and asks the gateway that serves that provider whether an account is configured for the model (the check that
+// turns "no account" into model_not_found; transient state such as rate limits does not hide a model). A composite
+// group resolves the provider per model: an explicit route, else the provider whose accounts claim the model, else
+// the provider its name belongs to.
 type otohaDiagnoserRouting struct {
 	gateway   ModelAvailabilityDiagnoser
 	openai    ModelAvailabilityDiagnoser
@@ -245,7 +246,53 @@ type otohaCompositeResolver interface {
 	Resolve(ctx context.Context, groupID int64, model, endpoint string) (CompositeRouteDecision, error)
 }
 
-func (r otohaDiagnoserRouting) Route(ctx context.Context, group *Group, modelID string) OtohaModelRoute {
+// otohaCompositeTarget is where a composite group sends a model on one endpoint.
+type otohaCompositeTarget struct {
+	platform string
+	// model is the name the provider receives.
+	model string
+	owned bool
+	// problem is OtohaCatalogProblemNoRoute when the endpoint cannot tell; failed when the lookup failed.
+	problem string
+	failed  bool
+}
+
+// resolveComposite routes a model on one endpoint as the gateway's request middleware and handlers do: the composite
+// resolver decides; a model it leaves unrouted reaches the endpoint's Anthropic-gateway handler, which goes by the
+// model's name (Messages serves Claude, Antigravity and Gemini models that way; Responses Claude and Antigravity ones).
+func (r otohaDiagnoserRouting) resolveComposite(ctx context.Context, group *Group, modelID, endpoint string) otohaCompositeTarget {
+	resolver := r.composite
+	if resolver == nil {
+		// The gateway's middleware falls back to the model-name detector alone the same way.
+		resolver = NewCompositeRouteResolver(nil)
+	}
+	decision, err := resolver.Resolve(ctx, group.ID, modelID, endpoint)
+	if err != nil {
+		// The request middleware answers 500 then; the model is left out of this read only.
+		logger.L().Warn("otoha_catalog.composite_route_failed", zap.Int64("group_id", group.ID), zap.String("model", modelID), zap.String("endpoint", endpoint), zap.Error(err))
+		return otohaCompositeTarget{problem: OtohaCatalogProblemNoRoute, failed: true}
+	}
+	if !decision.Matched {
+		detected, ok := DetectModelPlatform(modelID)
+		servedByName := ok && (detected == PlatformAnthropic || detected == PlatformAntigravity ||
+			(endpoint == CompositeRouteEndpointMessages && detected == PlatformGemini))
+		if !servedByName {
+			return otohaCompositeTarget{problem: OtohaCatalogProblemNoRoute, platform: decision.TargetPlatform}
+		}
+		decision = CompositeRouteDecision{Matched: true, TargetPlatform: detected, UpstreamModel: modelID}
+	}
+	target := otohaCompositeTarget{
+		platform: decision.TargetPlatform,
+		model:    strings.TrimSpace(decision.UpstreamModel),
+		owned:    decision.Source == CompositeRouteSourceAccount,
+	}
+	if target.model == "" {
+		target.model = modelID
+	}
+	return target
+}
+
+func (r otohaDiagnoserRouting) Route(ctx context.Context, group *Group, modelID, api string) OtohaModelRoute {
 	if group == nil {
 		return OtohaModelRoute{}
 	}
@@ -253,38 +300,47 @@ func (r otohaDiagnoserRouting) Route(ctx context.Context, group *Group, modelID 
 	platform, model := group.Platform, modelID
 	ownedRoute := false
 	if group.Platform == PlatformComposite {
-		resolver := r.composite
-		if resolver == nil {
-			// The gateway's middleware falls back to the model-name detector alone the same way.
-			resolver = NewCompositeRouteResolver(nil)
-		}
-		decision, err := resolver.Resolve(ctx, group.ID, modelID, CompositeRouteEndpointResponses)
-		if err != nil {
-			// The request middleware answers 500 then; the model is left out of this read only.
-			logger.L().Warn("otoha_catalog.composite_route_failed", zap.Int64("group_id", group.ID), zap.String("model", modelID), zap.Error(err))
-			return OtohaModelRoute{Problem: OtohaCatalogProblemNoRoute, Failed: true}
-		}
-		if !decision.Matched {
-			// Unrouted, the request reaches the Anthropic gateway's Responses handler, which goes by the model's
-			// name: a Claude (or Antigravity) model is served, any other is not.
-			detected, ok := DetectModelPlatform(modelID)
-			if !ok || (detected != PlatformAnthropic && detected != PlatformAntigravity) {
-				return OtohaModelRoute{Problem: OtohaCatalogProblemNoRoute, Platform: decision.TargetPlatform}
+		var target otohaCompositeTarget
+		if api != "" {
+			target = r.resolveComposite(ctx, group, modelID, otohaAPIEndpoint(api))
+		} else {
+			// The app calls a Claude model on /v1/messages and any other on /v1/responses: the model is a Claude one
+			// when /v1/messages sends it to a provider whose format is Anthropic Messages.
+			target = r.resolveComposite(ctx, group, modelID, CompositeRouteEndpointMessages)
+			if target.failed {
+				return OtohaModelRoute{Problem: target.problem, Failed: true}
 			}
-			decision = CompositeRouteDecision{Matched: true, TargetPlatform: detected, UpstreamModel: modelID}
+			if target.problem == "" && OtohaNativeAPIForPlatform(target.platform) == OtohaAPIAnthropicMessages {
+				api = OtohaAPIAnthropicMessages
+			} else {
+				target = r.resolveComposite(ctx, group, modelID, CompositeRouteEndpointResponses)
+				if target.problem == "" {
+					api = OtohaNativeAPIForPlatform(target.platform)
+					if api == OtohaAPIAnthropicMessages {
+						// /v1/responses sends it to Claude, but /v1/messages, which the app would call, does not.
+						return OtohaModelRoute{Problem: OtohaCatalogProblemNoRoute, Platform: target.platform}
+					}
+				}
+			}
 		}
-		platform, model = decision.TargetPlatform, strings.TrimSpace(decision.UpstreamModel)
-		if model == "" {
-			model = modelID
+		if target.problem != "" {
+			return OtohaModelRoute{Problem: target.problem, Platform: target.platform, Failed: target.failed}
 		}
-		ownedRoute = decision.Source == CompositeRouteSourceAccount
+		platform, model, ownedRoute = target.platform, target.model, target.owned
 		route.Platform = platform
 		if model != modelID {
 			route.UpstreamModel = model
 		}
+	} else if api == "" {
+		api = OtohaNativeAPIForPlatform(platform)
 	}
-	if !otohaResponsesReachesPlatform(platform) {
-		route.Problem = OtohaCatalogProblemNotViaResponses
+	if api == "" {
+		route.Problem = OtohaCatalogProblemNoNativeAPI
+		return route
+	}
+	route.API = api
+	if !otohaAPIReachesPlatform(api, platform) {
+		route.Problem = OtohaCatalogProblemAPIUnreachable
 		return route
 	}
 	routedCtx := route.routedContext(ctx, modelID)
@@ -353,10 +409,25 @@ func otohaOpenAIGatewayPlatform(platform string) bool {
 	}
 }
 
-// otohaResponsesReachesPlatform tells whether `/v1/responses` reaches a provider's accounts: the OpenAI gateway
-// serves the OpenAI-compatible providers natively, and the Anthropic gateway converts Responses to Anthropic for
-// Anthropic and Antigravity accounts. A Gemini account would be sent an Anthropic request, and TypeSafe takes only its
-// own protocol, so neither is reachable.
-func otohaResponsesReachesPlatform(platform string) bool {
-	return otohaOpenAIGatewayPlatform(platform) || platform == PlatformAnthropic || platform == PlatformAntigravity
+// otohaAPIReachesPlatform tells whether the app, calling a model in a format, reaches a provider's accounts and gets
+// that format back. Anthropic Messages (`/v1/messages`): the Anthropic gateway serves Anthropic and Antigravity
+// accounts natively and converts Messages for Gemini accounts, and the OpenAI gateway bridges Messages for the
+// OpenAI-compatible providers. DeepSeek Responses (`/v1/responses`): only DeepSeek accounts answer in DeepSeek's own
+// dialect, which the gateway passes through. OpenAI Responses (`/v1/responses`): the OpenAI gateway serves the other
+// OpenAI-compatible providers, and the Anthropic gateway converts Responses for Anthropic and Antigravity accounts; a
+// DeepSeek account answers in DeepSeek's dialect (reasoning items without the summary OpenAI parsers require), and a
+// Gemini account would be sent an Anthropic request. TypeSafe takes only its own protocol.
+func otohaAPIReachesPlatform(api, platform string) bool {
+	switch api {
+	case OtohaAPIAnthropicMessages:
+		return otohaOpenAIGatewayPlatform(platform) || platform == PlatformAnthropic || platform == PlatformAntigravity ||
+			platform == PlatformGemini
+	case OtohaAPIDeepSeekResponses:
+		return platform == PlatformDeepseek
+	case OtohaAPIOpenAIResponses:
+		return platform != PlatformDeepseek &&
+			(otohaOpenAIGatewayPlatform(platform) || platform == PlatformAnthropic || platform == PlatformAntigravity)
+	default:
+		return false
+	}
 }

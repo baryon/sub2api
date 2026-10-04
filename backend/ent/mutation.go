@@ -29645,6 +29645,7 @@ type OtohaCatalogModelMutation struct {
 	appenduses             []string
 	profile_source         *string
 	cost_tier              *string
+	api                    *string
 	clearedFields          map[string]struct{}
 	group                  *int64
 	clearedgroup           bool
@@ -30696,6 +30697,42 @@ func (m *OtohaCatalogModelMutation) ResetCostTier() {
 	m.cost_tier = nil
 }
 
+// SetAPI sets the "api" field.
+func (m *OtohaCatalogModelMutation) SetAPI(s string) {
+	m.api = &s
+}
+
+// API returns the value of the "api" field in the mutation.
+func (m *OtohaCatalogModelMutation) API() (r string, exists bool) {
+	v := m.api
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAPI returns the old "api" field's value of the OtohaCatalogModel entity.
+// If the OtohaCatalogModel object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *OtohaCatalogModelMutation) OldAPI(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAPI is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAPI requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAPI: %w", err)
+	}
+	return oldValue.API, nil
+}
+
+// ResetAPI resets all changes to the "api" field.
+func (m *OtohaCatalogModelMutation) ResetAPI() {
+	m.api = nil
+}
+
 // ClearGroup clears the "group" edge to the Group entity.
 func (m *OtohaCatalogModelMutation) ClearGroup() {
 	m.clearedgroup = true
@@ -30757,7 +30794,7 @@ func (m *OtohaCatalogModelMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *OtohaCatalogModelMutation) Fields() []string {
-	fields := make([]string, 0, 21)
+	fields := make([]string, 0, 22)
 	if m.created_at != nil {
 		fields = append(fields, otohacatalogmodel.FieldCreatedAt)
 	}
@@ -30821,6 +30858,9 @@ func (m *OtohaCatalogModelMutation) Fields() []string {
 	if m.cost_tier != nil {
 		fields = append(fields, otohacatalogmodel.FieldCostTier)
 	}
+	if m.api != nil {
+		fields = append(fields, otohacatalogmodel.FieldAPI)
+	}
 	return fields
 }
 
@@ -30871,6 +30911,8 @@ func (m *OtohaCatalogModelMutation) Field(name string) (ent.Value, bool) {
 		return m.ProfileSource()
 	case otohacatalogmodel.FieldCostTier:
 		return m.CostTier()
+	case otohacatalogmodel.FieldAPI:
+		return m.API()
 	}
 	return nil, false
 }
@@ -30922,6 +30964,8 @@ func (m *OtohaCatalogModelMutation) OldField(ctx context.Context, name string) (
 		return m.OldProfileSource(ctx)
 	case otohacatalogmodel.FieldCostTier:
 		return m.OldCostTier(ctx)
+	case otohacatalogmodel.FieldAPI:
+		return m.OldAPI(ctx)
 	}
 	return nil, fmt.Errorf("unknown OtohaCatalogModel field %s", name)
 }
@@ -31077,6 +31121,13 @@ func (m *OtohaCatalogModelMutation) SetField(name string, value ent.Value) error
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetCostTier(v)
+		return nil
+	case otohacatalogmodel.FieldAPI:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAPI(v)
 		return nil
 	}
 	return fmt.Errorf("unknown OtohaCatalogModel field %s", name)
@@ -31261,6 +31312,9 @@ func (m *OtohaCatalogModelMutation) ResetField(name string) error {
 		return nil
 	case otohacatalogmodel.FieldCostTier:
 		m.ResetCostTier()
+		return nil
+	case otohacatalogmodel.FieldAPI:
+		m.ResetAPI()
 		return nil
 	}
 	return fmt.Errorf("unknown OtohaCatalogModel field %s", name)

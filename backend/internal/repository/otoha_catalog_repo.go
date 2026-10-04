@@ -59,6 +59,7 @@ func (r *otohaCatalogRepository) Create(ctx context.Context, entry *service.Otoh
 		SetUses(entry.Use).
 		SetProfileSource(entry.ProfileSource).
 		SetCostTier(entry.CostTier).
+		SetAPI(entry.API).
 		Save(ctx)
 	if err != nil {
 		return translatePersistenceError(err, nil, service.ErrOtohaCatalogEntryExists)
@@ -84,7 +85,8 @@ func (r *otohaCatalogRepository) Update(ctx context.Context, entry *service.Otoh
 		SetSpeed(entry.Speed).
 		SetComplexity(entry.Complexity).
 		SetProfileSource(entry.ProfileSource).
-		SetCostTier(entry.CostTier)
+		SetCostTier(entry.CostTier).
+		SetAPI(entry.API)
 	update = setOtohaJSONFields(update, entry)
 	updated, err := update.Save(ctx)
 	if err != nil {
@@ -175,6 +177,7 @@ func otohaCatalogEntityToService(row *dbent.OtohaCatalogModel) service.OtohaCata
 		Use:              row.Uses,
 		ProfileSource:    row.ProfileSource,
 		CostTier:         row.CostTier,
+		API:              row.API,
 		CreatedAt:        row.CreatedAt,
 		UpdatedAt:        row.UpdatedAt,
 	}
