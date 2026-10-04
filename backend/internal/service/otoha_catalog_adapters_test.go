@@ -107,15 +107,17 @@ func TestOtohaRoutingAsksTheGatewayThatServesTheGroup(t *testing.T) {
 	routing := otohaDiagnoserRouting{gateway: gateway, openai: openai}
 	ctx := context.Background()
 
-	require.False(t, routing.CanRoute(ctx, &Group{ID: 1, Platform: PlatformOpenAI}, "gpt-6-luna"))
-	require.False(t, routing.CanRoute(ctx, &Group{ID: 1, Platform: PlatformDeepseek}, "deepseek-v4"))
-	require.True(t, routing.CanRoute(ctx, &Group{ID: 1, Platform: PlatformAnthropic}, "claude-opus"))
+	require.Equal(t, OtohaCatalogProblemNoAccount, routing.Route(ctx, &Group{ID: 1, Platform: PlatformOpenAI}, "gpt-6-luna").Problem)
+	require.Equal(t, OtohaCatalogProblemNoAccount, routing.Route(ctx, &Group{ID: 1, Platform: PlatformDeepseek}, "deepseek-v4").Problem)
+	require.Equal(t, OtohaModelRoute{}, routing.Route(ctx, &Group{ID: 1, Platform: PlatformAnthropic}, "claude-opus"),
+		"a group of one provider serves the model as itself")
 	require.Equal(t, []string{"openai:gpt-6-luna", "deepseek:deepseek-v4"}, openai.calls)
 	require.Equal(t, []string{"anthropic:claude-opus"}, gateway.calls)
 
-	require.True(t, routing.CanRoute(ctx, &Group{ID: 1, Platform: PlatformComposite}, "anything"),
-		"a composite group routes per request; its allowlist still applies")
-	require.True(t, otohaDiagnoserRouting{}.CanRoute(ctx, &Group{ID: 1, Platform: PlatformOpenAI}, "x"),
+	require.Equal(t, OtohaModelRoute{Platform: PlatformAnthropic}, routing.Route(ctx, &Group{ID: 1, Platform: PlatformComposite}, "claude-sonnet-4-5"),
+		"without routes a composite group goes by the model name, and asks that provider's gateway")
+	require.Equal(t, "anthropic:claude-sonnet-4-5", gateway.calls[len(gateway.calls)-1])
+	require.Equal(t, OtohaModelRoute{}, otohaDiagnoserRouting{}.Route(ctx, &Group{ID: 1, Platform: PlatformOpenAI}, "x"),
 		"without a gateway the check does not hide models")
 }
 
@@ -131,4 +133,37 @@ func TestOtohaMetadataDropsTheManifestsGenericContext(t *testing.T) {
 	md, ok = otohaMetadataFromCodexManifest(manifest("gpt-5.4"), "gpt-5.4")
 	require.True(t, ok)
 	require.Equal(t, 272000, md.Context, "GPT models do have this context")
+}
+
+// The OpenAI gateway bills a request as the model the serving account maps it to; the catalog asks for those names.
+func TestOtohaBilledModelsAreTheServingAccountsMappings(t *testing.T) {
+	groupID := int64(9)
+	account := func(id int64, mapping map[string]any) Account {
+		return Account{ID: id, Platform: PlatformOpenAI, Status: StatusActive, Schedulable: true,
+			AccountGroups: []AccountGroup{{GroupID: groupID}}, Credentials: map[string]any{"model_mapping": mapping}}
+	}
+	repo := &mockAccountRepoForPlatform{accountsByID: map[int64]*Account{}, accounts: []Account{
+		account(1, map[string]any{"gpt-6-luna": "gpt-6-luna-2026"}),
+		account(2, map[string]any{"gpt-6-luna": "gpt-6-luna-2026"}),
+		account(3, map[string]any{"gpt-6-luna": "gpt-6-luna-pro"}),
+		account(4, map[string]any{"other": "other"}),
+	}}
+	svc := &OpenAIGatewayService{accountRepo: repo, cfg: testConfig()}
+
+	billed := func(svc *OpenAIGatewayService, model, claimedBy string) []string {
+		names, err := svc.OtohaBilledModels(context.Background(), &groupID, model, PlatformOpenAI, claimedBy)
+		require.NoError(t, err)
+		return names
+	}
+	require.Equal(t, []string{"gpt-6-luna-2026", "gpt-6-luna-pro"}, billed(svc, "gpt-6-luna", ""))
+	require.Equal(t, []string{"other"}, billed(svc, "other", ""))
+	require.Empty(t, billed(svc, "unserved", ""))
+	require.Empty(t, billed(nil, "gpt-6-luna", ""))
+
+	repo.accounts = append(repo.accounts, Account{ID: 5, Platform: PlatformOpenAI, Status: StatusActive, Schedulable: true,
+		AccountGroups: []AccountGroup{{GroupID: groupID}}})
+	require.Equal(t, []string{"gpt-6-luna", "gpt-6-luna-2026", "gpt-6-luna-pro"}, billed(svc, "gpt-6-luna", ""),
+		"an account without a mapping serves every model under its own name")
+	require.Equal(t, []string{"gpt-6-luna-2026", "gpt-6-luna-pro"}, billed(svc, "gpt-6-luna", "gpt-6-luna"),
+		"a model routed by account ownership is served only by accounts whose mapping names it")
 }

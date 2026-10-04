@@ -45,6 +45,13 @@ const (
 	OtohaCatalogProblemNotAllowed = "not_allowed"
 	OtohaCatalogProblemNoAccount  = "no_account"
 	OtohaCatalogProblemNoPrice    = "no_price"
+	// A composite group cannot tell which provider serves the model for /v1/responses (no route, and its name
+	// does not say, or accounts of two providers claim it); the request would be refused.
+	OtohaCatalogProblemNoRoute = "no_route"
+	// The model goes to a provider whose accounts /v1/responses, the only API the app calls, does not reach.
+	OtohaCatalogProblemNotViaResponses = "not_via_responses"
+	// The group's channel limits requests to the models it prices, and does not price this one.
+	OtohaCatalogProblemChannelRestricted = "channel_restricted"
 
 	otohaCatalogCacheTTL = 30 * time.Second
 
@@ -150,6 +157,16 @@ type OtohaCatalogAdminEntry struct {
 	EffectiveUse  []string         `json:"effective_use"`
 	InCatalog     bool             `json:"in_catalog"`
 	Problem       string           `json:"problem"`
+	// RoutePlatform is, in a composite group, the provider the app's requests for the model go to; RouteModel the
+	// model they are forwarded as, when an explicit route renames it.
+	RoutePlatform string `json:"route_platform"`
+	RouteModel    string `json:"route_model"`
+	// BilledModel is the model the price is that of, when billing prices another name than the model (an account
+	// maps it); PriceVaries is set when the group's accounts bill it as models of different prices, the highest shown.
+	BilledModel string `json:"billed_model"`
+	PriceVaries bool   `json:"price_varies"`
+
+	lookupFailed bool
 }
 
 // OtohaCatalogAdminView is a group's catalog for the admin page, with Preview being exactly what the app receives
@@ -157,6 +174,7 @@ type OtohaCatalogAdminEntry struct {
 type OtohaCatalogAdminView struct {
 	GroupID        int64                    `json:"group_id"`
 	GroupName      string                   `json:"group_name"`
+	GroupPlatform  string                   `json:"group_platform"`
 	RateMultiplier float64                  `json:"rate_multiplier"`
 	Entries        []OtohaCatalogAdminEntry `json:"entries"`
 	Preview        *OtohaCatalog            `json:"preview"`
@@ -169,6 +187,8 @@ type OtohaCatalogPrefill struct {
 	UpstreamPrice *OtohaModelPrice  `json:"upstream_price"`
 	SalePrice     *OtohaModelPrice  `json:"sale_price"`
 	CostTier      string            `json:"cost_tier"`
+	// RoutePlatform is, in a composite group, the provider the model is routed to.
+	RoutePlatform string `json:"route_platform"`
 }
 
 // OtohaModelUsage is one model's usage through a key in a period, priced at what the user pays.
@@ -210,9 +230,49 @@ type OtohaModelMetadataSource interface {
 	ModelMetadata(ctx context.Context, group *Group, modelID string) (OtohaModelMetadata, error)
 }
 
-// OtohaModelRouting tells whether the group has an account configured to serve a model.
+// OtohaModelRoute is where a group sends the app's requests (`/v1/responses`) for a model.
+type OtohaModelRoute struct {
+	// Problem is empty when the group can serve the model, else OtohaCatalogProblemNoRoute,
+	// OtohaCatalogProblemNotViaResponses, OtohaCatalogProblemChannelRestricted or OtohaCatalogProblemNoAccount.
+	Problem string
+	// Platform is, in a composite group, the provider the requests go to; empty when it cannot be told, and for
+	// a group of one provider.
+	Platform string
+	// UpstreamModel is the model the requests are forwarded as when a route renames it; empty means the model.
+	UpstreamModel string
+	// BilledModels are, when the serving accounts bill the forwarded model under the names they map it to (the
+	// OpenAI gateway), those names; empty means it is billed as forwarded.
+	BilledModels []string
+	// Failed is set when the route could not be looked up; the result is not kept.
+	Failed bool
+}
+
+// forwardedModel is the model the provider receives, and billing prices.
+func (r OtohaModelRoute) forwardedModel(modelID string) string {
+	if r.UpstreamModel != "" {
+		return r.UpstreamModel
+	}
+	return modelID
+}
+
+// routedContext carries a composite route the way the gateway's request context does once the request is routed,
+// so the price resolver reads the provider's channel price (as billing does) and the metadata its accounts.
+func (r OtohaModelRoute) routedContext(ctx context.Context, modelID string) context.Context {
+	if r.Platform == "" {
+		return ctx
+	}
+	return WithCompositeRouteDecision(ctx, CompositeRouteDecision{
+		Matched:        true,
+		PublicModel:    modelID,
+		TargetPlatform: r.Platform,
+		UpstreamModel:  r.forwardedModel(modelID),
+		Endpoint:       CompositeRouteEndpointResponses,
+	})
+}
+
+// OtohaModelRouting tells where the group sends a model and whether an account is configured to serve it there.
 type OtohaModelRouting interface {
-	CanRoute(ctx context.Context, group *Group, modelID string) bool
+	Route(ctx context.Context, group *Group, modelID string) OtohaModelRoute
 }
 
 // OtohaCatalogService edits group catalogs and builds the catalog the app reads.
@@ -237,11 +297,13 @@ type otohaCatalogItem struct {
 	use      []string
 }
 
-// otohaCatalogSnapshot is a group's evaluated catalog: hasCatalog is false when the group has no entries.
+// otohaCatalogSnapshot is a group's evaluated catalog: hasCatalog is false when the group has no entries;
+// incomplete when a lookup failed, so it is not cached.
 type otohaCatalogSnapshot struct {
 	hasCatalog bool
 	groupRate  float64
 	items      []otohaCatalogItem
+	incomplete bool
 }
 
 type otohaCatalogCacheEntry struct {
@@ -320,7 +382,7 @@ func (s *OtohaCatalogService) snapshot(ctx context.Context, groupID int64) (otoh
 			return otohaCatalogSnapshot{}, err
 		}
 		s.cacheMu.Lock()
-		if s.generation[groupID] == generation {
+		if s.generation[groupID] == generation && !snapshot.incomplete {
 			s.cache[groupID] = otohaCatalogCacheEntry{snapshot: snapshot, expiresAt: s.now().Add(otohaCatalogCacheTTL)}
 		}
 		s.cacheMu.Unlock()
@@ -348,8 +410,14 @@ func (s *OtohaCatalogService) evaluateGroup(ctx context.Context, groupID int64) 
 	if len(entries) == 0 {
 		return otohaCatalogSnapshot{}, nil
 	}
-	_, items := s.evaluate(ctx, group, entries)
-	return otohaCatalogSnapshot{hasCatalog: true, groupRate: group.RateMultiplier, items: items}, nil
+	evaluated, items := s.evaluate(ctx, group, entries)
+	snapshot := otohaCatalogSnapshot{hasCatalog: true, groupRate: group.RateMultiplier, items: items}
+	for _, e := range evaluated {
+		if e.lookupFailed {
+			snapshot.incomplete = true
+		}
+	}
+	return snapshot, nil
 }
 
 // InvalidateGroup drops the cached catalog of a group.
@@ -376,6 +444,7 @@ func (s *OtohaCatalogService) AdminView(ctx context.Context, groupID int64) (*Ot
 	view := &OtohaCatalogAdminView{
 		GroupID:        group.ID,
 		GroupName:      group.Name,
+		GroupPlatform:  group.Platform,
 		RateMultiplier: group.RateMultiplier,
 		Entries:        []OtohaCatalogAdminEntry{},
 	}
@@ -487,10 +556,12 @@ func (s *OtohaCatalogService) Prefill(ctx context.Context, groupID int64, modelI
 	if err != nil {
 		return nil, err
 	}
-	draft := &OtohaCatalogPrefill{}
+	route := s.route(ctx, group, modelID)
+	routedCtx := route.routedContext(ctx, modelID)
+	draft := &OtohaCatalogPrefill{RoutePlatform: route.Platform}
 	input := OtohaCatalogEntryInput{ModelID: modelID, Enabled: true}
 	if s.metadata != nil {
-		if md, mdErr := s.metadata.ModelMetadata(ctx, group, modelID); mdErr == nil {
+		if md, mdErr := s.metadata.ModelMetadata(routedCtx, group, modelID); mdErr == nil {
 			draft.MetadataFound = true
 			md = sanitizeOtohaModelMetadata(md)
 			input.Name = md.Name
@@ -509,7 +580,7 @@ func (s *OtohaCatalogService) Prefill(ctx context.Context, groupID int64, modelI
 	}
 	entry.GroupID = groupID
 	draft.Entry = entry
-	if upstream, ok := s.upstreamPrice(ctx, group, modelID); ok {
+	if upstream, _, _, ok := s.routedPrice(ctx, group, modelID, route); ok {
 		draft.UpstreamPrice = &upstream
 		sale := otohaSalePrice(upstream, group.RateMultiplier)
 		draft.SalePrice = &sale
@@ -572,6 +643,14 @@ func (s *OtohaCatalogService) groupEntry(ctx context.Context, groupID, entryID i
 	return nil, ErrOtohaCatalogEntryNotFound
 }
 
+// route asks where the group sends the model; without a routing check every model is served as itself.
+func (s *OtohaCatalogService) route(ctx context.Context, group *Group, modelID string) OtohaModelRoute {
+	if s.routing == nil {
+		return OtohaModelRoute{}
+	}
+	return s.routing.Route(ctx, group, modelID)
+}
+
 func (s *OtohaCatalogService) upstreamPrice(ctx context.Context, group *Group, modelID string) (OtohaModelPrice, bool) {
 	if s.pricer == nil {
 		return OtohaModelPrice{}, false
@@ -583,14 +662,62 @@ func (s *OtohaCatalogService) upstreamPrice(ctx context.Context, group *Group, m
 	return normalizeOtohaPrice(price), true
 }
 
-// evaluate prices and checks every entry for the admin, and gives the entries that pass into the app's catalog.
+// routedPrice is the model's price as billing charges it once the request is routed: the forwarded model's price at
+// its provider, or, where the serving accounts bill it under the names they map it to, that name's price (the
+// forwarded model's when that name has none). Accounts that bill it differently give the highest, with varies set.
+func (s *OtohaCatalogService) routedPrice(ctx context.Context, group *Group, modelID string, route OtohaModelRoute) (price OtohaModelPrice, billed string, varies, ok bool) {
+	routedCtx := route.routedContext(ctx, modelID)
+	forwarded := route.forwardedModel(modelID)
+	if len(route.BilledModels) == 0 {
+		price, ok = s.upstreamPrice(routedCtx, group, forwarded)
+		return price, forwarded, false, ok
+	}
+	for _, name := range route.BilledModels {
+		candidate, priced := s.upstreamPrice(routedCtx, group, name)
+		if !priced {
+			name = forwarded
+			if candidate, priced = s.upstreamPrice(routedCtx, group, forwarded); !priced {
+				continue
+			}
+		}
+		if ok && !otohaSamePrice(candidate, price) {
+			varies = true
+		}
+		if !ok || candidate.Input+candidate.Output > price.Input+price.Output {
+			price, billed = candidate, name
+		}
+		ok = true
+	}
+	return price, billed, varies, ok
+}
+
+func otohaSamePrice(a, b OtohaModelPrice) bool {
+	if a.Input != b.Input || a.Output != b.Output || (a.CachedInput == nil) != (b.CachedInput == nil) {
+		return false
+	}
+	return a.CachedInput == nil || *a.CachedInput == *b.CachedInput
+}
+
+// evaluate prices and checks every entry for the admin, and gives the entries that pass into the app's catalog. In a
+// composite group each model is priced as billing prices it once routed: the forwarded model, at its provider.
 func (s *OtohaCatalogService) evaluate(ctx context.Context, group *Group, entries []OtohaCatalogEntry) ([]OtohaCatalogAdminEntry, []otohaCatalogItem) {
 	out := make([]OtohaCatalogAdminEntry, 0, len(entries))
 	items := make([]otohaCatalogItem, 0, len(entries))
 	for _, entry := range entries {
 		item := OtohaCatalogAdminEntry{OtohaCatalogEntry: entry, EffectiveUse: otohaEffectiveUse(entry)}
-		upstream, priced := s.upstreamPrice(ctx, group, entry.ModelID)
+		route := s.route(ctx, group, entry.ModelID)
+		forwarded := route.forwardedModel(entry.ModelID)
+		item.RoutePlatform = route.Platform
+		item.lookupFailed = route.Failed
+		if forwarded != entry.ModelID {
+			item.RouteModel = forwarded
+		}
+		upstream, billed, varies, priced := s.routedPrice(ctx, group, entry.ModelID, route)
 		if priced {
+			if billed != forwarded {
+				item.BilledModel = billed
+			}
+			item.PriceVaries = varies
 			sale := otohaSalePrice(upstream, group.RateMultiplier)
 			item.UpstreamPrice = &upstream
 			item.SalePrice = &sale
@@ -601,8 +728,8 @@ func (s *OtohaCatalogService) evaluate(ctx context.Context, group *Group, entrie
 			item.Problem = OtohaCatalogProblemDisabled
 		case group.ModelAllowlistEnabled() && !group.ModelAllowlist.Allows(entry.ModelID):
 			item.Problem = OtohaCatalogProblemNotAllowed
-		case s.routing != nil && !s.routing.CanRoute(ctx, group, entry.ModelID):
-			item.Problem = OtohaCatalogProblemNoAccount
+		case route.Problem != "":
+			item.Problem = route.Problem
 		case !priced:
 			item.Problem = OtohaCatalogProblemNoPrice
 		default:

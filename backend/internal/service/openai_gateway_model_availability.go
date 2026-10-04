@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"sort"
 	"strings"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
@@ -66,4 +67,40 @@ func (s *OpenAIGatewayService) DiagnoseModelAvailabilityForPlatform(
 		}
 	}
 	return diag
+}
+
+// OtohaBilledModels lists, in a stable order and once each, the names usage is billed as when a persistently eligible
+// account of the platform in the group serves the requested model: the account's model mapping as Forward resolves
+// it (passthrough accounts bill the model as requested). claimedBy, when set, keeps only the accounts whose mapping
+// names that model, as the scheduler does for a model a composite group routes by account ownership.
+func (s *OpenAIGatewayService) OtohaBilledModels(ctx context.Context, groupID *int64, requestedModel, platform, claimedBy string) ([]string, error) {
+	requestedModel = strings.TrimSpace(requestedModel)
+	if s == nil || s.accountRepo == nil || requestedModel == "" {
+		return nil, nil
+	}
+	queryGroupID := groupID
+	includeGrouped := false
+	if s.cfg != nil && s.cfg.RunMode == config.RunModeSimple {
+		queryGroupID = nil
+		includeGrouped = true
+	}
+	accounts, err := s.accountRepo.ListModelAvailabilityCandidates(ctx, queryGroupID, []string{NormalizeOpenAICompatiblePlatform(platform)}, includeGrouped)
+	if err != nil {
+		return nil, err
+	}
+	var billed []string
+	for i := range accounts {
+		if !accounts[i].IsModelSupported(requestedModel) {
+			continue
+		}
+		if claimedBy != "" && !explicitModelMappingClaims(accounts[i], claimedBy) {
+			continue
+		}
+		name, _ := resolveOpenAIForwardMappedModels(&accounts[i], requestedModel, false)
+		if !otohaContains(billed, name) {
+			billed = append(billed, name)
+		}
+	}
+	sort.Strings(billed)
+	return billed, nil
 }

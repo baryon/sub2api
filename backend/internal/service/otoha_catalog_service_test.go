@@ -134,9 +134,11 @@ func (p fakeOtohaPricer) UpstreamPrice(_ context.Context, _ *Group, modelID stri
 
 type fakeOtohaRouting map[string]bool
 
-func (r fakeOtohaRouting) CanRoute(_ context.Context, _ *Group, modelID string) bool {
-	routable, known := r[modelID]
-	return !known || routable
+func (r fakeOtohaRouting) Route(_ context.Context, _ *Group, modelID string) OtohaModelRoute {
+	if routable, known := r[modelID]; known && !routable {
+		return OtohaModelRoute{Problem: OtohaCatalogProblemNoAccount}
+	}
+	return OtohaModelRoute{}
 }
 
 type fakeOtohaMetadata map[string]OtohaModelMetadata
