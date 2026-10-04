@@ -42,7 +42,8 @@ const PLATFORM_ORDER: PlatformQuotaPlatform[] = [
   'grok',
   'deepseek',
   'kimi',
-  'zhipu'
+  'zhipu',
+  'typesafe'
 ]
 
 // 仅展示「至少一档限额非空」的平台（配额列，非用量列）
