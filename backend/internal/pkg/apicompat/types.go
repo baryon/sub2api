@@ -426,6 +426,9 @@ type ResponsesOutput struct {
 // 序列化，输出逐字节不变。
 func (o ResponsesOutput) MarshalJSON() ([]byte, error) {
 	type responsesOutputAlias ResponsesOutput
+	if o.Type == "message" {
+		return marshalMessageOutput(responsesOutputAlias(o), o.Content)
+	}
 	if o.Type != "tool_search_call" {
 		return json.Marshal(responsesOutputAlias(o))
 	}
@@ -856,3 +859,27 @@ func (d ChatDelta) reasoningText() *string {
 // minMaxOutputTokens is the floor for max_output_tokens in a Responses request.
 // Very small values may cause upstream API errors, so we enforce a minimum.
 const minMaxOutputTokens = 128
+
+// marshalMessageOutput renders a message output item with content always present and each output_text part
+// carrying text/annotations/logprobs, the same shape the streamed parts use (outputTextPartWire): strict Responses
+// clients reject a completed message whose output_text has no annotations. Other part types keep their default form.
+func marshalMessageOutput(item any, content []ResponsesContentPart) ([]byte, error) {
+	raw, err := json.Marshal(item)
+	if err != nil {
+		return nil, err
+	}
+	var m map[string]any
+	if err := json.Unmarshal(raw, &m); err != nil {
+		return nil, err
+	}
+	parts := make([]any, 0, len(content))
+	for i := range content {
+		if content[i].Type == "output_text" {
+			parts = append(parts, outputTextPartWire(&content[i]))
+			continue
+		}
+		parts = append(parts, content[i])
+	}
+	m["content"] = parts
+	return json.Marshal(m)
+}
