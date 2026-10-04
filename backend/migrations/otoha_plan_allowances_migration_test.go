@@ -8,7 +8,7 @@ import (
 )
 
 func TestOtohaPlanAllowancesMigration(t *testing.T) {
-	content, err := FS.ReadFile("243_otoha_plan_allowances.sql")
+	content, err := FS.ReadFile("244_otoha_plan_allowances.sql")
 	require.NoError(t, err)
 
 	sql := strings.Join(strings.Fields(string(content)), " ")
