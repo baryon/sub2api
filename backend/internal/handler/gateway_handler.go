@@ -25,6 +25,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/typesafe"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/usagestats"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 	"github.com/Wei-Shaw/sub2api/internal/securityaudit"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
@@ -1611,7 +1612,7 @@ func (h *GatewayHandler) Usage(c *gin.Context) {
 	var modelStats any
 	if h.usageService != nil {
 		if stats, err := h.usageService.GetAPIKeyModelStats(ctx, apiKey.ID, startTime, endTime); err == nil && len(stats) > 0 {
-			modelStats = stats
+			modelStats = keyHolderModelStats(stats)
 		}
 	}
 
@@ -2664,4 +2665,36 @@ func (h *GatewayHandler) getUserMsgQueueMode(account *service.Account, parsed *s
 		mode = h.cfg.Gateway.UserMessageQueue.GetEffectiveMode()
 	}
 	return mode
+}
+
+// keyHolderModelStat is a model's usage as the key's holder reads it: what it cost them, never what the upstream
+// account cost us (TASK-58).
+type keyHolderModelStat struct {
+	Model               string  `json:"model"`
+	Requests            int64   `json:"requests"`
+	InputTokens         int64   `json:"input_tokens"`
+	OutputTokens        int64   `json:"output_tokens"`
+	CacheCreationTokens int64   `json:"cache_creation_tokens"`
+	CacheReadTokens     int64   `json:"cache_read_tokens"`
+	TotalTokens         int64   `json:"total_tokens"`
+	Cost                float64 `json:"cost"`
+	ActualCost          float64 `json:"actual_cost"`
+}
+
+func keyHolderModelStats(stats []usagestats.ModelStat) []keyHolderModelStat {
+	out := make([]keyHolderModelStat, 0, len(stats))
+	for _, stat := range stats {
+		out = append(out, keyHolderModelStat{
+			Model:               stat.Model,
+			Requests:            stat.Requests,
+			InputTokens:         stat.InputTokens,
+			OutputTokens:        stat.OutputTokens,
+			CacheCreationTokens: stat.CacheCreationTokens,
+			CacheReadTokens:     stat.CacheReadTokens,
+			TotalTokens:         stat.TotalTokens,
+			Cost:                stat.Cost,
+			ActualCost:          stat.ActualCost,
+		})
+	}
+	return out
 }
