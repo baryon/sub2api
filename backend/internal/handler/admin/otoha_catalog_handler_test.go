@@ -64,9 +64,14 @@ func (s *otohaCatalogAdminStub) Prefill(_ context.Context, groupID int64, modelI
 }
 
 func otohaAdminRouter(stub *otohaCatalogAdminStub) *gin.Engine {
+	return otohaAdminRouterFor(stub, 0)
+}
+
+func otohaAdminRouterFor(stub *otohaCatalogAdminStub, otohaGroupID int64) *gin.Engine {
 	gin.SetMode(gin.TestMode)
-	h := newOtohaCatalogHandler(stub)
+	h := newOtohaCatalogHandler(stub, otohaGroupID)
 	r := gin.New()
+	r.GET("/otoha-catalog/settings", h.Settings)
 	g := r.Group("/groups/:id/otoha-catalog")
 	g.GET("", h.Get)
 	g.POST("/entries", h.CreateEntry)
@@ -172,4 +177,26 @@ func TestOtohaCatalogAdminPassesIDsAndServiceErrors(t *testing.T) {
 	require.Equal(t, http.StatusConflict, otohaAdminDo(r, http.MethodPost, "/groups/7/otoha-catalog/entries", `{"model_id":"a"}`).Code)
 	stub.err = service.ErrGroupNotFound
 	require.Equal(t, http.StatusNotFound, otohaAdminDo(r, http.MethodGet, "/groups/8/otoha-catalog", "").Code)
+}
+
+// The admin's catalog page opens on the group the server serves the Otoha app from.
+func TestOtohaCatalogAdminSettingsNameTheOtohaGroup(t *testing.T) {
+	stub := &otohaCatalogAdminStub{}
+	rec := otohaAdminDo(otohaAdminRouterFor(stub, 12), http.MethodGet, "/otoha-catalog/settings", "")
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.JSONEq(t, `{"otoha_group_id":12}`, otohaAdminData(t, rec))
+
+	rec = otohaAdminDo(otohaAdminRouterFor(stub, 0), http.MethodGet, "/otoha-catalog/settings", "")
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.JSONEq(t, `{"otoha_group_id":0}`, otohaAdminData(t, rec), "0: the server has no Otoha group configured")
+	require.Empty(t, stub.lastCall)
+}
+
+func otohaAdminData(t *testing.T, rec *httptest.ResponseRecorder) string {
+	t.Helper()
+	var body struct {
+		Data json.RawMessage `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
+	return string(body.Data)
 }

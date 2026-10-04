@@ -4,6 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"strings"
+
+	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"go.uber.org/zap"
 )
 
 // NewOtohaCatalogService wires the Otoha catalog to the price resolver billing uses, the Codex manifest metadata and
@@ -19,9 +22,20 @@ func NewOtohaCatalogService(
 	routing := otohaDiagnoserRouting{}
 	if gatewayService != nil {
 		routing.gateway = gatewayService
+		// The same resolver the request middleware uses, with the account ownership lookup connected.
+		if gatewayService.compositeResolver != nil {
+			routing.composite = gatewayService.compositeResolver
+		}
 	}
 	if openAIGatewayService != nil {
 		routing.openai = openAIGatewayService
+		routing.openaiBilling = openAIGatewayService
+	}
+	if gatewayService != nil && gatewayService.channelService != nil {
+		routing.restricted = func(ctx context.Context, groupID int64, model string) bool {
+			return gatewayService.checkChannelPricingRestriction(ctx, &groupID, model)
+		}
+		routing.channelMapping = gatewayService.channelService.ResolveChannelMapping
 	}
 	return NewOtohaCatalogServiceWithDeps(
 		repo,
@@ -83,13 +97,16 @@ func (m otohaGatewayMetadata) ModelMetadata(ctx context.Context, group *Group, m
 	}
 	if m.accounts != nil && group != nil {
 		if accounts, err := m.accounts.ListByGroup(ctx, group.ID); err == nil {
-			var synced []UpstreamModelMetadata
-			for i := range accounts {
-				if meta, ok := accounts[i].GetUpstreamModelMetadata(modelID); ok {
-					synced = append(synced, meta)
+			// A composite group's accounts belong to several providers; only those of the provider the model is
+			// routed to describe it, under the name it is forwarded as.
+			platform, lookupModel := "", modelID
+			if group.Platform == PlatformComposite {
+				platform, _ = ResolvedTargetPlatformFromContext(ctx)
+				if upstream, ok := ResolvedUpstreamModelFromContext(ctx); ok {
+					lookupModel = upstream
 				}
 			}
-			if len(synced) > 0 {
+			if synced := otohaSyncedAccountMetadata(accounts, platform, lookupModel); len(synced) > 0 {
 				md = mergeOtohaAccountMetadata(md, synced)
 				found = true
 			}
@@ -152,6 +169,22 @@ func otohaMetadataFromCodexManifest(body []byte, modelID string) (OtohaModelMeta
 	return OtohaModelMetadata{}, false
 }
 
+// otohaSyncedAccountMetadata gathers the metadata synced onto the accounts (of the provider, when given, with the
+// Antigravity accounts scheduled alongside it) for a model.
+func otohaSyncedAccountMetadata(accounts []Account, platform, modelID string) []UpstreamModelMetadata {
+	var synced []UpstreamModelMetadata
+	for i := range accounts {
+		mixedIn := (platform == PlatformAnthropic || platform == PlatformGemini) && accounts[i].IsMixedSchedulingEnabled()
+		if platform != "" && accounts[i].Platform != platform && !mixedIn {
+			continue
+		}
+		if meta, ok := accounts[i].GetUpstreamModelMetadata(modelID); ok {
+			synced = append(synced, meta)
+		}
+	}
+	return synced
+}
+
 // mergeOtohaAccountMetadata fills what the manifest left empty from metadata synced onto accounts (an upstream
 // /models response or models.dev); the longest reply is the largest any account reports.
 func mergeOtohaAccountMetadata(md OtohaModelMetadata, synced []UpstreamModelMetadata) OtohaModelMetadata {
@@ -185,28 +218,145 @@ func mergeOtohaAccountMetadata(md OtohaModelMetadata, synced []UpstreamModelMeta
 	return md
 }
 
-// otohaDiagnoserRouting asks the gateway that serves the group's platform whether an account is configured for the
-// model, the same check that turns "no account" into model_not_found. Transient state (rate limits, overload) does
-// not hide a model. A composite group decides per request, so only its allowlist applies.
+// otohaDiagnoserRouting tells where the group sends the app's `/v1/responses` requests for a model, the way the
+// gateway does, and asks the gateway that serves that provider whether an account is configured for the model (the
+// check that turns "no account" into model_not_found; transient state such as rate limits does not hide a model).
+// A composite group resolves the provider per model: an explicit route, else the provider whose accounts claim the
+// model, else the provider its name belongs to.
 type otohaDiagnoserRouting struct {
-	gateway ModelAvailabilityDiagnoser
-	openai  ModelAvailabilityDiagnoser
+	gateway   ModelAvailabilityDiagnoser
+	openai    ModelAvailabilityDiagnoser
+	composite otohaCompositeResolver
+	// openaiBilling tells what the OpenAI gateway's accounts bill a model as.
+	openaiBilling otohaOpenAIBilledModels
+	// restricted is the gateway's check that the group's channel refuses a model it does not price.
+	restricted func(ctx context.Context, groupID int64, model string) bool
+	// channelMapping is the group's channel model mapping, which the gateways apply before forwarding.
+	channelMapping func(ctx context.Context, groupID int64, model string) ChannelMappingResult
 }
 
-func (r otohaDiagnoserRouting) CanRoute(ctx context.Context, group *Group, modelID string) bool {
-	if group == nil || group.Platform == PlatformComposite {
-		return true
+// otohaOpenAIBilledModels gives the names the accounts serving a model bill it as (OpenAIGatewayService).
+type otohaOpenAIBilledModels interface {
+	OtohaBilledModels(ctx context.Context, groupID *int64, model, platform, claimedBy string) ([]string, error)
+}
+
+// otohaCompositeResolver is the composite router the gateway's request middleware uses.
+type otohaCompositeResolver interface {
+	Resolve(ctx context.Context, groupID int64, model, endpoint string) (CompositeRouteDecision, error)
+}
+
+func (r otohaDiagnoserRouting) Route(ctx context.Context, group *Group, modelID string) OtohaModelRoute {
+	if group == nil {
+		return OtohaModelRoute{}
+	}
+	route := OtohaModelRoute{}
+	platform, model := group.Platform, modelID
+	ownedRoute := false
+	if group.Platform == PlatformComposite {
+		resolver := r.composite
+		if resolver == nil {
+			// The gateway's middleware falls back to the model-name detector alone the same way.
+			resolver = NewCompositeRouteResolver(nil)
+		}
+		decision, err := resolver.Resolve(ctx, group.ID, modelID, CompositeRouteEndpointResponses)
+		if err != nil {
+			// The request middleware answers 500 then; the model is left out of this read only.
+			logger.L().Warn("otoha_catalog.composite_route_failed", zap.Int64("group_id", group.ID), zap.String("model", modelID), zap.Error(err))
+			return OtohaModelRoute{Problem: OtohaCatalogProblemNoRoute, Failed: true}
+		}
+		if !decision.Matched {
+			// Unrouted, the request reaches the Anthropic gateway's Responses handler, which goes by the model's
+			// name: a Claude (or Antigravity) model is served, any other is not.
+			detected, ok := DetectModelPlatform(modelID)
+			if !ok || (detected != PlatformAnthropic && detected != PlatformAntigravity) {
+				return OtohaModelRoute{Problem: OtohaCatalogProblemNoRoute, Platform: decision.TargetPlatform}
+			}
+			decision = CompositeRouteDecision{Matched: true, TargetPlatform: detected, UpstreamModel: modelID}
+		}
+		platform, model = decision.TargetPlatform, strings.TrimSpace(decision.UpstreamModel)
+		if model == "" {
+			model = modelID
+		}
+		ownedRoute = decision.Source == CompositeRouteSourceAccount
+		route.Platform = platform
+		if model != modelID {
+			route.UpstreamModel = model
+		}
+	}
+	if !otohaResponsesReachesPlatform(platform) {
+		route.Problem = OtohaCatalogProblemNotViaResponses
+		return route
+	}
+	routedCtx := route.routedContext(ctx, modelID)
+	if r.restricted != nil && r.restricted(routedCtx, group.ID, model) {
+		route.Problem = OtohaCatalogProblemChannelRestricted
+		return route
+	}
+	// The gateways forward the model under the name the group's channel maps it to, and by default bill that name.
+	served := model
+	var channelBilled []string
+	if r.channelMapping != nil {
+		if mapping := r.channelMapping(routedCtx, group.ID, model); mapping.Mapped && strings.TrimSpace(mapping.MappedModel) != "" {
+			served = strings.TrimSpace(mapping.MappedModel)
+			switch mapping.BillingModelSource {
+			case BillingModelSourceRequested:
+				channelBilled = []string{modelID}
+			case BillingModelSourceUpstream:
+				// The serving account's mapping decides, below.
+			default:
+				channelBilled = []string{served}
+			}
+		}
+	}
+	diagnoser := r.gateway
+	if otohaOpenAIGatewayPlatform(platform) {
+		diagnoser = r.openai
 	}
 	groupID := group.ID
-	var diagnoser ModelAvailabilityDiagnoser
-	switch group.Platform {
-	case PlatformOpenAI, PlatformGrok, PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformMiniMax, PlatformOpenCodeGo:
-		diagnoser = r.openai
+	if diagnoser != nil && !diagnoser.DiagnoseModelAvailabilityForPlatform(ctx, &groupID, served, platform).HasModelSupport {
+		route.Problem = OtohaCatalogProblemNoAccount
+		return route
+	}
+	billed := channelBilled
+	switch {
+	case billed != nil:
+	case otohaOpenAIGatewayPlatform(platform) && r.openaiBilling != nil:
+		// The OpenAI gateway bills what the serving account maps the model to; a model routed by account
+		// ownership is served only by the accounts that claim it.
+		claimedBy := ""
+		if ownedRoute {
+			claimedBy = modelID
+		}
+		names, err := r.openaiBilling.OtohaBilledModels(ctx, &groupID, served, platform, claimedBy)
+		if err != nil {
+			logger.L().Warn("otoha_catalog.billed_models_failed", zap.Int64("group_id", group.ID), zap.String("model", modelID), zap.Error(err))
+			route.Failed = true
+		}
+		billed = names
 	default:
-		diagnoser = r.gateway
+		// The Anthropic gateway bills the model as it forwards it.
+		billed = []string{served}
 	}
-	if diagnoser == nil {
+	if len(billed) != 1 || billed[0] != model {
+		route.BilledModels = billed
+	}
+	return route
+}
+
+// otohaOpenAIGatewayPlatform is a provider whose requests the OpenAI gateway handles.
+func otohaOpenAIGatewayPlatform(platform string) bool {
+	switch platform {
+	case PlatformOpenAI, PlatformGrok, PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformMiniMax, PlatformOpenCodeGo:
 		return true
+	default:
+		return false
 	}
-	return diagnoser.DiagnoseModelAvailabilityForPlatform(ctx, &groupID, modelID, group.Platform).HasModelSupport
+}
+
+// otohaResponsesReachesPlatform tells whether `/v1/responses` reaches a provider's accounts: the OpenAI gateway
+// serves the OpenAI-compatible providers natively, and the Anthropic gateway converts Responses to Anthropic for
+// Anthropic and Antigravity accounts. A Gemini account would be sent an Anthropic request, and TypeSafe takes only its
+// own protocol, so neither is reachable.
+func otohaResponsesReachesPlatform(platform string) bool {
+	return otohaOpenAIGatewayPlatform(platform) || platform == PlatformAnthropic || platform == PlatformAntigravity
 }

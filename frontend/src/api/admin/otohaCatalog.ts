@@ -5,7 +5,15 @@
 
 import { apiClient } from '../client'
 
-export type OtohaCatalogProblem = '' | 'disabled' | 'not_allowed' | 'no_account' | 'no_price'
+export type OtohaCatalogProblem =
+  | ''
+  | 'disabled'
+  | 'not_allowed'
+  | 'no_route'
+  | 'not_via_responses'
+  | 'channel_restricted'
+  | 'no_account'
+  | 'no_price'
 
 export interface OtohaModelPrice {
   currency: string
@@ -50,6 +58,14 @@ export interface OtohaCatalogAdminEntry extends OtohaCatalogEntry {
   effective_use: string[] | null
   in_catalog: boolean
   problem: OtohaCatalogProblem
+  /** In a mixed group: the provider the app's requests for the model go to ('' when it cannot be told). */
+  route_platform: string
+  /** In a mixed group: the model the requests are forwarded as, when a route renames it. */
+  route_model: string
+  /** The model the price is that of, when accounts bill the model under another name. */
+  billed_model: string
+  /** The group's accounts bill the model at different prices; the highest is shown. */
+  price_varies: boolean
 }
 
 export interface OtohaCatalogModel {
@@ -67,6 +83,7 @@ export interface OtohaCatalog {
 export interface OtohaCatalogAdminView {
   group_id: number
   group_name: string
+  group_platform: string
   rate_multiplier: number
   entries: OtohaCatalogAdminEntry[]
   preview: OtohaCatalog | null
@@ -78,6 +95,12 @@ export interface OtohaCatalogPrefill {
   upstream_price: OtohaModelPrice | null
   sale_price: OtohaModelPrice | null
   cost_tier: string
+  route_platform: string
+}
+
+export interface OtohaCatalogSettings {
+  /** The group the server serves the Otoha app from; 0 when none is set. */
+  otoha_group_id: number
 }
 
 export async function getCatalog(groupId: number): Promise<OtohaCatalogAdminView> {
@@ -117,7 +140,13 @@ export async function prefill(groupId: number, modelId: string): Promise<OtohaCa
   return data
 }
 
+export async function getSettings(): Promise<OtohaCatalogSettings> {
+  const { data } = await apiClient.get<OtohaCatalogSettings>('/admin/otoha-catalog/settings')
+  return data
+}
+
 export const otohaCatalogAPI = {
+  getSettings,
   getCatalog,
   createEntry,
   updateEntry,

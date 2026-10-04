@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
@@ -22,15 +23,27 @@ type otohaCatalogAdmin interface {
 // OtohaCatalogHandler serves the admin API for a group's Otoha model catalog.
 type OtohaCatalogHandler struct {
 	catalog otohaCatalogAdmin
+	// otohaGroupID is the group the server serves the Otoha app from (otoha.group_id); 0 when not configured.
+	otohaGroupID int64
 }
 
 // NewOtohaCatalogHandler creates the handler.
-func NewOtohaCatalogHandler(catalog *service.OtohaCatalogService) *OtohaCatalogHandler {
-	return newOtohaCatalogHandler(catalog)
+func NewOtohaCatalogHandler(catalog *service.OtohaCatalogService, cfg *config.Config) *OtohaCatalogHandler {
+	var otohaGroupID int64
+	if cfg != nil {
+		otohaGroupID = cfg.Otoha.GroupID
+	}
+	return newOtohaCatalogHandler(catalog, otohaGroupID)
 }
 
-func newOtohaCatalogHandler(catalog otohaCatalogAdmin) *OtohaCatalogHandler {
-	return &OtohaCatalogHandler{catalog: catalog}
+func newOtohaCatalogHandler(catalog otohaCatalogAdmin, otohaGroupID int64) *OtohaCatalogHandler {
+	return &OtohaCatalogHandler{catalog: catalog, otohaGroupID: otohaGroupID}
+}
+
+// Settings tells the admin's catalog page which group the Otoha app is served from (TASK-63); 0 when none is set.
+// GET /api/v1/admin/otoha-catalog/settings
+func (h *OtohaCatalogHandler) Settings(c *gin.Context) {
+	response.Success(c, gin.H{"otoha_group_id": h.otohaGroupID})
 }
 
 // OtohaCatalogEntryRequest is one catalog entry as the admin page submits it.
