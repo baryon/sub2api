@@ -45,3 +45,25 @@ func TestCompletedMessageOutputTextCarriesAnnotations(t *testing.T) {
 	require.NoError(t, err)
 	require.JSONEq(t, string(want), string(got))
 }
+
+// The finished message in response.output_item.done carries the same output_text shape (the OtohaAI app checks
+// this item too).
+func TestOutputItemDoneMessageCarriesAnnotations(t *testing.T) {
+	ev := ResponsesStreamEvent{Type: "response.output_item.done", OutputIndex: 0, Item: &ResponsesOutput{
+		Type: "message", ID: "item_1", Role: "assistant", Status: "completed",
+		Content: []ResponsesContentPart{{Type: "output_text", Text: "你好"}},
+	}}
+	raw, err := json.Marshal(ev)
+	require.NoError(t, err)
+	var decoded struct {
+		Item struct {
+			Content []map[string]any `json:"content"`
+		} `json:"item"`
+	}
+	require.NoError(t, json.Unmarshal(raw, &decoded))
+	require.Len(t, decoded.Item.Content, 1)
+	part := decoded.Item.Content[0]
+	require.Equal(t, "你好", part["text"])
+	require.Equal(t, []any{}, part["annotations"])
+	require.Equal(t, []any{}, part["logprobs"])
+}
