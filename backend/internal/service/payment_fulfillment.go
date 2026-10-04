@@ -426,7 +426,27 @@ func (s *PaymentService) markCompleted(ctx context.Context, o *dbent.PaymentOrde
 		})
 		s.dispatchPaymentFulfillmentNotification(o, auditAction)
 	}
+	s.runFulfillmentHook(ctx, o)
 	return nil
+}
+
+// runFulfillmentHook tells the hook about a completed order. It runs on the completing call only; it must not
+// fail the payment, and whatever it does must be safe to repeat after a lost lease.
+func (s *PaymentService) runFulfillmentHook(ctx context.Context, o *dbent.PaymentOrder) {
+	if s.fulfillmentHook == nil || o == nil {
+		return
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			slog.Error("payment fulfillment hook panicked", "order_id", o.ID, "panic", r)
+		}
+	}()
+	s.fulfillmentHook.OnPaymentFulfilled(ctx, PaymentFulfillment{
+		OrderID:             o.ID,
+		UserID:              o.UserID,
+		OrderType:           o.OrderType,
+		SubscriptionGroupID: o.SubscriptionGroupID,
+	})
 }
 
 func (s *PaymentService) dispatchPaymentFulfillmentNotification(o *dbent.PaymentOrder, auditAction string) {

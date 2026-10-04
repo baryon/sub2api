@@ -1353,3 +1353,17 @@ image_storage:
   presign_expiry_hours: 24
   # 当上游返回的是图片 url 时，下载该图片再转存的字节上限（默认 32MB）
   max_download_bytes: 33554432
+
+# =============================================================================
+# Otoha AI (Otoha 购买与 App 配置)
+# =============================================================================
+# 售卖 Otoha AI 服务的分组。设置 group_id 后：用户为该分组的套餐付款或充值成功时，
+# 自动在该分组下建一把名为 "Otoha Desktop" 的 key；用户可在 /otoha 页面生成领取码、
+# 下载配置文件，Otoha App 用领取码换取配置（POST /api/v1/otoha/claim）。
+# group_id 为 0 时以上接口关闭。环境变量：OTOHA_GROUP_ID、OTOHA_GATEWAY_BASE_URL、OTOHA_DEFAULT_MODEL。
+otoha:
+  group_id: 0
+  # 写入 App 配置的模型网关地址，只填协议和域名，例如 https://api.otohaai.com
+  gateway_base_url: ""
+  # App 的默认模型；留空时取模型目录里标为 default 的模型，再退到分组的默认模型或模型白名单第一项
+  default_model: ""

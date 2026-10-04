@@ -970,6 +970,8 @@ var ProviderSet = wire.NewSet(
 	NewAffiliateService,
 	ProvidePaymentConfigService,
 	ProvidePaymentService,
+	NewOtohaService,
+	ProvideOtohaCatalogReader,
 	ProvidePaymentOrderExpiryService,
 	ProvideBalanceNotifyService,
 	ProvideChannelMonitorService,
@@ -1001,11 +1003,26 @@ func ProvideBalanceNotifyService(emailService *EmailService, settingRepo Setting
 	return svc
 }
 
-// ProvidePaymentService creates PaymentService and attaches notification email delivery.
-func ProvidePaymentService(entClient *dbent.Client, registry *payment.Registry, loadBalancer payment.LoadBalancer, redeemService *RedeemService, subscriptionSvc *SubscriptionService, configService *PaymentConfigService, userRepo UserRepository, groupRepo GroupRepository, affiliateService *AffiliateService, notificationEmailService *NotificationEmailService) *PaymentService {
+// ProvidePaymentService creates PaymentService and attaches notification email delivery and the Otoha key
+// that a payment for the Otoha group brings (TASK-55).
+func ProvidePaymentService(entClient *dbent.Client, registry *payment.Registry, loadBalancer payment.LoadBalancer, redeemService *RedeemService, subscriptionSvc *SubscriptionService, configService *PaymentConfigService, userRepo UserRepository, groupRepo GroupRepository, affiliateService *AffiliateService, notificationEmailService *NotificationEmailService, otohaService *OtohaService) *PaymentService {
 	svc := NewPaymentService(entClient, registry, loadBalancer, redeemService, subscriptionSvc, configService, userRepo, groupRepo, affiliateService)
 	svc.SetNotificationEmailService(notificationEmailService)
+	if otohaService != nil {
+		svc.SetFulfillmentHook(otohaService)
+	}
 	return svc
+}
+
+// noOtohaCatalog stands in until the Otoha model catalog (TASK-54) is wired: no group has a catalog, so the
+// configuration leaves `catalog` out.
+type noOtohaCatalog struct{}
+
+func (noOtohaCatalog) CatalogForGroup(context.Context, int64) (*OtohaCatalog, error) { return nil, nil }
+
+// ProvideOtohaCatalogReader gives the Otoha model catalog to the claim configuration. TASK-54 replaces it.
+func ProvideOtohaCatalogReader() OtohaCatalogReader {
+	return noOtohaCatalog{}
 }
 
 // ProvidePaymentOrderExpiryService creates and starts PaymentOrderExpiryService.

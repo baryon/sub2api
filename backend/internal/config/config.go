@@ -107,9 +107,27 @@ type Config struct {
 	BatchImage              BatchImageConfig              `mapstructure:"batch_image"`
 	ImageStorage            ImageStorageConfig            `mapstructure:"image_storage"`
 	Plugins                 PluginConfig                  `mapstructure:"plugins"`
+	Otoha                   OtohaConfig                   `mapstructure:"otoha"`
 
 	// Enforce only API-key spending windows in simple mode.
 	SimpleModeKeyRateLimitEnabled bool `mapstructure:"simple_mode_key_rate_limit_enabled" yaml:"simple_mode_key_rate_limit_enabled"`
+}
+
+// OtohaConfig names the group that sells the Otoha AI service (the Otoha app's plans and top-ups) and the gateway
+// address written into the configuration the app imports. Leaving group_id at 0 turns the Otoha endpoints off.
+type OtohaConfig struct {
+	// GroupID is the Otoha group: paying for one of its plans, or topping up, gives the user an "Otoha Desktop"
+	// key in it.
+	GroupID int64 `mapstructure:"group_id"`
+	// GatewayBaseURL is the model gateway the app talks to, without a path, e.g. https://api.otohaai.com.
+	GatewayBaseURL string `mapstructure:"gateway_base_url"`
+	// DefaultModel is the app's default model; empty picks one from the group's catalog or model list.
+	DefaultModel string `mapstructure:"default_model"`
+}
+
+// Enabled reports whether the Otoha group and gateway are configured.
+func (c OtohaConfig) Enabled() bool {
+	return c.GroupID > 0 && c.GatewayBaseURL != ""
 }
 
 // SimpleModeConfig controls startup behavior in simple mode.
@@ -1912,6 +1930,8 @@ func load(allowMissingJWTSecret bool) (*Config, error) {
 		cfg.Server.Mode = "debug"
 	}
 	cfg.Server.FrontendURL = strings.TrimSpace(cfg.Server.FrontendURL)
+	cfg.Otoha.GatewayBaseURL = strings.TrimRight(strings.TrimSpace(cfg.Otoha.GatewayBaseURL), "/")
+	cfg.Otoha.DefaultModel = strings.TrimSpace(cfg.Otoha.DefaultModel)
 	cfg.JWT.Secret = strings.TrimSpace(cfg.JWT.Secret)
 	cfg.DeepSeek.UserIDSecret = strings.TrimSpace(cfg.DeepSeek.UserIDSecret)
 	cfg.LinuxDo.ClientID = strings.TrimSpace(cfg.LinuxDo.ClientID)
@@ -2069,6 +2089,9 @@ func setDefaults() {
 	viper.SetDefault("server.mode", "release")
 	viper.SetDefault("server.enable_server_timing", false)
 	viper.SetDefault("server.frontend_url", "")
+	viper.SetDefault("otoha.group_id", 0)
+	viper.SetDefault("otoha.gateway_base_url", "")
+	viper.SetDefault("otoha.default_model", "")
 	viper.SetDefault("server.read_header_timeout", 10) // 10秒读取请求头
 	viper.SetDefault("server.max_header_bytes", 64*1024)
 	viper.SetDefault("server.idle_timeout", 120) // 120秒空闲超时
@@ -2881,6 +2904,10 @@ func (c *Config) Validate() error {
 	geminiClientSecret := strings.TrimSpace(c.Gemini.OAuth.ClientSecret)
 	if (geminiClientID == "") != (geminiClientSecret == "") {
 		return fmt.Errorf("gemini.oauth.client_id and gemini.oauth.client_secret must be both set or both empty")
+	}
+
+	if err := c.Otoha.validate(); err != nil {
+		return err
 	}
 
 	if strings.TrimSpace(c.Server.FrontendURL) != "" {
@@ -3886,6 +3913,31 @@ func GetServerAddress() string {
 }
 
 // ValidateAbsoluteHTTPURL 验证是否为有效的绝对 HTTP(S) URL
+func (c OtohaConfig) validate() error {
+	if c.GroupID < 0 {
+		return fmt.Errorf("otoha.group_id must not be negative")
+	}
+	if c.GroupID == 0 {
+		return nil
+	}
+	raw := strings.TrimSpace(c.GatewayBaseURL)
+	if raw == "" {
+		return fmt.Errorf("otoha.gateway_base_url is required when otoha.group_id is set")
+	}
+	if err := ValidateAbsoluteHTTPURL(raw); err != nil {
+		return fmt.Errorf("otoha.gateway_base_url invalid: %w", err)
+	}
+	u, err := url.Parse(raw)
+	if err != nil {
+		return fmt.Errorf("otoha.gateway_base_url invalid: %w", err)
+	}
+	if strings.Trim(u.Path, "/") != "" || u.RawQuery != "" || u.ForceQuery || u.User != nil {
+		return fmt.Errorf("otoha.gateway_base_url invalid: must be scheme and host only, e.g. https://api.example.com")
+	}
+	warnIfInsecureURL("otoha.gateway_base_url", raw)
+	return nil
+}
+
 func ValidateAbsoluteHTTPURL(raw string) error {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {

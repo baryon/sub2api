@@ -199,6 +199,7 @@ type PaymentService struct {
 	resumeService            *PaymentResumeService
 	affiliateService         *AffiliateService
 	notificationEmailService *NotificationEmailService
+	fulfillmentHook          PaymentFulfillmentHook
 }
 
 func NewPaymentService(entClient *dbent.Client, registry *payment.Registry, loadBalancer payment.LoadBalancer, redeemService *RedeemService, subscriptionSvc *SubscriptionService, configService *PaymentConfigService, userRepo UserRepository, groupRepo GroupRepository, affiliateService *AffiliateService) *PaymentService {
@@ -209,6 +210,11 @@ func NewPaymentService(entClient *dbent.Client, registry *payment.Registry, load
 
 func (s *PaymentService) SetNotificationEmailService(notificationEmailService *NotificationEmailService) {
 	s.notificationEmailService = notificationEmailService
+}
+
+// SetFulfillmentHook attaches what runs after an order is fulfilled (the Otoha key, TASK-55).
+func (s *PaymentService) SetFulfillmentHook(hook PaymentFulfillmentHook) {
+	s.fulfillmentHook = hook
 }
 
 // --- Provider Registry ---
