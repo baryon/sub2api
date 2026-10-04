@@ -24,6 +24,8 @@ func RegisterModelPlazaRoutes(
 	plaza.Use(panelRateLimiter.PublicIP())
 	plaza.Use(gin.HandlerFunc(optionalJWT))
 	plaza.Use(middleware.BackendModeUserGuard(settingService))
+	// Otoha 门户：模型广场列出分组与倍率，只对管理员开放（匿名无 role 同样拦截）。
+	plaza.Use(middleware.OtohaPortalUserGuard(settingService.OtohaPortalEnabled(), service.ErrOtohaPortalGroupsManaged))
 	{
 		plaza.GET("", h.ModelPlaza.Get)
 	}

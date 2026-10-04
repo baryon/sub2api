@@ -124,6 +124,8 @@ func (h *SettingHandler) GetPublicSettings(c *gin.Context) {
 
 		AllowUserViewErrorRequests:                  settings.AllowUserViewErrorRequests,
 		DeepSeekResponsesWebSocketHTTPBridgeEnabled: settings.DeepSeekResponsesWebSocketHTTPBridgeEnabled,
+
+		OtohaPortalEnabled: settings.OtohaPortalEnabled,
 	})
 }
 

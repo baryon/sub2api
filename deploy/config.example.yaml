@@ -1367,3 +1367,8 @@ otoha:
   gateway_base_url: ""
   # App 的默认模型；留空时取模型目录里标为 default 的模型，再退到分组的默认模型或模型白名单第一项
   default_model: ""
+  # Otoha 门户（环境变量 OTOHA_PORTAL，需要 group_id）：普通用户只看到 我的 Otoha、购买、用量记录、订单、账号设置，
+  # 登录后到「我的 Otoha」；API 密钥、分组、渠道等面向开发者的页面隐藏并跳回「我的 Otoha」，
+  # 用户接口不能自建、修改、删除 key，也不能选分组（系统建的 "Otoha Desktop" key 不受影响）。管理员不受影响。
+  # 自定义菜单项默认在门户里隐藏，菜单项带 "show_in_portal": true 时才显示。
+  portal: false

@@ -72,18 +72,23 @@ func RegisterUserRoutes(
 			}
 		}
 
+		// Otoha 门户（otoha.portal）：普通用户的 key 由系统建好并保管，不能自建、修改、删除，也不能选分组；管理员不受影响。
+		otohaPortal := settingService.OtohaPortalEnabled()
+		portalKeysGuard := middleware.OtohaPortalUserGuard(otohaPortal, service.ErrOtohaPortalKeysManaged)
+
 		// API Key管理
 		keys := authenticated.Group("/keys")
 		{
 			keys.GET("", h.APIKey.List)
 			keys.GET("/:id", h.APIKey.GetByID)
-			keys.POST("", h.APIKey.Create)
-			keys.PUT("/:id", h.APIKey.Update)
-			keys.DELETE("/:id", h.APIKey.Delete)
+			keys.POST("", portalKeysGuard, h.APIKey.Create)
+			keys.PUT("/:id", portalKeysGuard, h.APIKey.Update)
+			keys.DELETE("/:id", portalKeysGuard, h.APIKey.Delete)
 		}
 
 		// 用户可用分组（非管理员接口）
 		groups := authenticated.Group("/groups")
+		groups.Use(middleware.OtohaPortalUserGuard(otohaPortal, service.ErrOtohaPortalGroupsManaged))
 		{
 			groups.GET("/available", h.APIKey.GetAvailableGroups)
 			groups.GET("/rates", h.APIKey.GetUserGroupRates)
@@ -92,6 +97,7 @@ func RegisterUserRoutes(
 
 		// 用户可用渠道（非管理员接口）
 		channels := authenticated.Group("/channels")
+		channels.Use(middleware.OtohaPortalUserGuard(otohaPortal, service.ErrOtohaPortalGroupsManaged))
 		{
 			channels.GET("/available", h.AvailableChannel.List)
 		}

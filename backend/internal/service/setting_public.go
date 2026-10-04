@@ -153,6 +153,12 @@ func (s *SettingService) GetFrontendURL(ctx context.Context) string {
 	return s.cfg.Server.FrontendURL
 }
 
+// OtohaPortalEnabled reports whether this instance runs as the Otoha portal (server config otoha.portal with the
+// Otoha group set). Safe on a nil service or config.
+func (s *SettingService) OtohaPortalEnabled() bool {
+	return s != nil && s.cfg != nil && s.cfg.Otoha.PortalEnabled()
+}
+
 // GetPublicSettings 获取公开设置（无需登录）
 func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings, error) {
 	keys := []string{
@@ -379,6 +385,8 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		RiskControlEnabled: settings[SettingKeyRiskControlEnabled] == "true",
 
 		AllowUserViewErrorRequests: settings[SettingKeyAllowUserViewErrorRequests] == "true",
+
+		OtohaPortalEnabled: s.OtohaPortalEnabled(),
 	}, nil
 }
 
@@ -646,6 +654,8 @@ type PublicSettingsInjectionPayload struct {
 	AffiliateEnabled                            bool `json:"affiliate_enabled"`
 	RiskControlEnabled                          bool `json:"risk_control_enabled"`
 	AllowUserViewErrorRequests                  bool `json:"allow_user_view_error_requests"`
+	// OtohaPortalEnabled must be injected too: the portal decides the first screen a user sees.
+	OtohaPortalEnabled bool `json:"otoha_portal_enabled"`
 }
 
 // GetPublicSettingsForInjection returns public settings in a format suitable for HTML injection.
@@ -731,6 +741,7 @@ func (s *SettingService) GetPublicSettingsForInjection(ctx context.Context) (any
 		AffiliateEnabled:                            settings.AffiliateEnabled,
 		RiskControlEnabled:                          settings.RiskControlEnabled,
 		AllowUserViewErrorRequests:                  settings.AllowUserViewErrorRequests,
+		OtohaPortalEnabled:                          settings.OtohaPortalEnabled,
 	}, nil
 }
 

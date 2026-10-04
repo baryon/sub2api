@@ -155,3 +155,26 @@ func TestSettingHandler_GetPublicSettings_ExposesWeChatOAuthModeCapabilities(t *
 	require.True(t, resp.Data.WeChatOAuthOpenEnabled)
 	require.True(t, resp.Data.WeChatOAuthMPEnabled)
 }
+
+func TestSettingHandler_GetPublicSettings_ReportsTheOtohaPortal(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	for _, portal := range []bool{false, true} {
+		cfg := &config.Config{}
+		cfg.Otoha.GroupID = 2
+		cfg.Otoha.GatewayBaseURL = "https://api.example.com"
+		cfg.Otoha.Portal = portal
+		h := NewSettingHandler(service.NewSettingService(&settingHandlerPublicRepoStub{values: map[string]string{}}, cfg), "test-version")
+
+		recorder := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(recorder)
+		c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/settings/public", nil)
+		h.GetPublicSettings(c)
+		require.Equal(t, http.StatusOK, recorder.Code)
+
+		var resp struct {
+			Data map[string]any `json:"data"`
+		}
+		require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &resp))
+		require.Equal(t, portal, resp.Data["otoha_portal_enabled"], "portal=%v", portal)
+	}
+}

@@ -425,6 +425,9 @@ type PublicSettings struct {
 
 	// Dedicated DeepSeek Responses WS ingress is accepted and bridged to HTTP.
 	DeepSeekResponsesWebSocketHTTPBridgeEnabled bool `json:"deepseek_responses_websocket_http_bridge_enabled"`
+
+	// OtohaPortalEnabled mirrors the server config otoha.portal (TASK-61): regular users get the Otoha portal.
+	OtohaPortalEnabled bool `json:"otoha_portal_enabled"`
 }
 
 type LoginAgreementDocument struct {

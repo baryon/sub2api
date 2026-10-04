@@ -123,11 +123,20 @@ type OtohaConfig struct {
 	GatewayBaseURL string `mapstructure:"gateway_base_url"`
 	// DefaultModel is the app's default model; empty picks one from the group's catalog or model list.
 	DefaultModel string `mapstructure:"default_model"`
+	// Portal turns the user side of the site into the Otoha portal: regular users only see buying, My Otoha,
+	// usage, orders and account settings, and cannot create, change or delete keys or pick groups themselves.
+	// Admins are unaffected. Off by default; requires group_id.
+	Portal bool `mapstructure:"portal"`
 }
 
 // Enabled reports whether the Otoha group and gateway are configured.
 func (c OtohaConfig) Enabled() bool {
 	return c.GroupID > 0 && c.GatewayBaseURL != ""
+}
+
+// PortalEnabled reports whether the instance runs as the Otoha portal (portal on and the Otoha group configured).
+func (c OtohaConfig) PortalEnabled() bool {
+	return c.Portal && c.Enabled()
 }
 
 // SimpleModeConfig controls startup behavior in simple mode.
@@ -2092,6 +2101,7 @@ func setDefaults() {
 	viper.SetDefault("otoha.group_id", 0)
 	viper.SetDefault("otoha.gateway_base_url", "")
 	viper.SetDefault("otoha.default_model", "")
+	viper.SetDefault("otoha.portal", false)
 	viper.SetDefault("server.read_header_timeout", 10) // 10秒读取请求头
 	viper.SetDefault("server.max_header_bytes", 64*1024)
 	viper.SetDefault("server.idle_timeout", 120) // 120秒空闲超时
@@ -3917,6 +3927,9 @@ func (c OtohaConfig) validate() error {
 		return fmt.Errorf("otoha.group_id must not be negative")
 	}
 	if c.GroupID == 0 {
+		if c.Portal {
+			return fmt.Errorf("otoha.portal requires otoha.group_id")
+		}
 		return nil
 	}
 	raw := strings.TrimSpace(c.GatewayBaseURL)

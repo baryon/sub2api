@@ -78,3 +78,53 @@ func TestOtohaConfigValidation(t *testing.T) {
 		})
 	}
 }
+
+func TestOtohaPortalDefaultsToOff(t *testing.T) {
+	resetViperWithJWTSecret(t)
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	if cfg.Otoha.Portal || cfg.Otoha.PortalEnabled() {
+		t.Fatalf("the Otoha portal should be off by default, got %+v", cfg.Otoha)
+	}
+}
+
+func TestOtohaPortalReadsEnvironment(t *testing.T) {
+	resetViperWithJWTSecret(t)
+	t.Setenv("OTOHA_GROUP_ID", "2")
+	t.Setenv("OTOHA_GATEWAY_BASE_URL", "https://api.otohaai.com")
+	t.Setenv("OTOHA_PORTAL", "true")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	if !cfg.Otoha.Portal || !cfg.Otoha.PortalEnabled() {
+		t.Fatalf("OTOHA_PORTAL=true should turn the portal on, got %+v", cfg.Otoha)
+	}
+}
+
+func TestOtohaPortalNeedsTheOtohaGroup(t *testing.T) {
+	resetViperWithJWTSecret(t)
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	cfg.Otoha.Portal = true
+	err = cfg.Validate()
+	if err == nil || !strings.Contains(err.Error(), "otoha.portal") {
+		t.Fatalf("Validate() error = %v, want the portal to require otoha.group_id", err)
+	}
+	if cfg.Otoha.PortalEnabled() {
+		t.Fatalf("the portal must not count as on without the Otoha group")
+	}
+
+	cfg.Otoha.GroupID = 2
+	cfg.Otoha.GatewayBaseURL = "https://api.otohaai.com"
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("Validate() unexpected error with the group set: %v", err)
+	}
+	if !cfg.Otoha.PortalEnabled() {
+		t.Fatalf("the portal should be on with the group set")
+	}
+}

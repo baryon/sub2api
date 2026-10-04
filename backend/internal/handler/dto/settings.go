@@ -17,6 +17,9 @@ type CustomMenuItem struct {
 	Visibility     string `json:"visibility"` // "user" or "admin"
 	SortOrder      int    `json:"sort_order"`
 	HideOpenButton bool   `json:"hide_open_button,omitempty"`
+	// ShowInPortal keeps a user item visible in the Otoha portal (config otoha.portal), where custom items are
+	// hidden by default.
+	ShowInPortal bool `json:"show_in_portal,omitempty"`
 }
 
 // CustomEndpoint represents an admin-configured API endpoint for quick copy.
@@ -455,6 +458,9 @@ type PublicSettings struct {
 	AllowUserViewErrorRequests bool `json:"allow_user_view_error_requests"`
 
 	DeepSeekResponsesWebSocketHTTPBridgeEnabled bool `json:"deepseek_responses_websocket_http_bridge_enabled"`
+
+	// OtohaPortalEnabled: regular users get the Otoha portal instead of the developer pages (TASK-61).
+	OtohaPortalEnabled bool `json:"otoha_portal_enabled"`
 }
 
 type LoginAgreementDocument struct {
