@@ -15,6 +15,29 @@ export function otohaPlans(plans: SubscriptionPlan[] | undefined, groupId: numbe
     })
 }
 
+export type PlanAction = 'buy' | 'renew' | 'upgrade' | 'later'
+
+/**
+ * What buying a plan does for the user's current Otoha plan: renew the same plan (adds a period), upgrade to a
+ * plan at the same or a higher price (starts now; the old plan's unused allowance goes to the balance), or a
+ * cheaper plan, which is only available once the current plan ends. Without a current plan, or when the current
+ * plan is not among those on sale, it is a plain purchase.
+ */
+export function planAction(
+  plan: SubscriptionPlan,
+  current: Pick<OtohaAccountPlan, 'plan_id' | 'name'> | null | undefined,
+  plans: SubscriptionPlan[],
+): PlanAction {
+  if (!current) return 'buy'
+  if (current.plan_id == null) {
+    return current.name === plan.name ? 'renew' : 'buy'
+  }
+  if (current.plan_id === plan.id) return 'renew'
+  const currentPlan = plans.find((p) => p.id === current.plan_id)
+  if (!currentPlan) return 'buy'
+  return plan.price >= currentPlan.price ? 'upgrade' : 'later'
+}
+
 export interface PeriodUsage {
   used: number
   limit: number | null

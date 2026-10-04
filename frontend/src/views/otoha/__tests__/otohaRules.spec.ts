@@ -4,6 +4,7 @@ import {
   orderOutcome,
   otohaOpenUrl,
   otohaPlans,
+  planAction,
   periodUsage,
   topUpAmountError,
 } from '../otohaRules'
@@ -134,5 +135,50 @@ describe('sanitizeRedirectPath', () => {
     for (const bad of ['https://evil.example', '//evil.example', '/\\evil.example', 'otoha/buy', '/a\nb', '', null, undefined, ['/x']]) {
       expect(sanitizeRedirectPath(bad as never)).toBe('')
     }
+  })
+})
+
+describe('planAction', () => {
+  const plus = plan({ id: 1, name: 'Plus', price: 20 })
+  const pro = plan({ id: 2, name: 'Pro', price: 50 })
+  const max = plan({ id: 3, name: 'Max', price: 150 })
+  const plans = [plus, pro, max]
+  const current = (planId: number | null, name = 'Pro') => ({
+    plan_id: planId,
+    name,
+    expires_at: '2026-11-01T00:00:00Z',
+    monthly_limit_usd: 120,
+    monthly_used_usd: 0,
+    period_resets_at: null,
+  })
+
+  it('offers a purchase without a current plan', () => {
+    expect(planAction(pro, null, plans)).toBe('buy')
+  })
+
+  it('renews the current plan', () => {
+    expect(planAction(pro, current(2), plans)).toBe('renew')
+  })
+
+  it('upgrades to a dearer plan at once', () => {
+    expect(planAction(max, current(2), plans)).toBe('upgrade')
+  })
+
+  it('offers a cheaper plan only after the current one ends', () => {
+    expect(planAction(plus, current(2), plans)).toBe('later')
+  })
+
+  it('switches at once to another plan at the same price', () => {
+    const proPlus = plan({ id: 4, name: 'Pro Plus', price: 50 })
+    expect(planAction(proPlus, current(2), [...plans, proPlus])).toBe('upgrade')
+  })
+
+  it('matches by name for a subscription from before plans were recorded', () => {
+    expect(planAction(pro, current(null, 'Pro'), plans)).toBe('renew')
+    expect(planAction(max, current(null, 'Pro'), plans)).toBe('buy')
+  })
+
+  it('does not guess when the current plan is no longer on sale', () => {
+    expect(planAction(plus, current(99, 'Old'), plans)).toBe('buy')
   })
 })

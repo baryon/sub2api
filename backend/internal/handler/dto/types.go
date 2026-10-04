@@ -770,6 +770,14 @@ type UserSubscription struct {
 	WeeklyUsageUSD  float64 `json:"weekly_usage_usd"`
 	MonthlyUsageUSD float64 `json:"monthly_usage_usd"`
 
+	// The limits that apply to this subscription: the allowance of the plan it was bought with where it has one,
+	// the group's limit otherwise (TASK-57). null or 0 means no limit for that window.
+	DailyLimitUSD   *float64 `json:"daily_limit_usd"`
+	WeeklyLimitUSD  *float64 `json:"weekly_limit_usd"`
+	MonthlyLimitUSD *float64 `json:"monthly_limit_usd"`
+	// PlanID is the plan the current term was bought with; absent for subscriptions not bought as a plan.
+	PlanID *int64 `json:"plan_id,omitempty"`
+
 	CreatedAt time.Time  `json:"created_at"`
 	UpdatedAt time.Time  `json:"updated_at"`
 	RevokedAt *time.Time `json:"revoked_at,omitempty"`

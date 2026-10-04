@@ -25,6 +25,14 @@ type UserSubscription struct {
 	WeeklyUsageUSD  float64
 	MonthlyUsageUSD float64
 
+	// PlanID is the plan the current term was bought with; nil for subscriptions not bought as a plan.
+	PlanID *int64
+	// The allowance recorded from the plan at purchase. A window without one (nil or not positive) uses the
+	// group's limit; see EffectiveLimits.
+	DailyLimitUSD   *float64
+	WeeklyLimitUSD  *float64
+	MonthlyLimitUSD *float64
+
 	AssignedBy *int64
 	AssignedAt time.Time
 	Notes      string
@@ -205,24 +213,27 @@ func (s *UserSubscription) MonthlyResetTime() *time.Time {
 }
 
 func (s *UserSubscription) CheckDailyLimit(group *Group, additionalCost float64) bool {
-	if !group.HasDailyLimit() {
+	limits := s.EffectiveLimits(group)
+	if !limits.HasDaily() {
 		return true
 	}
-	return s.DailyUsageUSD+additionalCost <= *group.DailyLimitUSD
+	return s.DailyUsageUSD+additionalCost <= *limits.DailyUSD
 }
 
 func (s *UserSubscription) CheckWeeklyLimit(group *Group, additionalCost float64) bool {
-	if !group.HasWeeklyLimit() {
+	limits := s.EffectiveLimits(group)
+	if !limits.HasWeekly() {
 		return true
 	}
-	return s.WeeklyUsageUSD+additionalCost <= *group.WeeklyLimitUSD
+	return s.WeeklyUsageUSD+additionalCost <= *limits.WeeklyUSD
 }
 
 func (s *UserSubscription) CheckMonthlyLimit(group *Group, additionalCost float64) bool {
-	if !group.HasMonthlyLimit() {
+	limits := s.EffectiveLimits(group)
+	if !limits.HasMonthly() {
 		return true
 	}
-	return s.MonthlyUsageUSD+additionalCost <= *group.MonthlyLimitUSD
+	return s.MonthlyUsageUSD+additionalCost <= *limits.MonthlyUSD
 }
 
 func (s *UserSubscription) CheckAllLimits(group *Group, additionalCost float64) (daily, weekly, monthly bool) {

@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"math"
 	"strings"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
@@ -71,6 +72,24 @@ func validatePlanPatch(req UpdatePlanRequest) error {
 	return nil
 }
 
+// validatePlanLimits checks the plan's own allowances: each is empty, 0 (no allowance of its own) or a positive
+// finite amount.
+func validatePlanLimits(limits ...*float64) error {
+	for _, v := range limits {
+		if v != nil && (math.IsNaN(*v) || math.IsInf(*v, 0) || *v < 0) {
+			return infraerrors.BadRequest("PLAN_LIMIT_INVALID", "plan allowance must be empty or a non-negative amount")
+		}
+	}
+	return nil
+}
+
+// PlanEffectiveLimits is what a plan gives per window: its own allowance where it has one, otherwise the group's
+// limit as the group has it (TASK-57).
+func PlanEffectiveLimits(daily, weekly, monthly *float64, group PlanGroupInfo) SubscriptionLimits {
+	own := UserSubscription{DailyLimitUSD: daily, WeeklyLimitUSD: weekly, MonthlyLimitUSD: monthly}
+	return own.EffectiveLimits(&Group{DailyLimitUSD: group.DailyLimitUSD, WeeklyLimitUSD: group.WeeklyLimitUSD, MonthlyLimitUSD: group.MonthlyLimitUSD})
+}
+
 // --- Plan CRUD ---
 
 // PlanGroupInfo holds the group details needed for subscription plan display.
@@ -136,6 +155,9 @@ func (s *PaymentConfigService) CreatePlan(ctx context.Context, req CreatePlanReq
 	if err := validatePlanRequired(req.Name, req.GroupID, req.Price, req.ValidityDays, req.ValidityUnit, req.OriginalPrice); err != nil {
 		return nil, err
 	}
+	if err := validatePlanLimits(req.DailyLimitUSD, req.WeeklyLimitUSD, req.MonthlyLimitUSD); err != nil {
+		return nil, err
+	}
 	currency, err := normalizePlanCurrency(req.Currency)
 	if err != nil {
 		return nil, err
@@ -148,6 +170,9 @@ func (s *PaymentConfigService) CreatePlan(ctx context.Context, req CreatePlanReq
 	if req.OriginalPrice != nil {
 		b.SetOriginalPrice(*req.OriginalPrice)
 	}
+	b.SetNillableDailyLimitUsd(copyPositiveLimit(req.DailyLimitUSD)).
+		SetNillableWeeklyLimitUsd(copyPositiveLimit(req.WeeklyLimitUSD)).
+		SetNillableMonthlyLimitUsd(copyPositiveLimit(req.MonthlyLimitUSD))
 	return b.Save(ctx)
 }
 
@@ -158,7 +183,31 @@ func (s *PaymentConfigService) UpdatePlan(ctx context.Context, id int64, req Upd
 	if err := validatePlanPatch(req); err != nil {
 		return nil, err
 	}
+	if err := validatePlanLimits(req.DailyLimitUSD, req.WeeklyLimitUSD, req.MonthlyLimitUSD); err != nil {
+		return nil, err
+	}
 	u := s.entClient.SubscriptionPlan.UpdateOneID(id)
+	if req.DailyLimitUSD != nil {
+		if v := copyPositiveLimit(req.DailyLimitUSD); v != nil {
+			u.SetDailyLimitUsd(*v)
+		} else {
+			u.ClearDailyLimitUsd()
+		}
+	}
+	if req.WeeklyLimitUSD != nil {
+		if v := copyPositiveLimit(req.WeeklyLimitUSD); v != nil {
+			u.SetWeeklyLimitUsd(*v)
+		} else {
+			u.ClearWeeklyLimitUsd()
+		}
+	}
+	if req.MonthlyLimitUSD != nil {
+		if v := copyPositiveLimit(req.MonthlyLimitUSD); v != nil {
+			u.SetMonthlyLimitUsd(*v)
+		} else {
+			u.ClearMonthlyLimitUsd()
+		}
+	}
 	if req.GroupID != nil {
 		u.SetGroupID(*req.GroupID)
 	}

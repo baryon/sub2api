@@ -135,6 +135,10 @@ export interface SubscriptionPlan {
   daily_limit_usd?: number | null
   weekly_limit_usd?: number | null
   monthly_limit_usd?: number | null
+  /** Admin only: the plan's own allowance; null when the plan follows the group's limit. */
+  plan_daily_limit_usd?: number | null
+  plan_weekly_limit_usd?: number | null
+  plan_monthly_limit_usd?: number | null
   supported_model_scopes?: string[]
   name: string
   description: string

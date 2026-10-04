@@ -185,6 +185,10 @@ type CreatePlanRequest struct {
 	ProductName   string   `json:"product_name"`
 	ForSale       bool     `json:"for_sale"`
 	SortOrder     int      `json:"sort_order"`
+	// The plan's own allowance per window (USD); empty or 0 follows the group's limit (TASK-57).
+	DailyLimitUSD   *float64 `json:"plan_daily_limit_usd"`
+	WeeklyLimitUSD  *float64 `json:"plan_weekly_limit_usd"`
+	MonthlyLimitUSD *float64 `json:"plan_monthly_limit_usd"`
 }
 
 type UpdatePlanRequest struct {
@@ -200,6 +204,10 @@ type UpdatePlanRequest struct {
 	ProductName   *string  `json:"product_name"`
 	ForSale       *bool    `json:"for_sale"`
 	SortOrder     *int     `json:"sort_order"`
+	// Allowances: nil leaves the plan's allowance unchanged, 0 clears it (the group's limit applies), > 0 sets it.
+	DailyLimitUSD   *float64 `json:"plan_daily_limit_usd"`
+	WeeklyLimitUSD  *float64 `json:"plan_weekly_limit_usd"`
+	MonthlyLimitUSD *float64 `json:"plan_monthly_limit_usd"`
 }
 
 // PaymentConfigService manages payment configuration and CRUD for

@@ -408,7 +408,7 @@ const contactInfo = ref('')
 
 // Helper functions for history display
 const isBalanceType = (type: string) => {
-  return type === 'balance' || type === 'admin_balance'
+  return type === 'balance' || type === 'admin_balance' || type === 'plan_credit'
 }
 
 const isSubscriptionType = (type: string) => {
@@ -430,6 +430,8 @@ const getHistoryItemTitle = (item: RedeemHistoryItem) => {
     return item.value >= 0 ? t('redeem.concurrencyAddedAdmin') : t('redeem.concurrencyReducedAdmin')
   } else if (item.type === 'subscription') {
     return t('redeem.subscriptionAssigned')
+  } else if (item.type === 'plan_credit') {
+    return t('redeem.balanceAddedPlanCredit')
   }
   return t('common.unknown')
 }

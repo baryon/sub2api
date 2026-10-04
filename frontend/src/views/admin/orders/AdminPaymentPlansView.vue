@@ -34,6 +34,12 @@
             <span v-if="row.original_price" class="ml-1 text-xs text-gray-400 line-through">{{ planCurrencySymbol(row.currency) }}{{ row.original_price.toFixed(2) }}</span>
           </div>
         </template>
+        <template #cell-allowance="{ row }">
+          <div v-if="planAllowanceParts(row).length" class="space-y-0.5 text-xs text-gray-700 dark:text-gray-300">
+            <div v-for="part in planAllowanceParts(row)" :key="part">{{ part }}</div>
+          </div>
+          <span v-else class="text-xs text-gray-400">{{ t('payment.admin.planAllowanceFollowsGroup') }}</span>
+        </template>
         <template #cell-validity_days="{ value, row }">
           <span class="text-sm">{{ value }} {{ t('payment.admin.' + (row.validity_unit || 'days')) }}</span>
         </template>
@@ -119,6 +125,18 @@ async function loadPaymentConfig() {
   } catch { /* preview only */ }
 }
 
+// The plan's own allowance per window, e.g. "月限额 $40"; empty when every window follows the group.
+function planAllowanceParts(plan: SubscriptionPlan): string[] {
+  const parts: string[] = []
+  const add = (label: string, value: number | null | undefined) => {
+    if (value != null && value > 0) parts.push(`${label} $${value}`)
+  }
+  add(t('payment.admin.dailyLimit'), plan.plan_daily_limit_usd)
+  add(t('payment.admin.weeklyLimit'), plan.plan_weekly_limit_usd)
+  add(t('payment.admin.monthlyLimit'), plan.plan_monthly_limit_usd)
+  return parts
+}
+
 function getGroup(id: number): AdminGroup | undefined {
   return groups.value.find(g => g.id === id)
 }
@@ -147,6 +165,7 @@ const planColumns = computed((): Column[] => [
   { key: 'name', label: t('payment.admin.planName') },
   { key: 'group_id', label: t('payment.admin.group') },
   { key: 'price', label: t('payment.admin.price') },
+  { key: 'allowance', label: t('payment.admin.planAllowanceColumn') },
   { key: 'validity_days', label: t('payment.admin.validity') },
   { key: 'for_sale', label: t('payment.admin.forSale') },
   { key: 'sort_order', label: t('payment.admin.sortOrder') },

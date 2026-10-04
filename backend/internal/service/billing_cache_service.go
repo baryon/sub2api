@@ -733,7 +733,7 @@ func (s *BillingCacheService) IncrementUserPlatformQuotaUsage(userID int64, plat
 
 // CheckBillingEligibility 检查用户是否有资格发起请求
 // 余额模式：检查缓存余额 > 0
-// 订阅模式：检查缓存用量未超过限额（Group限额从参数传入）
+// 订阅模式：检查缓存用量未超过限额（订阅记了套餐额度的窗口按套餐额度，否则按分组限额）
 // platform 为请求的目标平台（如 "anthropic"），传空串 "" 时跳过 user × platform quota 检查。
 func (s *BillingCacheService) CheckBillingEligibility(ctx context.Context, user *User, apiKey *APIKey, group *Group, subscription *UserSubscription, platform string) error {
 	// 简易模式默认跳过所有计费检查. An explicit key-window opt-in keeps
@@ -971,16 +971,17 @@ func (s *BillingCacheService) checkSubscriptionEligibility(ctx context.Context, 
 		return ErrSubscriptionInvalid
 	}
 
-	// 检查限额（使用传入的Group限额配置）
-	if group.HasDailyLimit() && subData.DailyUsage >= *group.DailyLimitUSD {
+	// 检查限额：订阅记了套餐额度的窗口按套餐额度，否则按分组限额（TASK-57）
+	limits := subscription.EffectiveLimits(group)
+	if limits.HasDaily() && subData.DailyUsage >= *limits.DailyUSD {
 		return ErrDailyLimitExceeded
 	}
 
-	if group.HasWeeklyLimit() && subData.WeeklyUsage >= *group.WeeklyLimitUSD {
+	if limits.HasWeekly() && subData.WeeklyUsage >= *limits.WeeklyUSD {
 		return ErrWeeklyLimitExceeded
 	}
 
-	if group.HasMonthlyLimit() && subData.MonthlyUsage >= *group.MonthlyLimitUSD {
+	if limits.HasMonthly() && subData.MonthlyUsage >= *limits.MonthlyUSD {
 		return ErrMonthlyLimitExceeded
 	}
 

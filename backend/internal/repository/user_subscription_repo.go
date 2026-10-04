@@ -38,6 +38,10 @@ func (r *userSubscriptionRepository) Create(ctx context.Context, sub *service.Us
 		SetDailyUsageUsd(sub.DailyUsageUSD).
 		SetWeeklyUsageUsd(sub.WeeklyUsageUSD).
 		SetMonthlyUsageUsd(sub.MonthlyUsageUSD).
+		SetNillablePlanID(sub.PlanID).
+		SetNillableDailyLimitUsd(sub.DailyLimitUSD).
+		SetNillableWeeklyLimitUsd(sub.WeeklyLimitUSD).
+		SetNillableMonthlyLimitUsd(sub.MonthlyLimitUSD).
 		SetNillableAssignedBy(sub.AssignedBy)
 
 	if sub.StartsAt.IsZero() {
@@ -152,6 +156,27 @@ func (r *userSubscriptionRepository) Update(ctx context.Context, sub *service.Us
 		SetNillableAssignedBy(sub.AssignedBy).
 		SetAssignedAt(sub.AssignedAt).
 		SetNotes(sub.Notes)
+	// The plan and its allowance are written as they are, so a plan change can clear an allowance (TASK-57).
+	if sub.PlanID != nil {
+		builder.SetPlanID(*sub.PlanID)
+	} else {
+		builder.ClearPlanID()
+	}
+	if sub.DailyLimitUSD != nil {
+		builder.SetDailyLimitUsd(*sub.DailyLimitUSD)
+	} else {
+		builder.ClearDailyLimitUsd()
+	}
+	if sub.WeeklyLimitUSD != nil {
+		builder.SetWeeklyLimitUsd(*sub.WeeklyLimitUSD)
+	} else {
+		builder.ClearWeeklyLimitUsd()
+	}
+	if sub.MonthlyLimitUSD != nil {
+		builder.SetMonthlyLimitUsd(*sub.MonthlyLimitUSD)
+	} else {
+		builder.ClearMonthlyLimitUsd()
+	}
 
 	updated, err := builder.Save(ctx)
 	if err == nil {
@@ -653,6 +678,10 @@ func userSubscriptionEntityToServiceWithStatusMapping(m *dbent.UserSubscription,
 		DailyUsageUSD:      m.DailyUsageUsd,
 		WeeklyUsageUSD:     m.WeeklyUsageUsd,
 		MonthlyUsageUSD:    m.MonthlyUsageUsd,
+		PlanID:             m.PlanID,
+		DailyLimitUSD:      m.DailyLimitUsd,
+		WeeklyLimitUSD:     m.WeeklyLimitUsd,
+		MonthlyLimitUSD:    m.MonthlyLimitUsd,
 		AssignedBy:         m.AssignedBy,
 		AssignedAt:         m.AssignedAt,
 		Notes:              derefString(m.Notes),

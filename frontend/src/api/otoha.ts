@@ -40,6 +40,8 @@ export interface OtohaCatalog {
 }
 
 export interface OtohaAccountPlan {
+  /** The plan the current period was bought with; null for a subscription from before plans were recorded. */
+  plan_id: number | null
   name: string
   expires_at: string
   monthly_limit_usd: number | null

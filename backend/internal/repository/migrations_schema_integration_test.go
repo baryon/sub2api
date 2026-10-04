@@ -61,6 +61,15 @@ func TestMigrationsRunner_IsIdempotent_AndSchemaIsUpToDate(t *testing.T) {
 	requireColumn(t, tx, "groups", "free_openai_fast", "boolean", 0, false)
 	requireColumn(t, tx, "groups", "balance_fallback_enabled", "boolean", 0, false)
 
+	// TASK-57: plan allowances, recorded on the subscription at purchase
+	requireColumn(t, tx, "subscription_plans", "daily_limit_usd", "numeric", 0, true)
+	requireColumn(t, tx, "subscription_plans", "weekly_limit_usd", "numeric", 0, true)
+	requireColumn(t, tx, "subscription_plans", "monthly_limit_usd", "numeric", 0, true)
+	requireColumn(t, tx, "user_subscriptions", "plan_id", "bigint", 0, true)
+	requireColumn(t, tx, "user_subscriptions", "daily_limit_usd", "numeric", 0, true)
+	requireColumn(t, tx, "user_subscriptions", "weekly_limit_usd", "numeric", 0, true)
+	requireColumn(t, tx, "user_subscriptions", "monthly_limit_usd", "numeric", 0, true)
+
 	// api_keys: key length should be 128
 	requireColumn(t, tx, "api_keys", "key", "character varying", 128, false)
 

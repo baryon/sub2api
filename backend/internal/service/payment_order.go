@@ -151,7 +151,40 @@ func (s *PaymentService) validateSubOrder(ctx context.Context, req CreateOrderRe
 	if !group.IsSubscriptionType() {
 		return nil, infraerrors.BadRequest("GROUP_TYPE_MISMATCH", "group is not a subscription type")
 	}
+	if err := s.checkPlanChangeAllowed(ctx, req.UserID, plan); err != nil {
+		return nil, err
+	}
 	return plan, nil
+}
+
+// checkPlanChangeAllowed refuses, before payment, an order for a cheaper plan while the user's current plan in the
+// same group runs (TASK-57): it could not start until the current plan ends. Fulfillment checks again.
+func (s *PaymentService) checkPlanChangeAllowed(ctx context.Context, userID int64, plan *dbent.SubscriptionPlan) error {
+	if s.subscriptionSvc == nil || plan == nil || userID <= 0 {
+		return nil
+	}
+	sub, err := s.subscriptionSvc.GetActiveSubscription(ctx, userID, plan.GroupID)
+	if errors.Is(err, ErrSubscriptionNotFound) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("check current subscription: %w", err)
+	}
+	if sub == nil || sub.PlanID == nil || *sub.PlanID == int64(plan.ID) {
+		return nil
+	}
+	current, err := loadPlanTerms(ctx, s.entClient, *sub.PlanID)
+	if err != nil {
+		return err
+	}
+	if current == nil {
+		return nil
+	}
+	price := current.Price
+	if classifyPlanPurchase(sub, time.Now(), int64(plan.ID), plan.Price, &price) == planPurchaseDowngrade {
+		return planDowngradeError(current, sub)
+	}
+	return nil
 }
 
 func (s *PaymentService) createOrderInTx(ctx context.Context, req CreateOrderRequest, user *User, plan *dbent.SubscriptionPlan, cfg *PaymentConfig, orderAmount, limitAmount, feeRate, payAmount, bonusAmount float64, sel *payment.InstanceSelection) (*dbent.PaymentOrder, error) {

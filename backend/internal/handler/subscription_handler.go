@@ -138,35 +138,9 @@ func (h *SubscriptionHandler) GetSummary(c *gin.Context) {
 	var totalUsed float64
 	items := make([]SubscriptionSummaryItem, 0, len(subscriptions))
 
-	for _, sub := range subscriptions {
-		item := SubscriptionSummaryItem{
-			ID:             sub.ID,
-			GroupID:        sub.GroupID,
-			Status:         sub.Status,
-			DailyUsedUSD:   sub.DailyUsageUSD,
-			WeeklyUsedUSD:  sub.WeeklyUsageUSD,
-			MonthlyUsedUSD: sub.MonthlyUsageUSD,
-		}
-
-		// Add group info if preloaded
-		if sub.Group != nil {
-			item.GroupName = sub.Group.Name
-			if sub.Group.DailyLimitUSD != nil {
-				item.DailyLimitUSD = *sub.Group.DailyLimitUSD
-			}
-			if sub.Group.WeeklyLimitUSD != nil {
-				item.WeeklyLimitUSD = *sub.Group.WeeklyLimitUSD
-			}
-			if sub.Group.MonthlyLimitUSD != nil {
-				item.MonthlyLimitUSD = *sub.Group.MonthlyLimitUSD
-			}
-		}
-
-		// Format expiration time
-		if !sub.ExpiresAt.IsZero() {
-			formatted := sub.ExpiresAt.Format("2006-01-02T15:04:05Z07:00")
-			item.ExpiresAt = &formatted
-		}
+	for i := range subscriptions {
+		sub := &subscriptions[i]
+		item := subscriptionSummaryItem(sub)
 
 		// Track total usage (use monthly as the most comprehensive)
 		totalUsed += sub.MonthlyUsageUSD
@@ -185,4 +159,35 @@ func (h *SubscriptionHandler) GetSummary(c *gin.Context) {
 	}
 
 	response.Success(c, summary)
+}
+
+// subscriptionSummaryItem is one subscription in the summary, with the limits that apply to it: its own
+// allowance (the plan it was bought with) where it has one, the group's otherwise (TASK-57).
+func subscriptionSummaryItem(sub *service.UserSubscription) SubscriptionSummaryItem {
+	item := SubscriptionSummaryItem{
+		ID:             sub.ID,
+		GroupID:        sub.GroupID,
+		Status:         sub.Status,
+		DailyUsedUSD:   sub.DailyUsageUSD,
+		WeeklyUsedUSD:  sub.WeeklyUsageUSD,
+		MonthlyUsedUSD: sub.MonthlyUsageUSD,
+	}
+	if sub.Group != nil {
+		item.GroupName = sub.Group.Name
+	}
+	limits := sub.EffectiveLimits(sub.Group)
+	if limits.DailyUSD != nil {
+		item.DailyLimitUSD = *limits.DailyUSD
+	}
+	if limits.WeeklyUSD != nil {
+		item.WeeklyLimitUSD = *limits.WeeklyUSD
+	}
+	if limits.MonthlyUSD != nil {
+		item.MonthlyLimitUSD = *limits.MonthlyUSD
+	}
+	if !sub.ExpiresAt.IsZero() {
+		formatted := sub.ExpiresAt.Format("2006-01-02T15:04:05Z07:00")
+		item.ExpiresAt = &formatted
+	}
+	return item
 }

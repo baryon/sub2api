@@ -114,13 +114,14 @@
                 </li>
               </ul>
               <div class="mt-auto pt-5">
+                <p v-if="planHint(plan)" class="mb-2 text-xs text-gray-500 dark:text-dark-400">{{ planHint(plan) }}</p>
                 <button
                   type="button"
                   class="btn btn-primary w-full"
-                  :disabled="submitting || methodOptions.length === 0"
+                  :disabled="submitting || methodOptions.length === 0 || actionOf(plan) === 'later'"
                   @click="buyPlan(plan)"
                 >
-                  {{ submitting && pendingPlanId === plan.id ? t('otoha.buy.paying') : (account?.plan?.name === plan.name ? t('otoha.buy.renewPlan') : t('otoha.buy.buyPlan')) }}
+                  {{ submitting && pendingPlanId === plan.id ? t('otoha.buy.paying') : planButtonLabel(plan) }}
                 </button>
               </div>
             </div>
@@ -185,7 +186,7 @@ import { useAuthStore } from '@/stores/auth'
 import { isMobileDevice } from '@/utils/device'
 import { extractApiErrorMessage, extractI18nErrorMessage } from '@/utils/apiError'
 import type { CheckoutInfoResponse, OrderType, SubscriptionPlan } from '@/types/payment'
-import { otohaPlans, topUpAmountError } from './otohaRules'
+import { otohaPlans, planAction, topUpAmountError, type PlanAction } from './otohaRules'
 import { otohaErrorMessage } from './otohaErrors'
 
 const { t, locale } = useI18n()
@@ -258,7 +259,41 @@ async function load() {
   }
 }
 
+// What buying each plan does for the current plan: renew, upgrade now, or only after the current plan ends.
+function actionOf(plan: SubscriptionPlan): PlanAction {
+  return planAction(plan, account.value?.plan, plans.value)
+}
+
+function planButtonLabel(plan: SubscriptionPlan): string {
+  switch (actionOf(plan)) {
+    case 'renew':
+      return t('otoha.buy.renewPlan')
+    case 'upgrade':
+      return t('otoha.buy.upgradePlan')
+    case 'later':
+      return t('otoha.buy.laterPlan')
+    default:
+      return t('otoha.buy.buyPlan')
+  }
+}
+
+function planHint(plan: SubscriptionPlan): string {
+  const current = account.value?.plan
+  if (!current) return ''
+  switch (actionOf(plan)) {
+    case 'renew':
+      return t('otoha.buy.renewHint', { days: plan.validity_days })
+    case 'upgrade':
+      return t('otoha.buy.upgradeHint', { days: plan.validity_days, name: current.name })
+    case 'later':
+      return t('otoha.buy.laterHint', { name: current.name, date: formatDate(current.expires_at) })
+    default:
+      return ''
+  }
+}
+
 function buyPlan(plan: SubscriptionPlan) {
+  if (actionOf(plan) === 'later') return
   payingLabel.value = plan.name
   void startPayment('subscription', plan.price, plan.id)
 }

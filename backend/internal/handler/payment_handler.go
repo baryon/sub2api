@@ -123,21 +123,7 @@ func (h *PaymentHandler) GetCheckoutInfo(c *gin.Context) {
 	groupInfo := h.configService.GetGroupInfoMap(ctx, plans)
 	planList := make([]checkoutPlan, 0, len(plans))
 	for _, p := range plans {
-		gi := groupInfo[p.GroupID]
-		planList = append(planList, checkoutPlan{
-			ID: int64(p.ID), GroupID: p.GroupID,
-			GroupPlatform: gi.Platform, GroupName: gi.Name,
-			RateMultiplier:  gi.RateMultiplier,
-			PeakRateEnabled: gi.PeakRateEnabled, PeakStart: gi.PeakStart,
-			PeakEnd: gi.PeakEnd, PeakRateMultiplier: gi.PeakRateMultiplier,
-			DailyLimitUSD:  gi.DailyLimitUSD,
-			WeeklyLimitUSD: gi.WeeklyLimitUSD, MonthlyLimitUSD: gi.MonthlyLimitUSD,
-			ModelScopes: gi.ModelScopes,
-			Name:        p.Name, Description: p.Description, Price: p.Price, OriginalPrice: p.OriginalPrice,
-			Currency:     p.Currency,
-			ValidityDays: p.ValidityDays, ValidityUnit: p.ValidityUnit, Features: parseFeatures(p.Features),
-			ProductName: p.ProductName,
-		})
+		planList = append(planList, checkoutPlanFromPlan(p, groupInfo[p.GroupID]))
 	}
 
 	response.Success(c, checkoutInfoResponse{
@@ -202,6 +188,26 @@ type checkoutPlan struct {
 	ValidityUnit       string   `json:"validity_unit"`
 	Features           []string `json:"features"`
 	ProductName        string   `json:"product_name"`
+}
+
+// checkoutPlanFromPlan is a plan as the checkout page shows it. Its limits are what the buyer gets: the plan's
+// own allowance where it has one, the group's limit otherwise (TASK-57).
+func checkoutPlanFromPlan(p *dbent.SubscriptionPlan, gi service.PlanGroupInfo) checkoutPlan {
+	limits := service.PlanEffectiveLimits(p.DailyLimitUsd, p.WeeklyLimitUsd, p.MonthlyLimitUsd, gi)
+	return checkoutPlan{
+		ID: int64(p.ID), GroupID: p.GroupID,
+		GroupPlatform: gi.Platform, GroupName: gi.Name,
+		RateMultiplier:  gi.RateMultiplier,
+		PeakRateEnabled: gi.PeakRateEnabled, PeakStart: gi.PeakStart,
+		PeakEnd: gi.PeakEnd, PeakRateMultiplier: gi.PeakRateMultiplier,
+		DailyLimitUSD:  limits.DailyUSD,
+		WeeklyLimitUSD: limits.WeeklyUSD, MonthlyLimitUSD: limits.MonthlyUSD,
+		ModelScopes: gi.ModelScopes,
+		Name:        p.Name, Description: p.Description, Price: p.Price, OriginalPrice: p.OriginalPrice,
+		Currency:     p.Currency,
+		ValidityDays: p.ValidityDays, ValidityUnit: p.ValidityUnit, Features: parseFeatures(p.Features),
+		ProductName: p.ProductName,
+	}
 }
 
 // parseFeatures splits a newline-separated features string into a string slice.
