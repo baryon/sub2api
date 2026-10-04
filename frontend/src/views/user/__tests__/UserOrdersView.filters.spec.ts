@@ -23,7 +23,7 @@ beforeEach(() => {
 async function openOrders() {
   const wrapper = mount(UserOrdersView, {
     global: { stubs: {
-      AppLayout: { template: '<div><slot /></div>' },
+      PortalAwareLayout: { template: '<div><slot /></div>' },
       OrderTable: true, BaseDialog: true, Icon: true, Pagination: true, teleport: true
     } }
   })

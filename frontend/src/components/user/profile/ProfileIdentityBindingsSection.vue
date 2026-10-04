@@ -23,7 +23,7 @@
       </div>
 
       <div
-        v-for="item in providerItems"
+        v-for="item in visibleProviderItems"
         :key="item.provider"
         :class="rowClass"
       >
@@ -225,6 +225,8 @@ const props = withDefaults(
     wechatMpEnabled?: boolean
     embedded?: boolean
     compact?: boolean
+    /** Leave out sign-in methods the site has not turned on and the user has not linked (Otoha portal). */
+    hideUnavailable?: boolean
   }>(),
   {
     linuxdoEnabled: false,
@@ -236,6 +238,7 @@ const props = withDefaults(
     wechatMpEnabled: undefined,
     embedded: false,
     compact: false,
+    hideUnavailable: false,
   }
 )
 
@@ -471,6 +474,14 @@ const providerItems = computed(() => [
     details: getBindingDetails('wechat'),
   },
 ])
+
+const visibleProviderItems = computed(() =>
+  props.hideUnavailable
+    ? providerItems.value.filter(
+        (item) => item.provider === 'email' || item.bound || isProviderEnabledForBinding(item.provider),
+      )
+    : providerItems.value,
+)
 
 function providerInitial(provider: UserAuthProvider): string {
   if (provider === 'linuxdo') {

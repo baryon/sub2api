@@ -13,6 +13,7 @@ import { useRoutePrefetch } from '@/composables/useRoutePrefetch'
 import { getSetupStatus } from '@/api/setup'
 import { resolveCompletedSetupRedirectPath } from './setupRedirect'
 import { resolveRouteDocumentTitle } from './title'
+import { isOtohaPortalEnabled, resolveOtohaPortalRedirect } from './otohaPortal'
 
 /**
  * Route definitions with lazy loading
@@ -387,6 +388,18 @@ const routes: RouteRecordRaw[] = [
       requiresAdmin: false,
       title: 'My Otoha AI',
       titleKey: 'otoha.titles.account',
+      requiresPayment: false
+    }
+  },
+  {
+    path: '/otoha/usage',
+    name: 'OtohaUsage',
+    component: () => import('@/views/otoha/OtohaUsageView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      title: 'Usage',
+      titleKey: 'otoha.titles.usage',
       requiresPayment: false
     }
   },
@@ -854,6 +867,33 @@ router.beforeEach(async (to, _from, next) => {
     } catch {
       // If setup status cannot be determined, keep the setup page reachable.
     }
+  }
+
+  // Otoha portal (TASK-61): visitors and regular users only get the portal pages. Wait for the public settings
+  // only when the portal would move this visit, so other visits are not held up.
+  if (
+    !authStore.isAdmin &&
+    !appStore.publicSettingsLoaded &&
+    resolveOtohaPortalRedirect(to.path, { portalEnabled: true, isAuthenticated: authStore.isAuthenticated, isAdmin: false }) !== null
+  ) {
+    try {
+      await appStore.fetchPublicSettings()
+    } catch (error) {
+      console.warn('Failed to load public settings in route guard', error)
+    }
+  }
+  const portalRedirect = resolveOtohaPortalRedirect(
+    to.path,
+    {
+      portalEnabled: isOtohaPortalEnabled(appStore.cachedPublicSettings),
+      isAuthenticated: authStore.isAuthenticated,
+      isAdmin: authStore.isAdmin,
+    },
+    appStore.cachedPublicSettings?.custom_menu_items,
+  )
+  if (portalRedirect && portalRedirect !== to.path) {
+    next(portalRedirect)
+    return
   }
 
   // If route doesn't require auth, allow access

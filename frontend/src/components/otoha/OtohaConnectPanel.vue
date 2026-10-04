@@ -37,6 +37,7 @@ import Icon from '@/components/icons/Icon.vue'
 import { otohaAPI, type OtohaClaimCode } from '@/api/otoha'
 import { useClipboard } from '@/composables/useClipboard'
 import { otohaErrorMessage } from '@/views/otoha/otohaErrors'
+import { useOtohaPortal } from '@/composables/useOtohaPortal'
 
 const props = defineProps<{
   /** Create a code as soon as the panel shows (the success page). */
@@ -45,6 +46,7 @@ const props = defineProps<{
 
 const { t, locale } = useI18n()
 const { copyToClipboard } = useClipboard()
+const { portalActive } = useOtohaPortal()
 
 const claim = ref<OtohaClaimCode | null>(null)
 const creating = ref(false)
@@ -68,7 +70,7 @@ async function freshClaim(): Promise<OtohaClaimCode | null> {
     claim.value = data
     return data
   } catch (err: unknown) {
-    error.value = otohaErrorMessage(err, t, 'otoha.errors.claimFailed')
+    error.value = otohaErrorMessage(err, t, 'otoha.errors.claimFailed', { portal: portalActive.value })
     return null
   } finally {
     creating.value = false
@@ -107,7 +109,7 @@ async function downloadConfig() {
     URL.revokeObjectURL(url)
     notice.value = t('otoha.connect.downloaded')
   } catch (err: unknown) {
-    error.value = otohaErrorMessage(err, t, 'otoha.errors.downloadFailed')
+    error.value = otohaErrorMessage(err, t, 'otoha.errors.downloadFailed', { portal: portalActive.value })
   } finally {
     downloading.value = false
   }

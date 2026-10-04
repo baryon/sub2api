@@ -4,16 +4,48 @@ export default {
     nav: {
       buy: '购买',
       account: '我的账户',
-      logout: '退出登录'
+      logout: '退出登录',
+      myOtoha: '我的 Otoha',
+      usage: '用量记录',
+      orders: '订单',
+      settings: '账号设置',
+      admin: '管理后台',
+      menu: '主菜单'
     },
     titles: {
       buy: '购买 Otoha AI 服务',
       result: '付款结果',
-      account: '我的 Otoha AI'
+      account: '我的 Otoha AI',
+      usage: '用量记录'
+    },
+    portal: {
+      subtitle: '买一份套餐，在 Otoha 里用上多家大模型'
+    },
+    usage: {
+      hint: '每次对话的用量和扣费。扣费先用套餐额度，用完后从余额扣。',
+      rangeLabel: '时间范围',
+      last7: '近 7 天',
+      last30: '近 30 天',
+      last90: '近 90 天',
+      requests: '请求次数',
+      tokens: 'Token 合计',
+      charged: '扣费合计',
+      timeColumn: '时间',
+      modelColumn: '模型',
+      tokensColumn: 'Token',
+      chargeColumn: '扣费',
+      tokenDetail: '输入 {input} · 输出 {output}',
+      cachedDetail: '缓存 {cached}',
+      empty: '这段时间没有用量。在 Otoha 里对话后，这里会列出每次的用量和扣费。',
+      loadFailed: '用量记录没有加载出来。',
+      retry: '重试',
+      prev: '上一页',
+      next: '下一页',
+      page: '第 {page} / {pages} 页'
     },
     start: {
       title: '购买 Otoha AI 服务',
-      subtitle: '付款后点一下「打开 Otoha」，App 自动完成设置，无需复制密钥。',
+      subtitle: '付款后点一下「打开 Otoha」，App 会自动完成设置。',
       point1: '月度套餐，每 30 天一份额度',
       point2: '套餐额度用完后从余额扣费，余额长期有效',
       point3: '模型调用按实际用量计费，用量在账户页随时可查',
@@ -121,6 +153,7 @@ export default {
     errors: {
       OTOHA_NO_ACCESS: '账户还没有套餐或余额。购买套餐或充值后再试。',
       OTOHA_KEY_DISABLED: '账户里名为「Otoha Desktop」的密钥无法使用（已停用、已过期或额度用完）。在「API 密钥」里检查后再试。',
+      OTOHA_KEY_DISABLED_PORTAL: '你的 Otoha 连接已停用或过期，暂时不能使用。请联系客服处理。',
       OTOHA_NOT_CONFIGURED: '本站暂未开放 Otoha AI 服务。',
       claimFailed: '领取码没有生成，请稍后再试。',
       downloadFailed: '配置文件没有下载成功，请稍后再试。'

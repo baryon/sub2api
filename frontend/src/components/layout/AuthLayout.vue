@@ -66,12 +66,21 @@
 import { computed, onMounted } from 'vue'
 import { useAppStore } from '@/stores'
 import { sanitizeUrl } from '@/utils/url'
+import { useI18n } from 'vue-i18n'
+import { isOtohaPortalEnabled, siteSubtitleForAuth } from '@/router/otohaPortal'
 
 const appStore = useAppStore()
+const { t } = useI18n()
 
 const siteName = computed(() => appStore.siteName || 'Sub2API')
 const siteLogo = computed(() => sanitizeUrl(appStore.siteLogo || '', { allowRelative: true, allowDataUrl: true }))
-const siteSubtitle = computed(() => appStore.cachedPublicSettings?.site_subtitle || 'Subscription to API Conversion Platform')
+const siteSubtitle = computed(
+  () =>
+    siteSubtitleForAuth(
+      appStore.cachedPublicSettings?.site_subtitle,
+      isOtohaPortalEnabled(appStore.cachedPublicSettings),
+    ) ?? t('otoha.portal.subtitle'),
+)
 const settingsLoaded = computed(() => appStore.publicSettingsLoaded)
 
 const currentYear = computed(() => new Date().getFullYear())

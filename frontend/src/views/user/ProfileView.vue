@@ -1,5 +1,5 @@
 <template>
-  <AppLayout>
+  <PortalAwareLayout>
     <div
       data-testid="profile-shell"
       class="mx-auto max-w-[950px] space-y-6"
@@ -13,6 +13,7 @@
         :wechat-enabled="wechatOAuthEnabled"
         :wechat-open-enabled="wechatOAuthOpenEnabled"
         :wechat-mp-enabled="wechatOAuthMPEnabled"
+        :portal="portalActive"
       />
 
       <div
@@ -43,17 +44,18 @@
         :user-email="user.email"
       />
 
-      <ProfileTotpCard />
-      <ProfilePasskeyCard :enabled="passkeyEnabled" />
+      <!-- The Otoha portal shows these only when the site offers them -->
+      <ProfileTotpCard v-if="!portalActive || totpEnabled" />
+      <ProfilePasskeyCard v-if="!portalActive || passkeyEnabled" :enabled="passkeyEnabled" />
     </div>
-  </AppLayout>
+  </PortalAwareLayout>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Icon } from '@/components/icons'
-import AppLayout from '@/components/layout/AppLayout.vue'
+import PortalAwareLayout from '@/components/otoha/PortalAwareLayout.vue'
 import ProfileBalanceNotifyCard from '@/components/user/profile/ProfileBalanceNotifyCard.vue'
 import ProfileInfoCard from '@/components/user/profile/ProfileInfoCard.vue'
 import ProfilePasswordForm from '@/components/user/profile/ProfilePasswordForm.vue'
@@ -62,11 +64,13 @@ import ProfilePasskeyCard from '@/components/user/profile/ProfilePasskeyCard.vue
 import { isWeChatWebOAuthEnabled } from '@/api/auth'
 import { useAppStore } from '@/stores/app'
 import { useAuthStore } from '@/stores/auth'
+import { useOtohaPortal } from '@/composables/useOtohaPortal'
 
 const { t } = useI18n()
 const appStore = useAppStore()
 const authStore = useAuthStore()
 const user = computed(() => authStore.user)
+const { portalActive } = useOtohaPortal()
 
 const contactInfo = ref('')
 const balanceLowNotifyEnabled = ref(false)
@@ -79,6 +83,7 @@ const wechatOAuthMPEnabled = ref<boolean | undefined>(undefined)
 const oidcOAuthEnabled = ref(false)
 const oidcOAuthProviderName = ref('OIDC')
 const passkeyEnabled = ref(false)
+const totpEnabled = ref(false)
 
 onMounted(async () => {
   const profileRefresh = authStore.refreshUser().catch((error) => {
@@ -105,6 +110,7 @@ onMounted(async () => {
       oidcOAuthEnabled.value = settings.oidc_oauth_enabled ?? false
       oidcOAuthProviderName.value = settings.oidc_oauth_provider_name || 'OIDC'
       passkeyEnabled.value = settings.passkey_enabled === true
+      totpEnabled.value = settings.totp_enabled === true
     })
     .catch((error) => {
       console.error('Failed to load settings:', error)

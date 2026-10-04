@@ -294,7 +294,8 @@ export const useAppStore = defineStore('app', () => {
       window.__APP_CONFIG__ = { ...config }
     }
     cachedPublicSettings.value = config
-    siteName.value = config.site_name || 'Sub2API'
+    // The Otoha portal never falls back to the gateway's own name.
+    siteName.value = config.site_name || (config.otoha_portal_enabled ? 'Otoha AI' : 'Sub2API')
     siteLogo.value = config.site_logo || ''
     siteVersion.value = config.version || ''
     contactInfo.value = config.contact_info || ''

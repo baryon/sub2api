@@ -4,16 +4,48 @@ export default {
     nav: {
       buy: 'Buy',
       account: 'My account',
-      logout: 'Log out'
+      logout: 'Log out',
+      myOtoha: 'My Otoha',
+      usage: 'Usage',
+      orders: 'Orders',
+      settings: 'Settings',
+      admin: 'Admin',
+      menu: 'Main menu'
     },
     titles: {
       buy: 'Buy Otoha AI',
       result: 'Payment result',
-      account: 'My Otoha AI'
+      account: 'My Otoha AI',
+      usage: 'Usage'
+    },
+    portal: {
+      subtitle: 'One plan, many leading AI models in Otoha'
+    },
+    usage: {
+      hint: 'What each request used and cost. Charges come from your plan allowance first, then from your balance.',
+      rangeLabel: 'Period',
+      last7: 'Last 7 days',
+      last30: 'Last 30 days',
+      last90: 'Last 90 days',
+      requests: 'Requests',
+      tokens: 'Tokens',
+      charged: 'Charged',
+      timeColumn: 'Time',
+      modelColumn: 'Model',
+      tokensColumn: 'Tokens',
+      chargeColumn: 'Charged',
+      tokenDetail: 'In {input} · Out {output}',
+      cachedDetail: 'Cached {cached}',
+      empty: 'No usage in this period. Once you chat in Otoha, each request and its charge show up here.',
+      loadFailed: 'Usage could not be loaded.',
+      retry: 'Try again',
+      prev: 'Previous',
+      next: 'Next',
+      page: 'Page {page} of {pages}'
     },
     start: {
       title: 'Buy Otoha AI',
-      subtitle: 'After you pay, click "Open Otoha" and the app sets itself up. No keys to copy.',
+      subtitle: 'After you pay, click "Open Otoha" and the app sets itself up.',
       point1: 'Monthly plans with an allowance for each 30 days',
       point2: 'Once the plan allowance is used, requests are paid from your balance, which never expires',
       point3: 'Model use is billed by actual usage, shown on your account page',
@@ -121,6 +153,7 @@ export default {
     errors: {
       OTOHA_NO_ACCESS: 'Your account has no plan or balance yet. Buy a plan or add balance, then try again.',
       OTOHA_KEY_DISABLED: 'The key named "Otoha Desktop" in your account cannot be used: it is turned off, expired or out of quota. Check it under API keys, then try again.',
+      OTOHA_KEY_DISABLED_PORTAL: 'Your Otoha connection is turned off or has expired, so it cannot be used right now. Please contact support.',
       OTOHA_NOT_CONFIGURED: 'Otoha AI is not available on this site.',
       claimFailed: 'The claim code was not created. Please try again later.',
       downloadFailed: 'The configuration file was not downloaded. Please try again later.'

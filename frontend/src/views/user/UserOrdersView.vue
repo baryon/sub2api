@@ -1,5 +1,5 @@
 <template>
-  <AppLayout>
+  <PortalAwareLayout>
     <div class="space-y-4">
       <!-- Filters -->
       <div class="card p-4">
@@ -77,7 +77,7 @@
         </div>
       </template>
     </BaseDialog>
-  </AppLayout>
+  </PortalAwareLayout>
 </template>
 
 <script setup lang="ts">
@@ -88,7 +88,7 @@ import { useAppStore } from '@/stores'
 import { paymentAPI } from '@/api/payment'
 import { extractI18nErrorMessage } from '@/utils/apiError'
 import type { PaymentOrder } from '@/types/payment'
-import AppLayout from '@/components/layout/AppLayout.vue'
+import PortalAwareLayout from '@/components/otoha/PortalAwareLayout.vue'
 import Pagination from '@/components/common/Pagination.vue'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import Select from '@/components/common/Select.vue'

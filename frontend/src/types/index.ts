@@ -192,6 +192,8 @@ export interface CustomMenuItem {
   url: string
   page_slug?: string
   hide_open_button?: boolean
+  /** Keeps a user item visible in the Otoha portal, where custom items are hidden by default. */
+  show_in_portal?: boolean
   visibility: 'user' | 'admin'
   sort_order: number
 }
@@ -227,6 +229,7 @@ export interface PublicSettings {
   tencent_captcha_app_id?: string
   tencent_captcha_region?: string
   passkey_enabled?: boolean
+  totp_enabled?: boolean
   turnstile_site_key: string
   aliyun_captcha_enabled?: boolean
   aliyun_captcha_scene_id?: string
@@ -289,6 +292,8 @@ export interface PublicSettings {
   allow_user_view_error_requests?: boolean
   /** Effective deployment-wide DeepSeek Responses WS-to-HTTP ingress switch. */
   deepseek_responses_websocket_http_bridge_enabled?: boolean
+  /** Server config otoha.portal: regular users get the Otoha portal instead of the developer pages. */
+  otoha_portal_enabled?: boolean
 }
 
 export interface AuthResponse {

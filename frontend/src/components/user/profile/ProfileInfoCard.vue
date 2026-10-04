@@ -58,7 +58,7 @@
               </div>
             </div>
 
-            <div class="grid gap-3 sm:grid-cols-3">
+            <div class="grid gap-3" :class="portal ? 'sm:grid-cols-2' : 'sm:grid-cols-3'">
               <div
                 data-testid="profile-overview-metric-balance"
                 class="rounded-2xl bg-white/85 px-4 py-3 shadow-sm ring-1 ring-white/70 dark:bg-dark-900/60 dark:ring-dark-700"
@@ -71,6 +71,7 @@
                 </p>
               </div>
               <div
+                v-if="!portal"
                 data-testid="profile-overview-metric-concurrency"
                 class="rounded-2xl bg-white/85 px-4 py-3 shadow-sm ring-1 ring-white/70 dark:bg-dark-900/60 dark:ring-dark-700"
               >
@@ -145,6 +146,7 @@
             :wechat-enabled="wechatEnabled"
             :wechat-open-enabled="wechatOpenEnabled"
             :wechat-mp-enabled="wechatMpEnabled"
+            :hide-unavailable="portal"
             embedded
             compact
           />
@@ -197,6 +199,11 @@ const props = withDefaults(defineProps<{
   wechatEnabled?: boolean
   wechatOpenEnabled?: boolean
   wechatMpEnabled?: boolean
+  /**
+   * Otoha portal: leave out the concurrency limit, a developer setting, and sign-in methods the site has not
+   * turned on.
+   */
+  portal?: boolean
 }>(), {
   linuxdoEnabled: false,
   dingtalkEnabled: false,
@@ -205,6 +212,7 @@ const props = withDefaults(defineProps<{
   wechatEnabled: false,
   wechatOpenEnabled: undefined,
   wechatMpEnabled: undefined,
+  portal: false,
 })
 
 const { t } = useI18n()
