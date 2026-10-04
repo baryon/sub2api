@@ -86,6 +86,8 @@ const props = defineProps<{
   publishableKey: string
   payAmount: number
   currency?: string
+  /** Same-site page Stripe returns to after a redirect-based confirmation; defaults to /payment/result. */
+  returnPath?: string
 }>()
 
 const emit = defineEmits<{ success: []; done: []; back: []; redirect: [orderId: number, payUrl: string] }>()
@@ -179,7 +181,7 @@ async function handlePay() {
     const { error: stripeError } = await stripeInstance.confirmPayment({
       elements: elementsInstance,
       confirmParams: {
-        return_url: window.location.origin + '/payment/result?order_id=' + props.orderId + '&status=success',
+        return_url: window.location.origin + (props.returnPath || '/payment/result') + '?order_id=' + props.orderId + '&status=success',
       },
       redirect: 'if_required',
     })

@@ -354,7 +354,7 @@
       <p class="text-gray-500 dark:text-dark-400">
         {{ t('auth.alreadyHaveAccount') }}
         <router-link
-          to="/login"
+          :to="{ path: '/login', query: redirectQuery }"
           class="font-medium text-primary-600 transition-colors hover:text-primary-500 dark:text-primary-400 dark:hover:text-primary-300"
         >
           {{ t('auth.signIn') }}
@@ -387,6 +387,7 @@ import {
   validateInvitationCode
 } from '@/api/auth'
 import { buildAuthErrorMessage } from '@/utils/authError'
+import { sanitizeRedirectPath } from '@/utils/redirect'
 import { extractApiErrorCode, extractI18nErrorMessage } from '@/utils/apiError'
 import {
   formatRegistrationEmailSuffixWhitelistForMessage,
@@ -407,6 +408,9 @@ const LOGIN_AGREEMENT_STORAGE_KEY = 'sub2api_login_agreement_consent'
 
 const router = useRouter()
 const route = useRoute()
+// A same-site page to return to after registering (e.g. the Otoha purchase page); empty means the dashboard.
+const redirectTarget = computed(() => sanitizeRedirectPath(route.query.redirect))
+const redirectQuery = computed(() => (redirectTarget.value ? { redirect: redirectTarget.value } : {}))
 const authStore = useAuthStore()
 const appStore = useAppStore()
 
@@ -1066,7 +1070,8 @@ async function handleRegister(): Promise<void> {
           tencent_captcha_randstr: tencentCaptchaEnabled.value ? tencentCaptchaRandstr.value : undefined,
           promo_code: formData.promo_code || undefined,
           invitation_code: formData.invitation_code || undefined,
-          ...(affCode ? { aff_code: affCode } : {})
+          ...(affCode ? { aff_code: affCode } : {}),
+          ...(redirectTarget.value ? { pending_redirect: redirectTarget.value } : {})
         })
       )
 
@@ -1092,8 +1097,8 @@ async function handleRegister(): Promise<void> {
     // Show success toast
     appStore.showSuccess(t('auth.accountCreatedSuccess', { siteName: siteName.value }))
 
-    // Redirect to dashboard
-    await router.push('/dashboard')
+    // Redirect to the page that sent the user here, or the dashboard
+    await router.push(redirectTarget.value || '/dashboard')
   } catch (error: unknown) {
     // Handle registration error
     errorMessage.value = buildRegistrationErrorMessage(error, t('auth.registrationFailed'))

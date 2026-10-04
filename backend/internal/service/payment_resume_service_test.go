@@ -822,3 +822,23 @@ func mustCreateFallbackSignedToken(t *testing.T, claims any) string {
 	signature := base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
 	return encodedPayload + "." + signature
 }
+
+func TestCanonicalizeReturnURLAllowsTheOtohaResultPage(t *testing.T) {
+	t.Parallel()
+
+	got, err := CanonicalizeReturnURL("https://account.example.com/otoha/result?from=app", "account.example.com", "")
+	if err != nil {
+		t.Fatalf("CanonicalizeReturnURL returned error: %v", err)
+	}
+	if got != "https://account.example.com/otoha/result?from=app" {
+		t.Fatalf("CanonicalizeReturnURL = %q", got)
+	}
+	if _, err := CanonicalizeReturnURL("https://evil.example/otoha/result", "account.example.com", ""); err == nil {
+		t.Fatal("the Otoha result page must stay on this site")
+	}
+	for _, path := range []string{"/otoha/buy", "/otoha/result/extra", "/otoha"} {
+		if _, err := CanonicalizeReturnURL("https://account.example.com"+path, "account.example.com", ""); err == nil {
+			t.Fatalf("CanonicalizeReturnURL should reject %s", path)
+		}
+	}
+}

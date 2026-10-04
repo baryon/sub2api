@@ -20,6 +20,9 @@ import (
 
 const paymentResultReturnPath = "/payment/result"
 
+// otohaPaymentResultReturnPath is the Otoha purchase pages' result page (TASK-56): same site, like the default.
+const otohaPaymentResultReturnPath = "/otoha/result"
+
 const (
 	PaymentSourceHostedRedirect    = "hosted_redirect"
 	PaymentSourceWechatInAppResume = "wechat_in_app_resume"
@@ -248,7 +251,7 @@ func CanonicalizeReturnURL(raw string, srcHost string, srcURL string) (string, e
 	if parsed.Path == "" {
 		parsed.Path = "/"
 	}
-	if parsed.Path != paymentResultReturnPath {
+	if parsed.Path != paymentResultReturnPath && parsed.Path != otohaPaymentResultReturnPath {
 		return "", infraerrors.BadRequest("INVALID_RETURN_URL", "return_url must target the canonical internal payment result page")
 	}
 	if !allowedReturnURLHost(parsed.Host, srcHost, srcURL) {

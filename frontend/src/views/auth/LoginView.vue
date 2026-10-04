@@ -201,7 +201,7 @@
       <p class="text-gray-500 dark:text-dark-400">
         {{ t('auth.dontHaveAccount') }}
         <router-link
-          to="/register"
+          :to="{ path: '/register', query: registerQuery }"
           class="font-medium text-primary-600 transition-colors hover:text-primary-500 dark:text-primary-400 dark:hover:text-primary-300"
         >
           {{ t('auth.signUp') }}
@@ -250,6 +250,7 @@ import type {
   TotpLoginResponse
 } from '@/types'
 import { extractI18nErrorMessage } from '@/utils/apiError'
+import { sanitizeRedirectPath } from '@/utils/redirect'
 import { clearAllAffiliateReferralCodes } from '@/utils/oauthAffiliate'
 
 const { t } = useI18n()
@@ -258,6 +259,11 @@ const LOGIN_AGREEMENT_STORAGE_KEY = 'sub2api_login_agreement_consent'
 // ==================== Router & Stores ====================
 
 const router = useRouter()
+// Carry a same-site return page over to registration.
+const registerQuery = computed(() => {
+  const redirect = sanitizeRedirectPath(router.currentRoute.value.query.redirect)
+  return redirect ? { redirect } : {}
+})
 const authStore = useAuthStore()
 const appStore = useAppStore()
 

@@ -351,6 +351,46 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/otoha',
+    redirect: (to) => ({ path: '/otoha/buy', query: to.query })
+  },
+  {
+    path: '/otoha/buy',
+    name: 'OtohaBuy',
+    component: () => import('@/views/otoha/OtohaBuyView.vue'),
+    meta: {
+      requiresAuth: false,
+      requiresAdmin: false,
+      title: 'Buy Otoha AI',
+      titleKey: 'otoha.titles.buy',
+      requiresPayment: false
+    }
+  },
+  {
+    path: '/otoha/result',
+    name: 'OtohaResult',
+    component: () => import('@/views/otoha/OtohaResultView.vue'),
+    meta: {
+      requiresAuth: false,
+      requiresAdmin: false,
+      title: 'Payment result',
+      titleKey: 'otoha.titles.result',
+      requiresPayment: false
+    }
+  },
+  {
+    path: '/otoha/account',
+    name: 'OtohaAccount',
+    component: () => import('@/views/otoha/OtohaAccountView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      title: 'My Otoha AI',
+      titleKey: 'otoha.titles.account',
+      requiresPayment: false
+    }
+  },
+  {
     path: '/payment/stripe',
     name: 'StripePayment',
     component: () => import('@/views/user/StripePaymentView.vue'),
