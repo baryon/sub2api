@@ -43,6 +43,9 @@ func RegisterAdminRoutes(
 		// 分组管理
 		registerGroupRoutes(admin, h)
 
+		// Otoha 模型目录页（TASK-63）：默认打开的 Otoha 分组
+		admin.GET("/otoha-catalog/settings", h.Admin.OtohaCatalog.Settings)
+
 		// 账号管理
 		registerAccountRoutes(admin, h, stepUpAuth)
 

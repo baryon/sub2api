@@ -503,6 +503,18 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/admin/otoha-catalog',
+    name: 'AdminOtohaCatalog',
+    component: () => import('@/views/admin/OtohaCatalogView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'Model Catalog',
+      titleKey: 'admin.otohaCatalog.pageTitle',
+      descriptionKey: 'admin.otohaCatalog.pageDescription'
+    }
+  },
+  {
     path: '/admin/channels',
     redirect: '/admin/channels/pricing'
   },
