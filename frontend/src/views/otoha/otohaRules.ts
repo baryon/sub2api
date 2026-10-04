@@ -1,4 +1,6 @@
-import type { SubscriptionPlan } from '@/types/payment'
+import type { MethodLimit, SubscriptionPlan } from '@/types/payment'
+import type { PaymentMethodOption } from '@/components/payment/PaymentMethodSelector.vue'
+import { getVisibleMethods } from '@/components/payment/paymentFlow'
 import type { OtohaAccountPlan } from '@/api/otoha'
 
 /**
@@ -108,4 +110,12 @@ export function topUpAmountError(amount: number, min: number, max: number): TopU
   if (min > 0 && amount < min) return 'tooSmall'
   if (max > 0 && amount > max) return 'tooLarge'
   return ''
+}
+
+// The ways to pay the checkout offers. A method counts as usable unless the checkout says it is not, as on the
+// payment page: the checkout's entries carry "available" only when a method is limited.
+export function otohaMethodOptions(methods: Record<string, MethodLimit> | undefined): PaymentMethodOption[] {
+  return Object.entries(getVisibleMethods(methods ?? {}))
+    .filter(([, limit]) => limit.available !== false)
+    .map(([type, limit]) => ({ type, display_name: limit.display_name, fee_rate: limit.fee_rate ?? 0, available: true }))
 }

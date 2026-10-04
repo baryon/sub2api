@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   formatPerMillion,
+  otohaMethodOptions,
   orderOutcome,
   otohaOpenUrl,
   otohaPlans,
@@ -194,5 +195,21 @@ describe('planAction', () => {
 
   it('leaves the decision to the server when the current plan is no longer on sale', () => {
     expect(planAction(plus, current(99, 'Old'), plans)).toBe('buy')
+  })
+})
+
+describe('otohaMethodOptions', () => {
+  it('offers a method the checkout lists without saying it is unavailable, as the payment page does', () => {
+    // The live checkout's Stripe entry carries no "available" field (2026-10-04, account.otohaai.com).
+    const options = otohaMethodOptions({
+      stripe: { currency: 'USD', fee_rate: 0, daily_limit: 0, single_min: 0, single_max: 0 } as never,
+    })
+    expect(options.map((o) => o.type)).toEqual(['stripe'])
+    expect(options[0].available).toBe(true)
+  })
+
+  it('leaves out a method marked unavailable, and lists nothing for no methods', () => {
+    expect(otohaMethodOptions({ stripe: { available: false, fee_rate: 0 } as never })).toEqual([])
+    expect(otohaMethodOptions(undefined)).toEqual([])
   })
 })

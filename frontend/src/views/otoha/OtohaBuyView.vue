@@ -178,7 +178,7 @@ import Icon from '@/components/icons/Icon.vue'
 import PaymentMethodSelector, { type PaymentMethodOption } from '@/components/payment/PaymentMethodSelector.vue'
 import PaymentStatusPanel from '@/components/payment/PaymentStatusPanel.vue'
 import StripePaymentInline from '@/components/payment/StripePaymentInline.vue'
-import { buildCreateOrderPayload, decidePaymentLaunch, getVisibleMethods, type PaymentRecoverySnapshot } from '@/components/payment/paymentFlow'
+import { buildCreateOrderPayload, decidePaymentLaunch, type PaymentRecoverySnapshot } from '@/components/payment/paymentFlow'
 import { formatPaymentAmount } from '@/components/payment/currency'
 import { paymentAPI } from '@/api/payment'
 import { otohaAPI, type OtohaAccount } from '@/api/otoha'
@@ -186,7 +186,7 @@ import { useAuthStore } from '@/stores/auth'
 import { isMobileDevice } from '@/utils/device'
 import { extractApiErrorMessage, extractI18nErrorMessage } from '@/utils/apiError'
 import type { CheckoutInfoResponse, OrderType, SubscriptionPlan } from '@/types/payment'
-import { otohaPlans, planAction, topUpAmountError, type PlanAction } from './otohaRules'
+import { otohaMethodOptions, otohaPlans, planAction, topUpAmountError, type PlanAction } from './otohaRules'
 import { otohaErrorMessage } from './otohaErrors'
 
 const { t, locale } = useI18n()
@@ -209,12 +209,7 @@ const payingLabel = ref('')
 
 const plans = computed(() => otohaPlans(checkout.value?.plans, account.value?.group_id ?? 0))
 
-const methodOptions = computed<PaymentMethodOption[]>(() => {
-  const methods = getVisibleMethods(checkout.value?.methods ?? {})
-  return Object.entries(methods)
-    .filter(([, limit]) => limit.available)
-    .map(([type, limit]) => ({ type, display_name: limit.display_name, fee_rate: limit.fee_rate, available: limit.available }))
-})
+const methodOptions = computed<PaymentMethodOption[]>(() => otohaMethodOptions(checkout.value?.methods))
 
 const topUpPresets = computed(() => {
   const min = checkout.value?.global_min ?? 0
