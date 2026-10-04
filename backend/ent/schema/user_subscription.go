@@ -69,6 +69,24 @@ func (UserSubscription) Fields() []ent.Field {
 			SchemaType(map[string]string{dialect.Postgres: "decimal(20,10)"}).
 			Default(0),
 
+		// 购买时的套餐与它当时的额度（TASK-57）。额度为空时按分组的额度；plan_id 为空表示不是按套餐购买的订阅。
+		// 套餐是硬删除的，这里不建外键。
+		field.Int64("plan_id").
+			Optional().
+			Nillable(),
+		field.Float("daily_limit_usd").
+			Optional().
+			Nillable().
+			SchemaType(map[string]string{dialect.Postgres: "decimal(20,8)"}),
+		field.Float("weekly_limit_usd").
+			Optional().
+			Nillable().
+			SchemaType(map[string]string{dialect.Postgres: "decimal(20,8)"}),
+		field.Float("monthly_limit_usd").
+			Optional().
+			Nillable().
+			SchemaType(map[string]string{dialect.Postgres: "decimal(20,8)"}),
+
 		field.Int64("assigned_by").
 			Optional().
 			Nillable(),

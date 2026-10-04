@@ -37,6 +37,12 @@ type SubscriptionPlan struct {
 	Features string `json:"features,omitempty"`
 	// ProductName holds the value of the "product_name" field.
 	ProductName string `json:"product_name,omitempty"`
+	// DailyLimitUsd holds the value of the "daily_limit_usd" field.
+	DailyLimitUsd *float64 `json:"daily_limit_usd,omitempty"`
+	// WeeklyLimitUsd holds the value of the "weekly_limit_usd" field.
+	WeeklyLimitUsd *float64 `json:"weekly_limit_usd,omitempty"`
+	// MonthlyLimitUsd holds the value of the "monthly_limit_usd" field.
+	MonthlyLimitUsd *float64 `json:"monthly_limit_usd,omitempty"`
 	// ForSale holds the value of the "for_sale" field.
 	ForSale bool `json:"for_sale,omitempty"`
 	// SortOrder holds the value of the "sort_order" field.
@@ -55,7 +61,7 @@ func (*SubscriptionPlan) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case subscriptionplan.FieldForSale:
 			values[i] = new(sql.NullBool)
-		case subscriptionplan.FieldPrice, subscriptionplan.FieldOriginalPrice:
+		case subscriptionplan.FieldPrice, subscriptionplan.FieldOriginalPrice, subscriptionplan.FieldDailyLimitUsd, subscriptionplan.FieldWeeklyLimitUsd, subscriptionplan.FieldMonthlyLimitUsd:
 			values[i] = new(sql.NullFloat64)
 		case subscriptionplan.FieldID, subscriptionplan.FieldGroupID, subscriptionplan.FieldValidityDays, subscriptionplan.FieldSortOrder:
 			values[i] = new(sql.NullInt64)
@@ -144,6 +150,27 @@ func (_m *SubscriptionPlan) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field product_name", values[i])
 			} else if value.Valid {
 				_m.ProductName = value.String
+			}
+		case subscriptionplan.FieldDailyLimitUsd:
+			if value, ok := values[i].(*sql.NullFloat64); !ok {
+				return fmt.Errorf("unexpected type %T for field daily_limit_usd", values[i])
+			} else if value.Valid {
+				_m.DailyLimitUsd = new(float64)
+				*_m.DailyLimitUsd = value.Float64
+			}
+		case subscriptionplan.FieldWeeklyLimitUsd:
+			if value, ok := values[i].(*sql.NullFloat64); !ok {
+				return fmt.Errorf("unexpected type %T for field weekly_limit_usd", values[i])
+			} else if value.Valid {
+				_m.WeeklyLimitUsd = new(float64)
+				*_m.WeeklyLimitUsd = value.Float64
+			}
+		case subscriptionplan.FieldMonthlyLimitUsd:
+			if value, ok := values[i].(*sql.NullFloat64); !ok {
+				return fmt.Errorf("unexpected type %T for field monthly_limit_usd", values[i])
+			} else if value.Valid {
+				_m.MonthlyLimitUsd = new(float64)
+				*_m.MonthlyLimitUsd = value.Float64
 			}
 		case subscriptionplan.FieldForSale:
 			if value, ok := values[i].(*sql.NullBool); !ok {
@@ -236,6 +263,21 @@ func (_m *SubscriptionPlan) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("product_name=")
 	builder.WriteString(_m.ProductName)
+	builder.WriteString(", ")
+	if v := _m.DailyLimitUsd; v != nil {
+		builder.WriteString("daily_limit_usd=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
+	builder.WriteString(", ")
+	if v := _m.WeeklyLimitUsd; v != nil {
+		builder.WriteString("weekly_limit_usd=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
+	builder.WriteString(", ")
+	if v := _m.MonthlyLimitUsd; v != nil {
+		builder.WriteString("monthly_limit_usd=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
 	builder.WriteString(", ")
 	builder.WriteString("for_sale=")
 	builder.WriteString(fmt.Sprintf("%v", _m.ForSale))

@@ -893,7 +893,12 @@ func UserSubscriptionFromServiceAdmin(sub *service.UserSubscription) *AdminUserS
 }
 
 func userSubscriptionFromServiceBase(sub *service.UserSubscription) UserSubscription {
+	limits := sub.EffectiveLimits(sub.Group)
 	return UserSubscription{
+		DailyLimitUSD:      limits.DailyUSD,
+		WeeklyLimitUSD:     limits.WeeklyUSD,
+		MonthlyLimitUSD:    limits.MonthlyUSD,
+		PlanID:             sub.PlanID,
 		ID:                 sub.ID,
 		UserID:             sub.UserID,
 		GroupID:            sub.GroupID,

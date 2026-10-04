@@ -598,6 +598,7 @@ func (s *PaymentService) ensurePaymentSubscriptionAssigned(ctx context.Context, 
 	}
 
 	recoveredFromNote := false
+	var planChange *planPurchaseOutcome
 	if !alreadyAssigned {
 		orderNote := paymentSubscriptionOrderNote(o.ID)
 		existing, lookupErr := s.subscriptionSvc.userSubRepo.GetByUserIDAndGroupID(txCtx, o.UserID, groupID)
@@ -607,22 +608,47 @@ func (s *PaymentService) ensurePaymentSubscriptionAssigned(ctx context.Context, 
 		case lookupErr != nil && !errors.Is(lookupErr, ErrSubscriptionNotFound):
 			return fmt.Errorf("check existing subscription assignment: %w", lookupErr)
 		default:
-			if _, _, err := s.subscriptionSvc.assignOrExtendSubscription(txCtx, &AssignSubscriptionInput{
+			input := &AssignSubscriptionInput{
 				UserID:       o.UserID,
 				GroupID:      groupID,
 				ValidityDays: days,
 				AssignedBy:   0,
 				Notes:        orderNote,
-			}, true); err != nil {
+			}
+			terms, err := loadOrderPlanTerms(txCtx, txClient, o, groupID)
+			if err != nil {
+				return err
+			}
+			if terms == nil {
+				// No plan on the order (or it was deleted since): extend as before, without an allowance.
+				if _, _, err := s.subscriptionSvc.assignOrExtendSubscription(txCtx, input, true); err != nil {
+					return fmt.Errorf("assign subscription: %w", err)
+				}
+				break
+			}
+			planChange, err = s.subscriptionSvc.applyPlanPurchase(txCtx, input, terms, func(ctx context.Context, planID int64) (*subscriptionPlanTerms, error) {
+				return loadPlanTerms(ctx, txClient, planID)
+			})
+			if err != nil {
 				return fmt.Errorf("assign subscription: %w", err)
+			}
+			if err := creditPlanUpgrade(txCtx, txClient, o, terms, planChange); err != nil {
+				return err
 			}
 		}
 
-		detail, _ := json.Marshal(map[string]any{
+		auditDetail := map[string]any{
 			"groupID":           groupID,
 			"validityDays":      days,
 			"recoveredFromNote": recoveredFromNote,
-		})
+		}
+		if planChange != nil {
+			auditDetail["planChange"] = planChange.Kind.String()
+			if planChange.Credit > 0 {
+				auditDetail["upgradeCredit"] = planChange.Credit
+			}
+		}
+		detail, _ := json.Marshal(auditDetail)
 		if _, err := txClient.PaymentAuditLog.Create().
 			SetOrderID(strconv.FormatInt(o.ID, 10)).
 			SetAction("SUBSCRIPTION_ASSIGNED").
@@ -645,10 +671,95 @@ func (s *PaymentService) ensurePaymentSubscriptionAssigned(ctx context.Context, 
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit subscription fulfillment tx: %w", err)
 	}
+	if planChange != nil && planChange.Credit > 0 && s.redeemService != nil {
+		// The balance changed: drop the cached balance and the API key snapshots that carry it. Done first, as a
+		// retry after a failed subscription cache invalidation below takes the already-assigned path.
+		s.redeemService.invalidateRedeemCaches(ctx, o.UserID, &RedeemCode{Type: RedeemTypeBalance})
+	}
 	// Assignment cache invalidation is deferred while this transaction is open,
 	// then performed synchronously against the committed subscription.
 	if err := s.subscriptionSvc.invalidateSubscriptionCaches(o.UserID, groupID); err != nil {
 		return fmt.Errorf("invalidate subscription cache after fulfillment: %w", err)
+	}
+	return nil
+}
+
+// loadOrderPlanTerms returns the terms of the plan a subscription order was placed for, or nil when the order has
+// no plan, the plan has been deleted, or it now belongs to another group (the order's group wins).
+func loadOrderPlanTerms(ctx context.Context, client *dbent.Client, o *dbent.PaymentOrder, groupID int64) (*subscriptionPlanTerms, error) {
+	if o == nil || o.PlanID == nil || *o.PlanID <= 0 {
+		return nil, nil
+	}
+	terms, err := loadPlanTerms(ctx, client, *o.PlanID)
+	if err != nil || terms == nil {
+		return nil, err
+	}
+	if terms.GroupID != groupID {
+		slog.Warn("plan moved to another group since the order; fulfilling without the plan's allowance",
+			"orderID", o.ID, "planID", terms.PlanID, "orderGroupID", groupID, "planGroupID", terms.GroupID)
+		return nil, nil
+	}
+	return terms, nil
+}
+
+// loadPlanTerms reads a plan's terms; nil when the plan no longer exists.
+func loadPlanTerms(ctx context.Context, client *dbent.Client, planID int64) (*subscriptionPlanTerms, error) {
+	plan, err := client.SubscriptionPlan.Get(ctx, planID)
+	if dbent.IsNotFound(err) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("load plan %d: %w", planID, err)
+	}
+	return planTermsFromPlan(plan), nil
+}
+
+func planTermsFromPlan(plan *dbent.SubscriptionPlan) *subscriptionPlanTerms {
+	if plan == nil {
+		return nil
+	}
+	return &subscriptionPlanTerms{
+		PlanID:       plan.ID,
+		GroupID:      plan.GroupID,
+		Name:         plan.Name,
+		Price:        plan.Price,
+		Currency:     plan.Currency,
+		ValidityDays: psComputeValidityDays(plan.ValidityDays, plan.ValidityUnit),
+		Limits:       SubscriptionLimits{DailyUSD: plan.DailyLimitUsd, WeeklyUSD: plan.WeeklyLimitUsd, MonthlyUSD: plan.MonthlyLimitUsd},
+	}
+}
+
+// planCreditCode is the ledger record of an order's upgrade credit; the code is unique, so one order can never be
+// credited twice.
+func planCreditCode(orderID int64) string {
+	return fmt.Sprintf("PLANUP-%d", orderID)
+}
+
+// creditPlanUpgrade adds an upgrade's credit to the balance and records it in the balance history, in the
+// fulfillment transaction.
+func creditPlanUpgrade(ctx context.Context, client *dbent.Client, o *dbent.PaymentOrder, terms *subscriptionPlanTerms, outcome *planPurchaseOutcome) error {
+	if outcome == nil || outcome.Kind != planPurchaseUpgrade || outcome.Credit <= 0 {
+		return nil
+	}
+	if _, err := client.User.UpdateOneID(o.UserID).AddBalance(outcome.Credit).Save(ctx); err != nil {
+		return fmt.Errorf("credit upgrade to balance: %w", err)
+	}
+	previous := "the previous plan"
+	if outcome.PreviousPlan != nil && strings.TrimSpace(outcome.PreviousPlan.Name) != "" {
+		previous = strings.TrimSpace(outcome.PreviousPlan.Name)
+	}
+	notes := fmt.Sprintf("Unused allowance of %s credited on the upgrade to %s (order %d)", previous, strings.TrimSpace(terms.Name), o.ID)
+	now := time.Now()
+	if _, err := client.RedeemCode.Create().
+		SetCode(planCreditCode(o.ID)).
+		SetType(RedeemTypePlanCredit).
+		SetValue(outcome.Credit).
+		SetStatus(StatusUsed).
+		SetUsedBy(o.UserID).
+		SetUsedAt(now).
+		SetNotes(notes).
+		Save(ctx); err != nil {
+		return fmt.Errorf("record upgrade credit: %w", err)
 	}
 	return nil
 }

@@ -733,6 +733,7 @@ export default {
       allTypes: 'All Types',
       typeBalance: 'Balance (Redeem)',
       typeAffiliateBalance: 'Balance (Affiliate Transfer)',
+      typePlanCredit: 'Balance (Plan Upgrade Credit)',
       typeAdminBalance: 'Balance (Admin)',
       typeConcurrency: 'Concurrency (Redeem)',
       typeAdminConcurrency: 'Concurrency (Admin)',

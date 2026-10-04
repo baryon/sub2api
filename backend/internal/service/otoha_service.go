@@ -489,6 +489,10 @@ type OtohaAccount struct {
 
 // OtohaAccountPlan is the active plan and this 30-day period's use.
 type OtohaAccountPlan struct {
+	// PlanID is the plan the current term was bought with; null for a subscription not bought as a plan.
+	PlanID *int64 `json:"plan_id"`
+	// HasOwnAllowance: the subscription carries its plan's allowance (a tier), so dearer tiers are upgrades.
+	HasOwnAllowance bool       `json:"has_own_allowance"`
 	Name            string     `json:"name"`
 	ExpiresAt       time.Time  `json:"expires_at"`
 	MonthlyLimitUSD *float64   `json:"monthly_limit_usd"`
@@ -524,13 +528,16 @@ func (s *OtohaService) AccountSummary(ctx context.Context, userID int64) (*Otoha
 		normalizeExpiredWindowsAt(subs, s.now())
 		current := subs[0]
 		plan := &OtohaAccountPlan{
-			Name:           otohaPlanName(s.latestPlanOrder(ctx, userID), group),
-			ExpiresAt:      current.ExpiresAt,
-			MonthlyUsedUSD: current.MonthlyUsageUSD,
-			PeriodResetsAt: current.MonthlyResetTime(),
+			PlanID:          current.PlanID,
+			HasOwnAllowance: current.hasOwnAllowance(),
+			Name:            otohaPlanName(s.latestPlanOrder(ctx, userID), group),
+			ExpiresAt:       current.ExpiresAt,
+			MonthlyUsedUSD:  current.MonthlyUsageUSD,
+			PeriodResetsAt:  current.MonthlyResetTime(),
 		}
-		if group.HasMonthlyLimit() {
-			limit := *group.MonthlyLimitUSD
+		// The allowance of the plan the user bought, or the group's limit (TASK-57).
+		if limits := current.EffectiveLimits(group); limits.HasMonthly() {
+			limit := *limits.MonthlyUSD
 			plan.MonthlyLimitUSD = &limit
 		}
 		account.Plan = plan

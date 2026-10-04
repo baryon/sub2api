@@ -197,6 +197,10 @@ type AssignSubscriptionInput struct {
 	ValidityDays int
 	AssignedBy   int64
 	Notes        string
+
+	// planTerms is set when the subscription is bought as a plan (TASK-57): a new subscription records the
+	// plan and its allowance.
+	planTerms *subscriptionPlanTerms
 }
 
 // AssignSubscription 分配订阅给用户（不允许重复分配）
@@ -394,6 +398,9 @@ func renewedSubscriptionTerm(existingSub *UserSubscription, notes string, starts
 	renewed.WeeklyUsageUSD = 0
 	renewed.MonthlyUsageUSD = 0
 	renewed.Notes = appendSubscriptionNotes(existingSub.Notes, notes)
+	// A new term starts without the previous plan's allowance; a plan purchase records its plan afterwards
+	// (TASK-57), so a redeem code or an assignment restarting an ended plan follows the group's limits.
+	renewed.clearPlan()
 	return &renewed
 }
 
@@ -438,6 +445,7 @@ func (s *SubscriptionService) createSubscription(ctx context.Context, input *Ass
 	if input.AssignedBy > 0 {
 		sub.AssignedBy = &input.AssignedBy
 	}
+	input.planTerms.apply(sub)
 
 	if err := s.userSubRepo.Create(ctx, sub); err != nil {
 		return nil, err
@@ -1142,10 +1150,11 @@ func (s *SubscriptionService) calculateProgress(sub *UserSubscription, group *Gr
 		ExpiresAt:     sub.ExpiresAt,
 		ExpiresInDays: sub.DaysRemaining(),
 	}
+	limits := sub.EffectiveLimits(group)
 
 	// 日进度
-	if group.HasDailyLimit() && sub.DailyWindowStart != nil {
-		limit := *group.DailyLimitUSD
+	if limits.HasDaily() && sub.DailyWindowStart != nil {
+		limit := *limits.DailyUSD
 		resetsAt := sub.DailyWindowStart.Add(24 * time.Hour)
 		if dailyResetTime := sub.DailyResetTime(); dailyResetTime != nil {
 			resetsAt = *dailyResetTime
@@ -1171,8 +1180,8 @@ func (s *SubscriptionService) calculateProgress(sub *UserSubscription, group *Gr
 	}
 
 	// 周进度
-	if group.HasWeeklyLimit() && sub.WeeklyWindowStart != nil {
-		limit := *group.WeeklyLimitUSD
+	if limits.HasWeekly() && sub.WeeklyWindowStart != nil {
+		limit := *limits.WeeklyUSD
 		resetsAt := sub.WeeklyWindowStart.Add(7 * 24 * time.Hour)
 		if weeklyResetTime := sub.WeeklyResetTime(); weeklyResetTime != nil {
 			resetsAt = *weeklyResetTime
@@ -1198,8 +1207,8 @@ func (s *SubscriptionService) calculateProgress(sub *UserSubscription, group *Gr
 	}
 
 	// 月进度
-	if group.HasMonthlyLimit() && sub.MonthlyWindowStart != nil {
-		limit := *group.MonthlyLimitUSD
+	if limits.HasMonthly() && sub.MonthlyWindowStart != nil {
+		limit := *limits.MonthlyUSD
 		resetsAt := sub.MonthlyWindowStart.Add(30 * 24 * time.Hour)
 		if monthlyResetTime := sub.MonthlyResetTime(); monthlyResetTime != nil {
 			resetsAt = *monthlyResetTime

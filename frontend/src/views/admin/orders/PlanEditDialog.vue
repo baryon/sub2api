@@ -51,6 +51,26 @@
         <div><label class="input-label">{{ t('payment.admin.validity') }} <span class="text-red-500">*</span></label><input v-model.number="planForm.validity_days" type="number" min="1" class="input" required /></div>
         <div><label class="input-label">{{ t('payment.admin.validityUnit') }} <span class="text-red-500">*</span></label><Select v-model="planForm.validity_unit" :options="validityUnitOptions" /></div>
       </div>
+      <!-- The plan's own allowance; empty follows the group's limit shown above -->
+      <div>
+        <label class="input-label">{{ t('payment.admin.planAllowance') }}</label>
+        <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <div v-for="field in allowanceFields" :key="field.key">
+            <label class="mb-1 block text-xs text-gray-500 dark:text-gray-400" :for="`plan-${field.key}`">{{ field.label }}</label>
+            <input
+              :id="`plan-${field.key}`"
+              v-model.number="planForm[field.key]"
+              type="number"
+              step="0.01"
+              min="0"
+              class="input"
+              :placeholder="field.placeholder"
+            />
+          </div>
+        </div>
+        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('payment.admin.planAllowanceHint') }}</p>
+      </div>
+
       <div class="grid grid-cols-2 gap-4">
         <div><label class="input-label">{{ t('payment.admin.sortOrder') }}</label><input v-model.number="planForm.sort_order" type="number" min="0" class="input" /></div>
         <div>
@@ -105,6 +125,7 @@ import Select from '@/components/common/Select.vue'
 import Icon from '@/components/icons/Icon.vue'
 import GroupBadge from '@/components/common/GroupBadge.vue'
 import { platformTextClass } from '@/utils/platformColors'
+import { planAllowanceInput, planAllowancePayload } from '@/utils/subscriptionLimits'
 
 const props = defineProps<{
   show: boolean
@@ -122,7 +143,11 @@ const { t } = useI18n()
 const appStore = useAppStore()
 
 const saving = ref(false)
-const planForm = reactive({ name: '', group_id: null as number | null, description: '', price: 0, original_price: 0, currency: '', validity_days: 30, validity_unit: 'days', sort_order: 0, for_sale: true })
+const planForm = reactive({
+  name: '', group_id: null as number | null, description: '', price: 0, original_price: 0, currency: '', validity_days: 30, validity_unit: 'days', sort_order: 0, for_sale: true,
+  plan_daily_limit_usd: '' as number | '', plan_weekly_limit_usd: '' as number | '', plan_monthly_limit_usd: '' as number | '',
+})
+type AllowanceKey = 'plan_daily_limit_usd' | 'plan_weekly_limit_usd' | 'plan_monthly_limit_usd'
 const planFeaturesText = ref('')
 
 const validityUnitOptions = computed(() => [
@@ -144,6 +169,18 @@ const groupOptions = computed(() =>
 const selectedGroupInfo = computed(() => {
   if (!planForm.group_id) return null
   return props.groups.find(g => g.id === planForm.group_id) || null
+})
+
+// Each allowance field shows, when empty, the group's limit it falls back to.
+const allowanceFields = computed(() => {
+  const group = selectedGroupInfo.value
+  const fallback = (value: number | null | undefined) =>
+    t('payment.admin.planAllowanceFromGroup', { value: value != null && value > 0 ? '$' + value : t('payment.admin.unlimited') })
+  return [
+    { key: 'plan_daily_limit_usd' as AllowanceKey, label: t('payment.admin.dailyLimit'), placeholder: fallback(group?.daily_limit_usd) },
+    { key: 'plan_weekly_limit_usd' as AllowanceKey, label: t('payment.admin.weeklyLimit'), placeholder: fallback(group?.weekly_limit_usd) },
+    { key: 'plan_monthly_limit_usd' as AllowanceKey, label: t('payment.admin.monthlyLimit'), placeholder: fallback(group?.monthly_limit_usd) },
+  ]
 })
 
 function roundCnyAmount(value: number): number {
@@ -175,10 +212,12 @@ const subscriptionCnyPreview = computed(() => {
 watch(() => props.show, (visible) => {
   if (!visible) return
   if (props.plan) {
-    Object.assign(planForm, { name: props.plan.name, group_id: props.plan.group_id, description: props.plan.description, price: props.plan.price, original_price: props.plan.original_price || 0, currency: props.plan.currency || '', validity_days: props.plan.validity_days, validity_unit: props.plan.validity_unit || 'days', sort_order: props.plan.sort_order || 0, for_sale: props.plan.for_sale })
+    Object.assign(planForm, { name: props.plan.name, group_id: props.plan.group_id, description: props.plan.description, price: props.plan.price, original_price: props.plan.original_price || 0, currency: props.plan.currency || '', validity_days: props.plan.validity_days, validity_unit: props.plan.validity_unit || 'days', sort_order: props.plan.sort_order || 0, for_sale: props.plan.for_sale,
+      plan_daily_limit_usd: planAllowanceInput(props.plan.plan_daily_limit_usd), plan_weekly_limit_usd: planAllowanceInput(props.plan.plan_weekly_limit_usd), plan_monthly_limit_usd: planAllowanceInput(props.plan.plan_monthly_limit_usd) })
     planFeaturesText.value = (props.plan.features || []).join('\n')
   } else {
-    Object.assign(planForm, { name: '', group_id: null, description: '', price: 0, original_price: 0, currency: '', validity_days: 30, validity_unit: 'days', sort_order: 0, for_sale: true })
+    Object.assign(planForm, { name: '', group_id: null, description: '', price: 0, original_price: 0, currency: '', validity_days: 30, validity_unit: 'days', sort_order: 0, for_sale: true,
+      plan_daily_limit_usd: '', plan_weekly_limit_usd: '', plan_monthly_limit_usd: '' })
     planFeaturesText.value = ''
   }
 })
@@ -198,6 +237,10 @@ function buildPlanPayload() {
     sort_order: planForm.sort_order,
     for_sale: planForm.for_sale,
     features,
+    // 0 = no allowance of its own: the group's limit applies
+    plan_daily_limit_usd: planAllowancePayload(planForm.plan_daily_limit_usd),
+    plan_weekly_limit_usd: planAllowancePayload(planForm.plan_weekly_limit_usd),
+    plan_monthly_limit_usd: planAllowancePayload(planForm.plan_monthly_limit_usd),
   }
 }
 
@@ -212,6 +255,10 @@ async function handleSavePlan() {
   }
   if (!planForm.validity_days || planForm.validity_days < 1) {
     appStore.showError(t('payment.admin.validityRequired'))
+    return
+  }
+  if (allowanceFields.value.some(f => planAllowancePayload(planForm[f.key]) < 0)) {
+    appStore.showError(t('payment.admin.planAllowanceInvalid'))
     return
   }
   saving.value = true

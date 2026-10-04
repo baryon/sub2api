@@ -57,6 +57,19 @@ func (SubscriptionPlan) Fields() []ent.Field {
 		field.String("product_name").
 			MaxLen(100).
 			Default(""),
+		// 套餐自己的日、周、月额度（美元）；为空时按分组的额度。购买时记入用户订阅。
+		field.Float("daily_limit_usd").
+			Optional().
+			Nillable().
+			SchemaType(map[string]string{dialect.Postgres: "decimal(20,8)"}),
+		field.Float("weekly_limit_usd").
+			Optional().
+			Nillable().
+			SchemaType(map[string]string{dialect.Postgres: "decimal(20,8)"}),
+		field.Float("monthly_limit_usd").
+			Optional().
+			Nillable().
+			SchemaType(map[string]string{dialect.Postgres: "decimal(20,8)"}),
 		field.Bool("for_sale").
 			Default(true),
 		field.Int("sort_order").

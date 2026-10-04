@@ -123,21 +123,7 @@ func (h *PaymentHandler) GetCheckoutInfo(c *gin.Context) {
 	groupInfo := h.configService.GetGroupInfoMap(ctx, plans)
 	planList := make([]checkoutPlan, 0, len(plans))
 	for _, p := range plans {
-		gi := groupInfo[p.GroupID]
-		planList = append(planList, checkoutPlan{
-			ID: int64(p.ID), GroupID: p.GroupID,
-			GroupPlatform: gi.Platform, GroupName: gi.Name,
-			RateMultiplier:  gi.RateMultiplier,
-			PeakRateEnabled: gi.PeakRateEnabled, PeakStart: gi.PeakStart,
-			PeakEnd: gi.PeakEnd, PeakRateMultiplier: gi.PeakRateMultiplier,
-			DailyLimitUSD:  gi.DailyLimitUSD,
-			WeeklyLimitUSD: gi.WeeklyLimitUSD, MonthlyLimitUSD: gi.MonthlyLimitUSD,
-			ModelScopes: gi.ModelScopes,
-			Name:        p.Name, Description: p.Description, Price: p.Price, OriginalPrice: p.OriginalPrice,
-			Currency:     p.Currency,
-			ValidityDays: p.ValidityDays, ValidityUnit: p.ValidityUnit, Features: parseFeatures(p.Features),
-			ProductName: p.ProductName,
-		})
+		planList = append(planList, checkoutPlanFromPlan(p, groupInfo[p.GroupID]))
 	}
 
 	response.Success(c, checkoutInfoResponse{
@@ -192,16 +178,39 @@ type checkoutPlan struct {
 	DailyLimitUSD      *float64 `json:"daily_limit_usd"`
 	WeeklyLimitUSD     *float64 `json:"weekly_limit_usd"`
 	MonthlyLimitUSD    *float64 `json:"monthly_limit_usd"`
-	ModelScopes        []string `json:"supported_model_scopes"`
-	Name               string   `json:"name"`
-	Description        string   `json:"description"`
-	Price              float64  `json:"price"`
-	OriginalPrice      *float64 `json:"original_price,omitempty"`
-	Currency           string   `json:"currency,omitempty"`
-	ValidityDays       int      `json:"validity_days"`
-	ValidityUnit       string   `json:"validity_unit"`
-	Features           []string `json:"features"`
-	ProductName        string   `json:"product_name"`
+	// HasOwnAllowance: the plan sets an allowance of its own (a tier, TASK-57), so it can be an upgrade.
+	HasOwnAllowance bool     `json:"has_own_allowance"`
+	ModelScopes     []string `json:"supported_model_scopes"`
+	Name            string   `json:"name"`
+	Description     string   `json:"description"`
+	Price           float64  `json:"price"`
+	OriginalPrice   *float64 `json:"original_price,omitempty"`
+	Currency        string   `json:"currency,omitempty"`
+	ValidityDays    int      `json:"validity_days"`
+	ValidityUnit    string   `json:"validity_unit"`
+	Features        []string `json:"features"`
+	ProductName     string   `json:"product_name"`
+}
+
+// checkoutPlanFromPlan is a plan as the checkout page shows it. Its limits are what the buyer gets: the plan's
+// own allowance where it has one, the group's limit otherwise (TASK-57).
+func checkoutPlanFromPlan(p *dbent.SubscriptionPlan, gi service.PlanGroupInfo) checkoutPlan {
+	limits := service.PlanEffectiveLimits(p.DailyLimitUsd, p.WeeklyLimitUsd, p.MonthlyLimitUsd, gi)
+	return checkoutPlan{
+		ID: int64(p.ID), GroupID: p.GroupID,
+		GroupPlatform: gi.Platform, GroupName: gi.Name,
+		RateMultiplier:  gi.RateMultiplier,
+		PeakRateEnabled: gi.PeakRateEnabled, PeakStart: gi.PeakStart,
+		PeakEnd: gi.PeakEnd, PeakRateMultiplier: gi.PeakRateMultiplier,
+		DailyLimitUSD:  limits.DailyUSD,
+		WeeklyLimitUSD: limits.WeeklyUSD, MonthlyLimitUSD: limits.MonthlyUSD,
+		HasOwnAllowance: service.PlanHasOwnAllowance(p.DailyLimitUsd, p.WeeklyLimitUsd, p.MonthlyLimitUsd),
+		ModelScopes:     gi.ModelScopes,
+		Name:            p.Name, Description: p.Description, Price: p.Price, OriginalPrice: p.OriginalPrice,
+		Currency:     p.Currency,
+		ValidityDays: p.ValidityDays, ValidityUnit: p.ValidityUnit, Features: parseFeatures(p.Features),
+		ProductName: p.ProductName,
+	}
 }
 
 // parseFeatures splits a newline-separated features string into a string slice.

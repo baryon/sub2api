@@ -189,6 +189,8 @@ const (
 	RedeemTypeSubscription     = domain.RedeemTypeSubscription
 	RedeemTypeInvitation       = domain.RedeemTypeInvitation
 	RedeemTypeAffiliateBalance = "affiliate_balance"
+	// RedeemTypePlanCredit records the old plan's unused allowance credited to the balance on an upgrade (TASK-57).
+	RedeemTypePlanCredit = "plan_credit"
 )
 
 // PromoCode status constants

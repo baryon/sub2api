@@ -4,6 +4,7 @@ import {
   orderOutcome,
   otohaOpenUrl,
   otohaPlans,
+  planAction,
   periodUsage,
   topUpAmountError,
 } from '../otohaRules'
@@ -134,5 +135,64 @@ describe('sanitizeRedirectPath', () => {
     for (const bad of ['https://evil.example', '//evil.example', '/\\evil.example', 'otoha/buy', '/a\nb', '', null, undefined, ['/x']]) {
       expect(sanitizeRedirectPath(bad as never)).toBe('')
     }
+  })
+})
+
+describe('planAction', () => {
+  const tier = (partial: Partial<SubscriptionPlan>) => plan({ has_own_allowance: true, ...partial })
+  const plus = tier({ id: 1, name: 'Plus', price: 20 })
+  const pro = tier({ id: 2, name: 'Pro', price: 50 })
+  const max = tier({ id: 3, name: 'Max', price: 150 })
+  const plans = [plus, pro, max]
+  const current = (planId: number | null, name = 'Pro', ownAllowance = true) => ({
+    plan_id: planId,
+    has_own_allowance: ownAllowance,
+    name,
+    expires_at: '2026-11-01T00:00:00Z',
+    monthly_limit_usd: 120,
+    monthly_used_usd: 0,
+    period_resets_at: null,
+  })
+
+  it('offers a purchase without a current plan', () => {
+    expect(planAction(pro, null, plans)).toBe('buy')
+  })
+
+  it('renews the current plan', () => {
+    expect(planAction(pro, current(2), plans)).toBe('renew')
+  })
+
+  it('upgrades to a dearer plan at once', () => {
+    expect(planAction(max, current(2), plans)).toBe('upgrade')
+  })
+
+  it('offers a cheaper plan only after the current one ends', () => {
+    expect(planAction(plus, current(2), plans)).toBe('later')
+  })
+
+  it('offers another plan at the same price only after the current one ends', () => {
+    const proPlus = tier({ id: 4, name: 'Pro Plus', price: 50 })
+    expect(planAction(proPlus, current(2), [...plans, proPlus])).toBe('later')
+  })
+
+  it('offers a plan that cannot be compared with the current one only after it ends', () => {
+    const plain = plan({ id: 5, name: 'Basic', price: 200 })
+    const euro = tier({ id: 6, name: 'Max EUR', price: 400, currency: 'EUR' })
+    expect(planAction(plain, current(2), [...plans, plain])).toBe('later')
+    expect(planAction(euro, current(2), [...plans, euro])).toBe('later')
+  })
+
+  it('treats any plan as a plain purchase when the current one has no allowance of its own', () => {
+    expect(planAction(plus, current(2, 'Pro', false), plans)).toBe('buy')
+    expect(planAction(max, current(2, 'Pro', false), plans)).toBe('buy')
+  })
+
+  it('matches by name for a subscription from before plans were recorded', () => {
+    expect(planAction(pro, current(null, 'Pro', false), plans)).toBe('renew')
+    expect(planAction(max, current(null, 'Pro', false), plans)).toBe('buy')
+  })
+
+  it('leaves the decision to the server when the current plan is no longer on sale', () => {
+    expect(planAction(plus, current(99, 'Old'), plans)).toBe('buy')
   })
 })

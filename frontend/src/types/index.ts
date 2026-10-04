@@ -2122,6 +2122,12 @@ export interface UserSubscription {
   daily_window_start: string | null
   weekly_window_start: string | null
   monthly_window_start: string | null
+  /** Limits that apply to this subscription: its plan's allowance, or the group's limit. null: no limit. */
+  daily_limit_usd?: number | null
+  weekly_limit_usd?: number | null
+  monthly_limit_usd?: number | null
+  /** The plan the current period was bought with, when bought as a plan. */
+  plan_id?: number
   created_at: string
   updated_at: string
   revoked_at?: string | null

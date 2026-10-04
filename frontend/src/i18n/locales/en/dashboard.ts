@@ -804,6 +804,7 @@ export default {
     historyWillAppear: 'Your redemption history will appear here',
     balanceAddedRedeem: 'Balance Added (Redeem)',
     balanceAddedAffiliate: 'Balance Added (Affiliate Transfer)',
+    balanceAddedPlanCredit: 'Balance Added (unused allowance of the previous plan, on upgrade)',
     balanceAddedAdmin: 'Balance Added (Admin)',
     balanceDeductedAdmin: 'Balance Deducted (Admin)',
     concurrencyAddedRedeem: 'Concurrency Added (Redeem)',
