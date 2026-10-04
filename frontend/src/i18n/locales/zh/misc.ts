@@ -457,7 +457,7 @@ export default {
       INVALID_AMOUNT: '金额无效',
       INVALID_INPUT: '参数有误',
       PLAN_NOT_AVAILABLE: '套餐不存在或已下架',
-      PLAN_DOWNGRADE_NOT_ALLOWED: '你现在的套餐（{current_plan}）比这个套餐高，要等现在的套餐到期后才能换成这个套餐。',
+      PLAN_DOWNGRADE_NOT_ALLOWED: '现在的套餐（{current_plan}）到期后才能换成这个套餐；到期前只能升级到更高的套餐。',
       PLAN_LIMIT_INVALID: '套餐额度不能为负数',
       GROUP_NOT_FOUND: '订阅分组不可用',
       GROUP_TYPE_MISMATCH: '分组类型不是订阅类型',

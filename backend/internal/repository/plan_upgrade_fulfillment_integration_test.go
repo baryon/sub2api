@@ -122,7 +122,7 @@ func (f *planUpgradeFixture) credits(t *testing.T) []*dbent.RedeemCode {
 
 func TestPlanUpgradeFulfillmentInPostgres(t *testing.T) {
 	f := newPlanUpgradeFixture(t)
-	// Plus (40 a month) from 15 days ago with 10 used: 30 unused, half the window left → 15.
+	// Plus ($20, 40 a month) from 15 days ago with 10 used: 30 unused × half the window = 15, capped at $10.
 	f.seedPlus(t, 15*24*time.Hour, 10)
 	o := f.order(t, f.pro)
 
@@ -134,17 +134,17 @@ func TestPlanUpgradeFulfillmentInPostgres(t *testing.T) {
 	require.InDelta(t, 120, *sub.MonthlyLimitUSD, 1e-9)
 	require.Zero(t, sub.MonthlyUsageUSD)
 	require.WithinDuration(t, time.Now().AddDate(0, 0, 30), sub.ExpiresAt, time.Minute)
-	require.InDelta(t, 18, f.balance(t), 0.011)
+	require.InDelta(t, 13, f.balance(t), 0.02)
 	records := f.credits(t)
 	require.Len(t, records, 1)
-	require.InDelta(t, 15, records[0].Value, 0.011)
+	require.InDelta(t, 10, records[0].Value, 0.02)
 
 	// The provider sends the notification again after a lost lease: nothing more is credited.
 	staleAt := time.Now().Add(-time.Hour)
 	_, err = f.client.PaymentOrder.UpdateOneID(o.ID).SetStatus(service.OrderStatusRecharging).SetUpdatedAt(staleAt).ClearCompletedAt().Save(f.ctx)
 	require.NoError(t, err)
 	require.NoError(t, f.payment.ExecuteSubscriptionFulfillment(f.ctx, o.ID))
-	require.InDelta(t, 18, f.balance(t), 0.011)
+	require.InDelta(t, 13, f.balance(t), 0.02)
 	require.Len(t, f.credits(t), 1)
 }
 
@@ -175,6 +175,6 @@ func TestPlanUpgradeFulfillmentUnderConcurrentNotifications(t *testing.T) {
 	completed, err := f.client.PaymentOrder.Get(f.ctx, o.ID)
 	require.NoError(t, err)
 	require.Equal(t, service.OrderStatusCompleted, completed.Status)
-	require.InDelta(t, 18, f.balance(t), 0.011, "credited once")
+	require.InDelta(t, 13, f.balance(t), 0.02, "credited once")
 	require.Len(t, f.credits(t), 1)
 }

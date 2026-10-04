@@ -157,13 +157,14 @@ func (s *PaymentService) validateSubOrder(ctx context.Context, req CreateOrderRe
 	return plan, nil
 }
 
-// checkPlanChangeAllowed refuses, before payment, an order for a cheaper plan while the user's current plan in the
-// same group runs (TASK-57): it could not start until the current plan ends. Fulfillment checks again.
+// checkPlanChangeAllowed refuses, before payment, an order that could not start until the user's current plan in
+// the same group ends: a cheaper tier, or another at the same price (TASK-57). Fulfillment checks again. A
+// suspended subscription counts as the current plan, as it does at fulfillment.
 func (s *PaymentService) checkPlanChangeAllowed(ctx context.Context, userID int64, plan *dbent.SubscriptionPlan) error {
-	if s.subscriptionSvc == nil || plan == nil || userID <= 0 {
+	if s.subscriptionSvc == nil || s.subscriptionSvc.userSubRepo == nil || plan == nil || userID <= 0 {
 		return nil
 	}
-	sub, err := s.subscriptionSvc.GetActiveSubscription(ctx, userID, plan.GroupID)
+	sub, err := s.subscriptionSvc.userSubRepo.GetByUserIDAndGroupID(ctx, userID, plan.GroupID)
 	if errors.Is(err, ErrSubscriptionNotFound) {
 		return nil
 	}
@@ -177,11 +178,7 @@ func (s *PaymentService) checkPlanChangeAllowed(ctx context.Context, userID int6
 	if err != nil {
 		return err
 	}
-	if current == nil {
-		return nil
-	}
-	price := current.Price
-	if classifyPlanPurchase(sub, time.Now(), int64(plan.ID), plan.Price, &price) == planPurchaseDowngrade {
+	if classifyPlanPurchase(sub, time.Now(), planTermsFromPlan(plan), current) == planPurchaseLater {
 		return planDowngradeError(current, sub)
 	}
 	return nil

@@ -671,14 +671,15 @@ func (s *PaymentService) ensurePaymentSubscriptionAssigned(ctx context.Context, 
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit subscription fulfillment tx: %w", err)
 	}
+	if planChange != nil && planChange.Credit > 0 && s.redeemService != nil {
+		// The balance changed: drop the cached balance and the API key snapshots that carry it. Done first, as a
+		// retry after a failed subscription cache invalidation below takes the already-assigned path.
+		s.redeemService.invalidateRedeemCaches(ctx, o.UserID, &RedeemCode{Type: RedeemTypeBalance})
+	}
 	// Assignment cache invalidation is deferred while this transaction is open,
 	// then performed synchronously against the committed subscription.
 	if err := s.subscriptionSvc.invalidateSubscriptionCaches(o.UserID, groupID); err != nil {
 		return fmt.Errorf("invalidate subscription cache after fulfillment: %w", err)
-	}
-	if planChange != nil && planChange.Credit > 0 && s.redeemService != nil {
-		// The balance changed: drop the cached balance and the API key snapshots that carry it.
-		s.redeemService.invalidateRedeemCaches(ctx, o.UserID, &RedeemCode{Type: RedeemTypeBalance})
 	}
 	return nil
 }
@@ -718,11 +719,13 @@ func planTermsFromPlan(plan *dbent.SubscriptionPlan) *subscriptionPlanTerms {
 		return nil
 	}
 	return &subscriptionPlanTerms{
-		PlanID:  plan.ID,
-		GroupID: plan.GroupID,
-		Name:    plan.Name,
-		Price:   plan.Price,
-		Limits:  SubscriptionLimits{DailyUSD: plan.DailyLimitUsd, WeeklyUSD: plan.WeeklyLimitUsd, MonthlyUSD: plan.MonthlyLimitUsd},
+		PlanID:       plan.ID,
+		GroupID:      plan.GroupID,
+		Name:         plan.Name,
+		Price:        plan.Price,
+		Currency:     plan.Currency,
+		ValidityDays: psComputeValidityDays(plan.ValidityDays, plan.ValidityUnit),
+		Limits:       SubscriptionLimits{DailyUSD: plan.DailyLimitUsd, WeeklyUSD: plan.WeeklyLimitUsd, MonthlyUSD: plan.MonthlyLimitUsd},
 	}
 }
 

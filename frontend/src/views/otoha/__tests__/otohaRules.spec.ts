@@ -168,9 +168,9 @@ describe('planAction', () => {
     expect(planAction(plus, current(2), plans)).toBe('later')
   })
 
-  it('switches at once to another plan at the same price', () => {
+  it('offers another plan at the same price only after the current one ends', () => {
     const proPlus = plan({ id: 4, name: 'Pro Plus', price: 50 })
-    expect(planAction(proPlus, current(2), [...plans, proPlus])).toBe('upgrade')
+    expect(planAction(proPlus, current(2), [...plans, proPlus])).toBe('later')
   })
 
   it('matches by name for a subscription from before plans were recorded', () => {

@@ -237,24 +237,94 @@ func TestPlanUpgradeCreditIsRoundedDownToCents(t *testing.T) {
 
 func TestClassifyPlanPurchase(t *testing.T) {
 	now := time.Date(2026, 9, 10, 0, 0, 0, 0, time.UTC)
-	plusID, proID := int64(1), int64(2)
-	active := func(planID *int64) *UserSubscription {
-		return &UserSubscription{Status: SubscriptionStatusActive, StartsAt: now.Add(-24 * time.Hour), ExpiresAt: now.AddDate(0, 0, 20), PlanID: planID}
+	tier := func(id int64, price, monthly float64) *subscriptionPlanTerms {
+		return &subscriptionPlanTerms{PlanID: id, Price: price, Currency: "USD", ValidityDays: 30, Limits: SubscriptionLimits{MonthlyUSD: allowanceFloat(monthly)}}
 	}
-	price := func(v float64) *float64 { return &v }
+	plus, pro, max := tier(1, 20, 40), tier(2, 50, 120), tier(3, 150, 400)
+	active := func(current *subscriptionPlanTerms) *UserSubscription {
+		sub := &UserSubscription{Status: SubscriptionStatusActive, StartsAt: now.Add(-24 * time.Hour), ExpiresAt: now.AddDate(0, 0, 20)}
+		current.apply(sub)
+		return sub
+	}
 
-	require.Equal(t, planPurchaseNew, classifyPlanPurchase(nil, now, proID, 50, nil))
-	require.Equal(t, planPurchaseRenew, classifyPlanPurchase(active(&proID), now, proID, 50, price(50)), "same plan")
-	require.Equal(t, planPurchaseRenew, classifyPlanPurchase(active(nil), now, proID, 50, nil), "a subscription from before plans had allowances")
-	require.Equal(t, planPurchaseUpgrade, classifyPlanPurchase(active(&plusID), now, proID, 50, price(20)))
-	require.Equal(t, planPurchaseUpgrade, classifyPlanPurchase(active(&plusID), now, proID, 50, price(50)), "same price, another plan: switch now")
-	require.Equal(t, planPurchaseUpgrade, classifyPlanPurchase(active(&plusID), now, proID, 50, nil), "the old plan was deleted: switch now")
-	require.Equal(t, planPurchaseDowngrade, classifyPlanPurchase(active(&proID), now, plusID, 20, price(50)))
+	require.Equal(t, planPurchaseNew, classifyPlanPurchase(nil, now, pro, nil))
+	require.Equal(t, planPurchaseRenew, classifyPlanPurchase(active(pro), now, pro, pro), "same plan")
+	require.Equal(t, planPurchaseUpgrade, classifyPlanPurchase(active(plus), now, pro, plus))
+	require.Equal(t, planPurchaseUpgrade, classifyPlanPurchase(active(pro), now, max, pro))
+	require.Equal(t, planPurchaseLater, classifyPlanPurchase(active(pro), now, plus, pro), "a cheaper plan waits for the current one to end")
+	proTwin := tier(4, 50, 130)
+	require.Equal(t, planPurchaseLater, classifyPlanPurchase(active(pro), now, proTwin, pro), "same price, another plan: also after the current one ends")
+	require.Equal(t, planPurchaseUpgrade, classifyPlanPurchase(active(plus), now, pro, nil), "the current plan was deleted: switch now")
 
-	expired := active(&proID)
+	suspended := active(pro)
+	suspended.Status = SubscriptionStatusSuspended
+	require.Equal(t, planPurchaseLater, classifyPlanPurchase(suspended, now, plus, pro), "a suspended subscription is still the current plan")
+
+	expired := active(pro)
 	expired.ExpiresAt = now.Add(-time.Minute)
-	require.Equal(t, planPurchaseRenew, classifyPlanPurchase(expired, now, plusID, 20, price(50)), "an ended plan: any plan starts a new term")
-	expiredStatus := active(&proID)
+	require.Equal(t, planPurchaseRenew, classifyPlanPurchase(expired, now, plus, pro), "an ended plan: any plan starts a new term")
+	expiredStatus := active(pro)
 	expiredStatus.Status = SubscriptionStatusExpired
-	require.Equal(t, planPurchaseRenew, classifyPlanPurchase(expiredStatus, now, plusID, 20, price(50)))
+	require.Equal(t, planPurchaseRenew, classifyPlanPurchase(expiredStatus, now, plus, pro))
+}
+
+// Plans without an allowance of their own (every group before TASK-57, e.g. a monthly and a quarterly plan on one
+// group) are not tiers: buying one renews as before, whatever the price.
+func TestClassifyPlanPurchaseKeepsTheOldRulesOutsideTieredPlans(t *testing.T) {
+	now := time.Date(2026, 9, 10, 0, 0, 0, 0, time.UTC)
+	monthly := &subscriptionPlanTerms{PlanID: 1, Price: 10, Currency: "USD", ValidityDays: 30}
+	quarterly := &subscriptionPlanTerms{PlanID: 2, Price: 27, Currency: "USD", ValidityDays: 90}
+	sub := &UserSubscription{Status: SubscriptionStatusActive, StartsAt: now.Add(-24 * time.Hour), ExpiresAt: now.AddDate(0, 0, 20)}
+	monthly.apply(sub)
+	require.Equal(t, planPurchaseRenew, classifyPlanPurchase(sub, now, quarterly, monthly))
+	require.Equal(t, planPurchaseRenew, classifyPlanPurchase(sub, now, &subscriptionPlanTerms{PlanID: 3, Price: 5, Currency: "USD", ValidityDays: 30}, monthly))
+
+	tiered := &subscriptionPlanTerms{PlanID: 4, Price: 50, Currency: "USD", ValidityDays: 30, Limits: SubscriptionLimits{MonthlyUSD: allowanceFloat(60)}}
+	require.Equal(t, planPurchaseRenew, classifyPlanPurchase(sub, now, tiered, monthly), "the current plan has no allowance of its own")
+
+	legacy := &UserSubscription{Status: SubscriptionStatusActive, StartsAt: now.Add(-24 * time.Hour), ExpiresAt: now.AddDate(0, 0, 20)}
+	require.Equal(t, planPurchaseRenew, classifyPlanPurchase(legacy, now, tiered, nil), "a subscription from before TASK-57 renews once, then has a plan")
+
+	plus := &subscriptionPlanTerms{PlanID: 5, Price: 20, Currency: "USD", ValidityDays: 30, Limits: SubscriptionLimits{MonthlyUSD: allowanceFloat(40)}}
+	onPlus := &UserSubscription{Status: SubscriptionStatusActive, StartsAt: now.Add(-24 * time.Hour), ExpiresAt: now.AddDate(0, 0, 20)}
+	plus.apply(onPlus)
+	inEuro := &subscriptionPlanTerms{PlanID: 6, Price: 15, Currency: "EUR", ValidityDays: 30, Limits: SubscriptionLimits{MonthlyUSD: allowanceFloat(30)}}
+	require.Equal(t, planPurchaseRenew, classifyPlanPurchase(onPlus, now, inEuro, plus), "prices in different currencies are not compared")
+}
+
+// The upgrade credit never exceeds what the old plan cost for the time left, so an allowance larger than the
+// price cannot be turned into more balance than was paid.
+func TestPlanUpgradeCreditIsCappedByThePricePaidForTheTimeLeft(t *testing.T) {
+	start := time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC)
+	plus := &subscriptionPlanTerms{PlanID: 1, Price: 20, Currency: "USD", ValidityDays: 30, Limits: SubscriptionLimits{MonthlyUSD: allowanceFloat(40)}}
+	sub := &UserSubscription{Status: SubscriptionStatusActive, StartsAt: start, ExpiresAt: start.AddDate(0, 0, 30), MonthlyWindowStart: &start, MonthlyUsageUSD: 10}
+	plus.apply(sub)
+	now := start.Add(15 * 24 * time.Hour)
+
+	require.InDelta(t, 15, planUpgradeCredit(sub, nil, now), 1e-6, "30 unused × half the window")
+	require.InDelta(t, 10, upgradeCredit(sub, nil, plus, now), 1e-6, "capped at $20 × 15/30 days")
+
+	cheap := *plus
+	cheap.Price = 100
+	require.InDelta(t, 15, upgradeCredit(sub, nil, &cheap, now), 1e-6, "below the cap: the unused allowance")
+
+	require.InDelta(t, 15, upgradeCredit(sub, nil, nil, now), 1e-6, "the old plan was deleted: no price to cap with")
+
+	suspended := *sub
+	suspended.Status = SubscriptionStatusSuspended
+	require.Zero(t, upgradeCredit(&suspended, nil, plus, now), "a suspended subscription credits nothing")
+}
+
+func TestPlanUpgradeCreditForAShortLastWindow(t *testing.T) {
+	start := time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC)
+	sub := &UserSubscription{
+		Status:             SubscriptionStatusActive,
+		StartsAt:           start,
+		ExpiresAt:          start.AddDate(0, 0, 50), // a 30-day term renewed by 20 days
+		MonthlyWindowStart: &start,
+		MonthlyUsageUSD:    70,
+		MonthlyLimitUSD:    allowanceFloat(100),
+	}
+	// Day 40: the second window [30, 50) is 20 days long, half gone, nothing used yet → 50.
+	require.InDelta(t, 50, planUpgradeCredit(sub, nil, start.Add(40*24*time.Hour)), 1e-6)
 }

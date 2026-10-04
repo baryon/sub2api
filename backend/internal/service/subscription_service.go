@@ -398,6 +398,9 @@ func renewedSubscriptionTerm(existingSub *UserSubscription, notes string, starts
 	renewed.WeeklyUsageUSD = 0
 	renewed.MonthlyUsageUSD = 0
 	renewed.Notes = appendSubscriptionNotes(existingSub.Notes, notes)
+	// A new term starts without the previous plan's allowance; a plan purchase records its plan afterwards
+	// (TASK-57), so a redeem code or an assignment restarting an ended plan follows the group's limits.
+	renewed.clearPlan()
 	return &renewed
 }
 

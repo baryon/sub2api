@@ -225,7 +225,8 @@ func TestPlanPurchaseWhosePlanWasDeletedKeepsTheOldBehaviour(t *testing.T) {
 
 func TestPlanUpgradeStartsNowAndCreditsTheUnusedAllowanceOnce(t *testing.T) {
 	f := newPlanChangeFixture(t)
-	// Plus (40 a month) bought 15 days ago, 10 used: 30 unused, half the window left → 15.
+	// Plus ($20, 40 a month) bought 15 days ago, 10 used: 30 unused × half the window = 15, capped at what half
+	// of Plus cost ($10).
 	f.seed(f.plus, 15*24*time.Hour, 10)
 
 	o := f.order(f.pro)
@@ -240,10 +241,10 @@ func TestPlanUpgradeStartsNowAndCreditsTheUnusedAllowanceOnce(t *testing.T) {
 	require.Zero(t, sub.MonthlyUsageUSD, "the new period starts unused")
 	require.Equal(t, SubscriptionStatusActive, sub.Status)
 
-	require.InDelta(t, 3+15, f.balance(), 0.011)
+	require.InDelta(t, 3+10, f.balance(), 0.02)
 	records := f.creditRecords(o.ID)
 	require.Len(t, records, 1)
-	require.InDelta(t, 15, records[0].Value, 0.011)
+	require.InDelta(t, 10, records[0].Value, 0.02)
 	require.Equal(t, StatusUsed, records[0].Status)
 	require.NotNil(t, records[0].UsedAt)
 	require.NotNil(t, records[0].Notes)
@@ -260,7 +261,7 @@ func TestPlanUpgradeStartsNowAndCreditsTheUnusedAllowanceOnce(t *testing.T) {
 	}
 	require.NoError(t, json.Unmarshal([]byte(audit.Detail), &detail))
 	require.Equal(t, "upgrade", detail.PlanChange)
-	require.InDelta(t, 15, detail.UpgradeCredit, 0.011)
+	require.InDelta(t, 10, detail.UpgradeCredit, 0.02)
 
 	completed, err := f.client.PaymentOrder.Get(f.ctx, o.ID)
 	require.NoError(t, err)
@@ -268,22 +269,66 @@ func TestPlanUpgradeStartsNowAndCreditsTheUnusedAllowanceOnce(t *testing.T) {
 
 	// A webhook retry or a recovery after a lost lease changes nothing.
 	f.replay(o)
-	require.InDelta(t, 3+15, f.balance(), 0.011)
+	require.InDelta(t, 3+10, f.balance(), 0.02)
 	require.Len(t, f.creditRecords(o.ID), 1)
 	again := f.subscription()
 	require.True(t, again.ExpiresAt.Equal(sub.ExpiresAt))
 }
 
-func TestPlanUpgradeFromAnUnlimitedPlanCreditsNothing(t *testing.T) {
+func TestPlanPurchaseAfterAPlanWithoutAllowanceRenewsAsBefore(t *testing.T) {
 	f := newPlanChangeFixture(t)
-	f.groupLim = 0 // the group has no monthly limit either
-	f.seed(f.plain, 2*24*time.Hour, 0)
+	seeded := f.seed(f.plain, 2*24*time.Hour, 3)
 
 	o := f.order(f.pro)
 	require.NoError(t, f.svc.ExecuteSubscriptionFulfillment(f.ctx, o.ID))
-	require.Equal(t, f.pro.ID, *f.subscription().PlanID)
+	sub := f.subscription()
+	require.True(t, sub.ExpiresAt.Equal(seeded.ExpiresAt.AddDate(0, 0, 30)), "not a tier change: extended")
+	require.InDelta(t, 3, sub.MonthlyUsageUSD, 1e-9)
+	require.Equal(t, f.pro.ID, *sub.PlanID, "from now on the subscription is on Pro")
+	require.InDelta(t, 120, *sub.MonthlyLimitUSD, 1e-9)
 	require.InDelta(t, 3, f.balance(), 1e-9)
-	require.Empty(t, f.creditRecords(o.ID), "no ledger record without a credit")
+	require.Empty(t, f.creditRecords(o.ID))
+}
+
+// A group selling several plans without allowances (say monthly and quarterly) keeps the old rule: any of its
+// plans extends the subscription.
+func TestPlanPurchaseOnAGroupWithoutTieredPlansExtendsAsBefore(t *testing.T) {
+	f := newPlanChangeFixture(t)
+	quarterly, err := f.client.SubscriptionPlan.Create().SetGroupID(planChangeGroupID).SetName("Quarterly").SetPrice(27).
+		SetValidityDays(90).SetValidityUnit("day").SetForSale(true).Save(f.ctx)
+	require.NoError(t, err)
+	seeded := f.seed(f.plain, 10*24*time.Hour, 3)
+
+	_, err = f.svc.validateSubOrder(f.ctx, CreateOrderRequest{UserID: f.userID, OrderType: payment.OrderTypeSubscription, PlanID: quarterly.ID})
+	require.NoError(t, err)
+	o := f.order(quarterly)
+	_, err = f.client.PaymentOrder.UpdateOneID(o.ID).SetSubscriptionDays(90).Save(f.ctx)
+	require.NoError(t, err)
+	require.NoError(t, f.svc.ExecuteSubscriptionFulfillment(f.ctx, o.ID))
+
+	sub := f.subscription()
+	require.True(t, sub.ExpiresAt.Equal(seeded.ExpiresAt.AddDate(0, 0, 90)))
+	require.True(t, sub.StartsAt.Equal(seeded.StartsAt))
+	require.Nil(t, sub.MonthlyLimitUSD)
+	require.InDelta(t, 3, f.balance(), 1e-9)
+
+	// And the cheaper monthly plan afterwards is a renewal too, not a refused downgrade.
+	_, err = f.svc.validateSubOrder(f.ctx, CreateOrderRequest{UserID: f.userID, OrderType: payment.OrderTypeSubscription, PlanID: f.plain.ID})
+	require.NoError(t, err)
+}
+
+func TestPlanUpgradeOfASuspendedSubscriptionCreditsNothing(t *testing.T) {
+	f := newPlanChangeFixture(t)
+	seeded := f.seed(f.plus, 5*24*time.Hour, 0)
+	seeded.Status = SubscriptionStatusSuspended
+	f.subRepo.seed(seeded)
+
+	o := f.order(f.pro)
+	require.NoError(t, f.svc.ExecuteSubscriptionFulfillment(f.ctx, o.ID))
+	sub := f.subscription()
+	require.Equal(t, f.pro.ID, *sub.PlanID)
+	require.InDelta(t, 3, f.balance(), 1e-9, "a suspended plan is not turned into balance")
+	require.Empty(t, f.creditRecords(o.ID))
 }
 
 func TestPlanDowngradeDuringThePeriodFailsTheOrderAndChangesNothing(t *testing.T) {
@@ -304,7 +349,7 @@ func TestPlanDowngradeDuringThePeriodFailsTheOrderAndChangesNothing(t *testing.T
 	require.NoError(t, err)
 	require.Equal(t, OrderStatusFailed, failed.Status, "left for the admin to refund, or to retry once Pro has ended")
 	require.NotNil(t, failed.FailedReason)
-	require.Contains(t, *failed.FailedReason, "cheaper plan")
+	require.Contains(t, *failed.FailedReason, "once the current plan ends")
 }
 
 func TestPlanPurchaseAfterThePlanEndedStartsTheNewPlan(t *testing.T) {
@@ -347,6 +392,45 @@ func TestPlanOrderIsRefusedWhenItWouldBeADowngrade(t *testing.T) {
 
 	_, err = f.svc.validateSubOrder(f.ctx, CreateOrderRequest{UserID: f.userID, OrderType: payment.OrderTypeSubscription, PlanID: f.pro.ID})
 	require.NoError(t, err, "renewing the same plan")
+}
+
+func TestPlanOrderAtTheSamePriceOrOnASuspendedPlanIsRefusedToo(t *testing.T) {
+	f := newPlanChangeFixture(t)
+	twin, err := f.client.SubscriptionPlan.Create().SetGroupID(planChangeGroupID).SetName("Pro Twin").SetPrice(50).
+		SetValidityDays(30).SetValidityUnit("day").SetForSale(true).SetMonthlyLimitUsd(130).Save(f.ctx)
+	require.NoError(t, err)
+	seeded := f.seed(f.pro, 5*24*time.Hour, 10)
+
+	_, err = f.svc.validateSubOrder(f.ctx, CreateOrderRequest{UserID: f.userID, OrderType: payment.OrderTypeSubscription, PlanID: twin.ID})
+	require.Equal(t, "PLAN_DOWNGRADE_NOT_ALLOWED", infraerrors.Reason(err), "same price: after the current plan ends")
+
+	seeded.Status = SubscriptionStatusSuspended
+	f.subRepo.seed(seeded)
+	_, err = f.svc.validateSubOrder(f.ctx, CreateOrderRequest{UserID: f.userID, OrderType: payment.OrderTypeSubscription, PlanID: f.plus.ID})
+	require.Equal(t, "PLAN_DOWNGRADE_NOT_ALLOWED", infraerrors.Reason(err), "a suspended plan still counts")
+}
+
+// A redeem code or an admin assignment that restarts an ended plan subscription is not a plan purchase: the new
+// term follows the group's limits. Extending a running plan keeps its allowance.
+func TestRestartWithoutAPlanDropsTheOldPlansAllowance(t *testing.T) {
+	f := newPlanChangeFixture(t)
+	f.seed(f.pro, 40*24*time.Hour, 50) // ended 10 days ago
+	_, _, err := f.svc.subscriptionSvc.AssignOrExtendSubscription(f.ctx, &AssignSubscriptionInput{UserID: f.userID, GroupID: planChangeGroupID, ValidityDays: 7, Notes: "redeem"})
+	require.NoError(t, err)
+	sub := f.subscription()
+	require.Nil(t, sub.PlanID)
+	require.Nil(t, sub.MonthlyLimitUSD)
+}
+
+func TestExtendingARunningPlanWithoutAPurchaseKeepsItsAllowance(t *testing.T) {
+	g := newPlanChangeFixture(t)
+	running := g.seed(g.pro, 5*24*time.Hour, 50)
+	_, _, err := g.svc.subscriptionSvc.AssignOrExtendSubscription(g.ctx, &AssignSubscriptionInput{UserID: g.userID, GroupID: planChangeGroupID, ValidityDays: 7, Notes: "redeem"})
+	require.NoError(t, err)
+	extended := g.subscription()
+	require.True(t, extended.ExpiresAt.Equal(running.ExpiresAt.AddDate(0, 0, 7)))
+	require.Equal(t, g.pro.ID, *extended.PlanID)
+	require.InDelta(t, 120, *extended.MonthlyLimitUSD, 1e-9)
 }
 
 func TestPlanOrderForAnUpgradeOrWithoutAPlanIsAllowed(t *testing.T) {

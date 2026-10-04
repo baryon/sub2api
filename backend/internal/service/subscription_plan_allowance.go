@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"strings"
 	"time"
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
@@ -47,13 +48,35 @@ func (s *UserSubscription) EffectiveLimits(group *Group) SubscriptionLimits {
 	return limits
 }
 
-// subscriptionPlanTerms is what a plan purchase records on the subscription: the plan and its allowance.
+// subscriptionPlanTerms is a plan as a purchase sees it: what it records on the subscription (the plan and its
+// allowance) and what decides a plan change (price, currency, term length).
 type subscriptionPlanTerms struct {
-	PlanID  int64
-	GroupID int64
-	Name    string
-	Price   float64
-	Limits  SubscriptionLimits
+	PlanID       int64
+	GroupID      int64
+	Name         string
+	Price        float64
+	Currency     string
+	ValidityDays int
+	Limits       SubscriptionLimits
+}
+
+// tiered reports whether the plan has an allowance of its own. Only such plans form tiers with upgrades and
+// downgrades; plans without one keep the renewal rule they always had.
+func (t *subscriptionPlanTerms) tiered() bool {
+	return t != nil && (t.Limits.HasDaily() || t.Limits.HasWeekly() || t.Limits.HasMonthly())
+}
+
+// hasOwnAllowance reports whether the subscription recorded an allowance from its plan.
+func (s *UserSubscription) hasOwnAllowance() bool {
+	return s != nil && (positiveLimit(s.DailyLimitUSD) || positiveLimit(s.WeeklyLimitUSD) || positiveLimit(s.MonthlyLimitUSD))
+}
+
+// clearPlan drops the plan and its allowance: the subscription follows the group's limits again.
+func (s *UserSubscription) clearPlan() {
+	s.PlanID = nil
+	s.DailyLimitUSD = nil
+	s.WeeklyLimitUSD = nil
+	s.MonthlyLimitUSD = nil
 }
 
 // apply records the plan and its allowance on the subscription; an allowance the plan does not set is cleared,
@@ -82,15 +105,16 @@ type planPurchaseKind int
 const (
 	// planPurchaseNew: no subscription yet; a new one starts now.
 	planPurchaseNew planPurchaseKind = iota
-	// planPurchaseRenew: the same plan (or a subscription not bought as a plan, or one that has ended): the
-	// existing renewal rules apply — an active term is extended, an ended one starts again now.
+	// planPurchaseRenew: the existing renewal rules apply — an active term is extended, an ended one starts again
+	// now. Used for the same plan, a subscription that has ended, and whenever the current or the new plan is not
+	// a tier (has no allowance of its own), which keeps every group without plan allowances as it was.
 	planPurchaseRenew
-	// planPurchaseUpgrade: another plan at the same or a higher price while the current one runs: the new plan
-	// starts now with a fresh term and the old plan's unused allowance is credited to the balance.
+	// planPurchaseUpgrade: a dearer tier while the current one runs: the new plan starts now with a fresh term and
+	// the old plan's unused allowance is credited to the balance (see upgradeCredit).
 	planPurchaseUpgrade
-	// planPurchaseDowngrade: a cheaper plan while the current one runs. Not offered during the period (TASK-57):
-	// the user can buy it once the current plan has ended.
-	planPurchaseDowngrade
+	// planPurchaseLater: a cheaper tier, or another tier at the same price, while the current one runs. Not
+	// available during the period (TASK-57): the user can buy it once the current plan has ended.
+	planPurchaseLater
 )
 
 func (k planPurchaseKind) String() string {
@@ -101,30 +125,39 @@ func (k planPurchaseKind) String() string {
 		return "renew"
 	case planPurchaseUpgrade:
 		return "upgrade"
-	case planPurchaseDowngrade:
-		return "downgrade"
+	case planPurchaseLater:
+		return "later"
 	default:
 		return "unknown"
 	}
 }
 
-// classifyPlanPurchase decides what buying newPlanID (at newPrice) does to the user's existing subscription in
-// the plan's group. currentPlanPrice is the price of the plan the subscription was bought with, nil when that
-// plan no longer exists.
-func classifyPlanPurchase(existing *UserSubscription, now time.Time, newPlanID int64, newPrice float64, currentPlanPrice *float64) planPurchaseKind {
+// classifyPlanPurchase decides what buying next does to the user's existing subscription in the plan's group.
+// current is the plan the subscription was bought with, nil when it is unknown or no longer exists.
+func classifyPlanPurchase(existing *UserSubscription, now time.Time, next, current *subscriptionPlanTerms) planPurchaseKind {
 	if existing == nil {
 		return planPurchaseNew
 	}
 	if existing.Status == SubscriptionStatusExpired || !existing.ExpiresAt.After(now) {
 		return planPurchaseRenew
 	}
-	if existing.PlanID == nil || *existing.PlanID == newPlanID {
+	if next == nil || existing.PlanID == nil || *existing.PlanID == next.PlanID {
 		return planPurchaseRenew
 	}
-	if currentPlanPrice == nil || newPrice >= *currentPlanPrice {
+	if !existing.hasOwnAllowance() || !next.tiered() {
+		return planPurchaseRenew
+	}
+	if current == nil {
+		// The current plan was deleted: its price is unknown, so switch to the plan just paid for.
 		return planPurchaseUpgrade
 	}
-	return planPurchaseDowngrade
+	if !strings.EqualFold(strings.TrimSpace(current.Currency), strings.TrimSpace(next.Currency)) {
+		return planPurchaseRenew
+	}
+	if next.Price > current.Price {
+		return planPurchaseUpgrade
+	}
+	return planPurchaseLater
 }
 
 const subscriptionMonthlyWindow = 30 * 24 * time.Hour
@@ -176,6 +209,24 @@ func planUpgradeCredit(sub *UserSubscription, group *Group, now time.Time) float
 	return math.Floor(credit*100+1e-9) / 100
 }
 
+// upgradeCredit is what an upgrade actually credits: planUpgradeCredit, but never more than the old plan cost for
+// the time left (its price per day of its term), so an allowance worth more than the price cannot be turned into
+// more balance than was paid. A suspended subscription credits nothing. Without the old plan's price (the plan
+// was deleted) the allowance alone counts.
+func upgradeCredit(sub *UserSubscription, group *Group, current *subscriptionPlanTerms, now time.Time) float64 {
+	if sub == nil || sub.Status != SubscriptionStatusActive {
+		return 0
+	}
+	credit := planUpgradeCredit(sub, group, now)
+	if current != nil && current.ValidityDays > 0 && current.Price >= 0 {
+		left := sub.ExpiresAt.Sub(now)
+		paid := current.Price * float64(left) / float64(time.Duration(current.ValidityDays)*subscriptionDayDuration)
+		paid = math.Floor(paid*100+1e-9) / 100
+		credit = math.Min(credit, paid)
+	}
+	return math.Max(0, credit)
+}
+
 func maxTime(a, b time.Time) time.Time {
 	if a.After(b) {
 		return a
@@ -183,10 +234,10 @@ func maxTime(a, b time.Time) time.Time {
 	return b
 }
 
-// ErrPlanDowngradeNotAllowed: a cheaper plan cannot be bought while the current plan runs (TASK-57). The user
-// can buy it once the current plan has ended.
+// ErrPlanDowngradeNotAllowed: a cheaper plan (or another plan at the same price) cannot be bought while the
+// current plan runs (TASK-57). The user can buy it once the current plan has ended.
 var ErrPlanDowngradeNotAllowed = infraerrors.Conflict("PLAN_DOWNGRADE_NOT_ALLOWED",
-	"your current plan is higher than this one; you can switch to the cheaper plan once the current plan ends")
+	"only a higher plan can replace the current plan before it ends; you can switch to this plan once the current plan ends")
 
 func planDowngradeError(current *subscriptionPlanTerms, sub *UserSubscription) error {
 	md := map[string]string{"available_at": sub.ExpiresAt.UTC().Format(time.RFC3339)}
@@ -214,9 +265,13 @@ type planPurchaseOutcome struct {
 //   - no subscription: a new one with the plan's allowance;
 //   - the same plan, a subscription not bought as a plan, or one that has ended: the existing renewal rules
 //     (extend an active term by the plan's days; restart an ended one now), recording the plan as it is now;
-//   - another plan at the same or a higher price while the current one runs: the new plan starts now with a
-//     fresh term and usage, and Credit is the old plan's unused allowance (see planUpgradeCredit);
-//   - a cheaper plan while the current one runs: ErrPlanDowngradeNotAllowed, nothing changes.
+//   - a dearer tier while the current one runs: the new plan starts now with a fresh term and usage, and Credit is
+//     the old plan's unused allowance (see upgradeCredit);
+//   - a cheaper tier, or another at the same price, while the current one runs: ErrPlanDowngradeNotAllowed,
+//     nothing changes.
+//
+// Plans without an allowance of their own are not tiers: buying one, or buying a tier while the subscription has
+// no allowance of its own, renews as before.
 func (s *SubscriptionService) applyPlanPurchase(ctx context.Context, input *AssignSubscriptionInput, terms *subscriptionPlanTerms, lookup planTermsLookup) (*planPurchaseOutcome, error) {
 	if input == nil || terms == nil {
 		return nil, ErrSubscriptionNilInput
@@ -251,24 +306,19 @@ func (s *SubscriptionService) applyPlanPurchase(ctx context.Context, input *Assi
 	}
 	now := s.now()
 	var current *subscriptionPlanTerms
-	var currentPrice *float64
 	if locked.PlanID != nil && *locked.PlanID != terms.PlanID && lookup != nil {
 		if current, err = lookup(ctx, *locked.PlanID); err != nil {
 			return nil, fmt.Errorf("load current plan: %w", err)
 		}
-		if current != nil {
-			price := current.Price
-			currentPrice = &price
-		}
 	}
 
-	kind := classifyPlanPurchase(locked, now, terms.PlanID, terms.Price, currentPrice)
+	kind := classifyPlanPurchase(locked, now, terms, current)
 	outcome := &planPurchaseOutcome{Kind: kind, SubscriptionID: locked.ID, PreviousPlan: current}
 	switch kind {
-	case planPurchaseDowngrade:
+	case planPurchaseLater:
 		return nil, planDowngradeError(current, locked)
 	case planPurchaseUpgrade:
-		outcome.Credit = planUpgradeCredit(locked, group, now)
+		outcome.Credit = upgradeCredit(locked, group, current, now)
 		expiresAt := now.AddDate(0, 0, validityDays)
 		if expiresAt.After(MaxExpiresAt) {
 			expiresAt = MaxExpiresAt

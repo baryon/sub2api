@@ -433,7 +433,7 @@ export default {
       INVALID_AMOUNT: 'Invalid amount.',
       INVALID_INPUT: 'Invalid request.',
       PLAN_NOT_AVAILABLE: 'Plan not found or no longer available.',
-      PLAN_DOWNGRADE_NOT_ALLOWED: 'Your current plan ({current_plan}) is higher than this one. You can switch to this plan once your current plan ends.',
+      PLAN_DOWNGRADE_NOT_ALLOWED: 'You can switch to this plan once your current plan ({current_plan}) ends. Until then, only a higher plan can replace it.',
       PLAN_LIMIT_INVALID: 'A plan allowance cannot be negative',
       GROUP_NOT_FOUND: 'Subscription group is no longer available.',
       GROUP_TYPE_MISMATCH: 'Group is not a subscription type.',
