@@ -5,6 +5,7 @@
 # Prepares .env and data directories in this repository's deploy/ folder.
 # The application image is built from source on the server; this script does
 # not download compose files or pull weishaw/sub2api.
+# New installs get a random admin login email instead of a guessable default.
 #
 # Usage (from a git checkout):
 #   ./deploy/docker-deploy.sh
@@ -39,6 +40,14 @@ print_error() {
 
 generate_secret() {
     openssl rand -hex 32
+}
+
+# Generate a random admin login email so new installs never use a guessable default
+generate_admin_email() {
+    local suffix
+    suffix=$(openssl rand -hex 6) || return 1
+    [ -n "$suffix" ] || return 1
+    echo "admin-${suffix}@sub2api.local"
 }
 
 command_exists() {
@@ -89,6 +98,7 @@ main() {
     JWT_SECRET=$(generate_secret)
     TOTP_ENCRYPTION_KEY=$(generate_secret)
     POSTGRES_PASSWORD=$(generate_secret)
+    ADMIN_EMAIL=$(generate_admin_email)
 
     cp .env.example .env
 
@@ -96,10 +106,12 @@ main() {
         sed -i "s/^JWT_SECRET=.*/JWT_SECRET=${JWT_SECRET}/" .env
         sed -i "s/^TOTP_ENCRYPTION_KEY=.*/TOTP_ENCRYPTION_KEY=${TOTP_ENCRYPTION_KEY}/" .env
         sed -i "s/^POSTGRES_PASSWORD=.*/POSTGRES_PASSWORD=${POSTGRES_PASSWORD}/" .env
+        sed -i "s/^ADMIN_EMAIL=.*/ADMIN_EMAIL=${ADMIN_EMAIL}/" .env
     else
         sed -i '' "s/^JWT_SECRET=.*/JWT_SECRET=${JWT_SECRET}/" .env
         sed -i '' "s/^TOTP_ENCRYPTION_KEY=.*/TOTP_ENCRYPTION_KEY=${TOTP_ENCRYPTION_KEY}/" .env
         sed -i '' "s/^POSTGRES_PASSWORD=.*/POSTGRES_PASSWORD=${POSTGRES_PASSWORD}/" .env
+        sed -i '' "s/^ADMIN_EMAIL=.*/ADMIN_EMAIL=${ADMIN_EMAIL}/" .env
     fi
 
     print_info "Creating data directories..."
@@ -117,6 +129,7 @@ main() {
     echo "  POSTGRES_PASSWORD:     ${POSTGRES_PASSWORD}"
     echo "  JWT_SECRET:            ${JWT_SECRET}"
     echo "  TOTP_ENCRYPTION_KEY:   ${TOTP_ENCRYPTION_KEY}"
+    echo "  ADMIN_EMAIL:           ${ADMIN_EMAIL}  (admin login username)"
     echo ""
     print_warning "These credentials have been saved to deploy/.env."
     print_warning "Please keep them secure and do not share publicly!"
