@@ -201,3 +201,19 @@ func otohaAdminData(t *testing.T, rec *httptest.ResponseRecorder) string {
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
 	return string(body.Data)
 }
+
+func TestOtohaCatalogAdminTakesPriceTiersAndCompaction(t *testing.T) {
+	stub := &otohaCatalogAdminStub{}
+	rec := otohaAdminDo(otohaAdminRouter(stub), http.MethodPut, "/groups/7/otoha-catalog/entries/3", `{
+		"model_id":"claude-haiku-5-5",
+		"price_tiers":[{"aboveInputTokens":0,"inclusive":false,"input":1,"output":5},
+			{"aboveInputTokens":100000,"inclusive":false,"input":5,"output":25,"cachedInput":0.5}],
+		"compaction":{"kind":"anthropic","minTrigger":50000}}`)
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	cached := 0.5
+	require.Equal(t, []service.OtohaPriceTier{
+		{Input: 1, Output: 5},
+		{AboveInputTokens: 100000, Input: 5, Output: 25, CachedInput: &cached},
+	}, stub.input.PriceTiers)
+	require.Equal(t, service.OtohaCompaction{Kind: "anthropic", MinTrigger: 50000}, stub.input.Compaction)
+}

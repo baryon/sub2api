@@ -1403,6 +1403,16 @@ func init() {
 	otohacatalogmodel.DefaultAPI = otohacatalogmodelDescAPI.Default.(string)
 	// otohacatalogmodel.APIValidator is a validator for the "api" field. It is called by the builders before save.
 	otohacatalogmodel.APIValidator = otohacatalogmodelDescAPI.Validators[0].(func(string) error)
+	// otohacatalogmodelDescCompactionKind is the schema descriptor for compaction_kind field.
+	otohacatalogmodelDescCompactionKind := otohacatalogmodelFields[21].Descriptor()
+	// otohacatalogmodel.DefaultCompactionKind holds the default value on creation for the compaction_kind field.
+	otohacatalogmodel.DefaultCompactionKind = otohacatalogmodelDescCompactionKind.Default.(string)
+	// otohacatalogmodel.CompactionKindValidator is a validator for the "compaction_kind" field. It is called by the builders before save.
+	otohacatalogmodel.CompactionKindValidator = otohacatalogmodelDescCompactionKind.Validators[0].(func(string) error)
+	// otohacatalogmodelDescCompactionMinTrigger is the schema descriptor for compaction_min_trigger field.
+	otohacatalogmodelDescCompactionMinTrigger := otohacatalogmodelFields[22].Descriptor()
+	// otohacatalogmodel.DefaultCompactionMinTrigger holds the default value on creation for the compaction_min_trigger field.
+	otohacatalogmodel.DefaultCompactionMinTrigger = otohacatalogmodelDescCompactionMinTrigger.Default.(int)
 	paymentauditlogFields := schema.PaymentAuditLog{}.Fields()
 	_ = paymentauditlogFields
 	// paymentauditlogDescOrderID is the schema descriptor for order_id field.

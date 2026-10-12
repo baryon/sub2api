@@ -29615,43 +29615,48 @@ func (m *IdentityAdoptionDecisionMutation) ResetEdge(name string) error {
 // OtohaCatalogModelMutation represents an operation that mutates the OtohaCatalogModel nodes in the graph.
 type OtohaCatalogModelMutation struct {
 	config
-	op                     Op
-	typ                    string
-	id                     *int64
-	created_at             *time.Time
-	updated_at             *time.Time
-	model_id               *string
-	name                   *string
-	description            *string
-	enabled                *bool
-	sort_order             *int
-	addsort_order          *int
-	inputs                 *[]string
-	appendinputs           []string
-	tools                  *bool
-	context_tokens         *int
-	addcontext_tokens      *int
-	max_output_tokens      *int
-	addmax_output_tokens   *int
-	reasoning_levels       *[]string
-	appendreasoning_levels []string
-	default_reasoning      *string
-	speed                  *string
-	strengths              *map[string]string
-	complexity             *string
-	roles                  *[]string
-	appendroles            []string
-	uses                   *[]string
-	appenduses             []string
-	profile_source         *string
-	cost_tier              *string
-	api                    *string
-	clearedFields          map[string]struct{}
-	group                  *int64
-	clearedgroup           bool
-	done                   bool
-	oldValue               func(context.Context) (*OtohaCatalogModel, error)
-	predicates             []predicate.OtohaCatalogModel
+	op                        Op
+	typ                       string
+	id                        *int64
+	created_at                *time.Time
+	updated_at                *time.Time
+	model_id                  *string
+	name                      *string
+	description               *string
+	enabled                   *bool
+	sort_order                *int
+	addsort_order             *int
+	inputs                    *[]string
+	appendinputs              []string
+	tools                     *bool
+	context_tokens            *int
+	addcontext_tokens         *int
+	max_output_tokens         *int
+	addmax_output_tokens      *int
+	reasoning_levels          *[]string
+	appendreasoning_levels    []string
+	default_reasoning         *string
+	speed                     *string
+	strengths                 *map[string]string
+	complexity                *string
+	roles                     *[]string
+	appendroles               []string
+	uses                      *[]string
+	appenduses                []string
+	profile_source            *string
+	cost_tier                 *string
+	api                       *string
+	price_tiers               *jsontext.Value
+	appendprice_tiers         jsontext.Value
+	compaction_kind           *string
+	compaction_min_trigger    *int
+	addcompaction_min_trigger *int
+	clearedFields             map[string]struct{}
+	group                     *int64
+	clearedgroup              bool
+	done                      bool
+	oldValue                  func(context.Context) (*OtohaCatalogModel, error)
+	predicates                []predicate.OtohaCatalogModel
 }
 
 var _ ent.Mutation = (*OtohaCatalogModelMutation)(nil)
@@ -30733,6 +30738,163 @@ func (m *OtohaCatalogModelMutation) ResetAPI() {
 	m.api = nil
 }
 
+// SetPriceTiers sets the "price_tiers" field.
+func (m *OtohaCatalogModelMutation) SetPriceTiers(j jsontext.Value) {
+	m.price_tiers = &j
+	m.appendprice_tiers = nil
+}
+
+// PriceTiers returns the value of the "price_tiers" field in the mutation.
+func (m *OtohaCatalogModelMutation) PriceTiers() (r jsontext.Value, exists bool) {
+	v := m.price_tiers
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPriceTiers returns the old "price_tiers" field's value of the OtohaCatalogModel entity.
+// If the OtohaCatalogModel object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *OtohaCatalogModelMutation) OldPriceTiers(ctx context.Context) (v jsontext.Value, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPriceTiers is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPriceTiers requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPriceTiers: %w", err)
+	}
+	return oldValue.PriceTiers, nil
+}
+
+// AppendPriceTiers adds j to the "price_tiers" field.
+func (m *OtohaCatalogModelMutation) AppendPriceTiers(j jsontext.Value) {
+	m.appendprice_tiers = append(m.appendprice_tiers, j...)
+}
+
+// AppendedPriceTiers returns the list of values that were appended to the "price_tiers" field in this mutation.
+func (m *OtohaCatalogModelMutation) AppendedPriceTiers() (jsontext.Value, bool) {
+	if len(m.appendprice_tiers) == 0 {
+		return nil, false
+	}
+	return m.appendprice_tiers, true
+}
+
+// ClearPriceTiers clears the value of the "price_tiers" field.
+func (m *OtohaCatalogModelMutation) ClearPriceTiers() {
+	m.price_tiers = nil
+	m.appendprice_tiers = nil
+	m.clearedFields[otohacatalogmodel.FieldPriceTiers] = struct{}{}
+}
+
+// PriceTiersCleared returns if the "price_tiers" field was cleared in this mutation.
+func (m *OtohaCatalogModelMutation) PriceTiersCleared() bool {
+	_, ok := m.clearedFields[otohacatalogmodel.FieldPriceTiers]
+	return ok
+}
+
+// ResetPriceTiers resets all changes to the "price_tiers" field.
+func (m *OtohaCatalogModelMutation) ResetPriceTiers() {
+	m.price_tiers = nil
+	m.appendprice_tiers = nil
+	delete(m.clearedFields, otohacatalogmodel.FieldPriceTiers)
+}
+
+// SetCompactionKind sets the "compaction_kind" field.
+func (m *OtohaCatalogModelMutation) SetCompactionKind(s string) {
+	m.compaction_kind = &s
+}
+
+// CompactionKind returns the value of the "compaction_kind" field in the mutation.
+func (m *OtohaCatalogModelMutation) CompactionKind() (r string, exists bool) {
+	v := m.compaction_kind
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCompactionKind returns the old "compaction_kind" field's value of the OtohaCatalogModel entity.
+// If the OtohaCatalogModel object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *OtohaCatalogModelMutation) OldCompactionKind(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCompactionKind is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCompactionKind requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCompactionKind: %w", err)
+	}
+	return oldValue.CompactionKind, nil
+}
+
+// ResetCompactionKind resets all changes to the "compaction_kind" field.
+func (m *OtohaCatalogModelMutation) ResetCompactionKind() {
+	m.compaction_kind = nil
+}
+
+// SetCompactionMinTrigger sets the "compaction_min_trigger" field.
+func (m *OtohaCatalogModelMutation) SetCompactionMinTrigger(i int) {
+	m.compaction_min_trigger = &i
+	m.addcompaction_min_trigger = nil
+}
+
+// CompactionMinTrigger returns the value of the "compaction_min_trigger" field in the mutation.
+func (m *OtohaCatalogModelMutation) CompactionMinTrigger() (r int, exists bool) {
+	v := m.compaction_min_trigger
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCompactionMinTrigger returns the old "compaction_min_trigger" field's value of the OtohaCatalogModel entity.
+// If the OtohaCatalogModel object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *OtohaCatalogModelMutation) OldCompactionMinTrigger(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCompactionMinTrigger is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCompactionMinTrigger requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCompactionMinTrigger: %w", err)
+	}
+	return oldValue.CompactionMinTrigger, nil
+}
+
+// AddCompactionMinTrigger adds i to the "compaction_min_trigger" field.
+func (m *OtohaCatalogModelMutation) AddCompactionMinTrigger(i int) {
+	if m.addcompaction_min_trigger != nil {
+		*m.addcompaction_min_trigger += i
+	} else {
+		m.addcompaction_min_trigger = &i
+	}
+}
+
+// AddedCompactionMinTrigger returns the value that was added to the "compaction_min_trigger" field in this mutation.
+func (m *OtohaCatalogModelMutation) AddedCompactionMinTrigger() (r int, exists bool) {
+	v := m.addcompaction_min_trigger
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetCompactionMinTrigger resets all changes to the "compaction_min_trigger" field.
+func (m *OtohaCatalogModelMutation) ResetCompactionMinTrigger() {
+	m.compaction_min_trigger = nil
+	m.addcompaction_min_trigger = nil
+}
+
 // ClearGroup clears the "group" edge to the Group entity.
 func (m *OtohaCatalogModelMutation) ClearGroup() {
 	m.clearedgroup = true
@@ -30794,7 +30956,7 @@ func (m *OtohaCatalogModelMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *OtohaCatalogModelMutation) Fields() []string {
-	fields := make([]string, 0, 22)
+	fields := make([]string, 0, 25)
 	if m.created_at != nil {
 		fields = append(fields, otohacatalogmodel.FieldCreatedAt)
 	}
@@ -30861,6 +31023,15 @@ func (m *OtohaCatalogModelMutation) Fields() []string {
 	if m.api != nil {
 		fields = append(fields, otohacatalogmodel.FieldAPI)
 	}
+	if m.price_tiers != nil {
+		fields = append(fields, otohacatalogmodel.FieldPriceTiers)
+	}
+	if m.compaction_kind != nil {
+		fields = append(fields, otohacatalogmodel.FieldCompactionKind)
+	}
+	if m.compaction_min_trigger != nil {
+		fields = append(fields, otohacatalogmodel.FieldCompactionMinTrigger)
+	}
 	return fields
 }
 
@@ -30913,6 +31084,12 @@ func (m *OtohaCatalogModelMutation) Field(name string) (ent.Value, bool) {
 		return m.CostTier()
 	case otohacatalogmodel.FieldAPI:
 		return m.API()
+	case otohacatalogmodel.FieldPriceTiers:
+		return m.PriceTiers()
+	case otohacatalogmodel.FieldCompactionKind:
+		return m.CompactionKind()
+	case otohacatalogmodel.FieldCompactionMinTrigger:
+		return m.CompactionMinTrigger()
 	}
 	return nil, false
 }
@@ -30966,6 +31143,12 @@ func (m *OtohaCatalogModelMutation) OldField(ctx context.Context, name string) (
 		return m.OldCostTier(ctx)
 	case otohacatalogmodel.FieldAPI:
 		return m.OldAPI(ctx)
+	case otohacatalogmodel.FieldPriceTiers:
+		return m.OldPriceTiers(ctx)
+	case otohacatalogmodel.FieldCompactionKind:
+		return m.OldCompactionKind(ctx)
+	case otohacatalogmodel.FieldCompactionMinTrigger:
+		return m.OldCompactionMinTrigger(ctx)
 	}
 	return nil, fmt.Errorf("unknown OtohaCatalogModel field %s", name)
 }
@@ -31129,6 +31312,27 @@ func (m *OtohaCatalogModelMutation) SetField(name string, value ent.Value) error
 		}
 		m.SetAPI(v)
 		return nil
+	case otohacatalogmodel.FieldPriceTiers:
+		v, ok := value.(jsontext.Value)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPriceTiers(v)
+		return nil
+	case otohacatalogmodel.FieldCompactionKind:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCompactionKind(v)
+		return nil
+	case otohacatalogmodel.FieldCompactionMinTrigger:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCompactionMinTrigger(v)
+		return nil
 	}
 	return fmt.Errorf("unknown OtohaCatalogModel field %s", name)
 }
@@ -31146,6 +31350,9 @@ func (m *OtohaCatalogModelMutation) AddedFields() []string {
 	if m.addmax_output_tokens != nil {
 		fields = append(fields, otohacatalogmodel.FieldMaxOutputTokens)
 	}
+	if m.addcompaction_min_trigger != nil {
+		fields = append(fields, otohacatalogmodel.FieldCompactionMinTrigger)
+	}
 	return fields
 }
 
@@ -31160,6 +31367,8 @@ func (m *OtohaCatalogModelMutation) AddedField(name string) (ent.Value, bool) {
 		return m.AddedContextTokens()
 	case otohacatalogmodel.FieldMaxOutputTokens:
 		return m.AddedMaxOutputTokens()
+	case otohacatalogmodel.FieldCompactionMinTrigger:
+		return m.AddedCompactionMinTrigger()
 	}
 	return nil, false
 }
@@ -31190,6 +31399,13 @@ func (m *OtohaCatalogModelMutation) AddField(name string, value ent.Value) error
 		}
 		m.AddMaxOutputTokens(v)
 		return nil
+	case otohacatalogmodel.FieldCompactionMinTrigger:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddCompactionMinTrigger(v)
+		return nil
 	}
 	return fmt.Errorf("unknown OtohaCatalogModel numeric field %s", name)
 }
@@ -31212,6 +31428,9 @@ func (m *OtohaCatalogModelMutation) ClearedFields() []string {
 	}
 	if m.FieldCleared(otohacatalogmodel.FieldUses) {
 		fields = append(fields, otohacatalogmodel.FieldUses)
+	}
+	if m.FieldCleared(otohacatalogmodel.FieldPriceTiers) {
+		fields = append(fields, otohacatalogmodel.FieldPriceTiers)
 	}
 	return fields
 }
@@ -31241,6 +31460,9 @@ func (m *OtohaCatalogModelMutation) ClearField(name string) error {
 		return nil
 	case otohacatalogmodel.FieldUses:
 		m.ClearUses()
+		return nil
+	case otohacatalogmodel.FieldPriceTiers:
+		m.ClearPriceTiers()
 		return nil
 	}
 	return fmt.Errorf("unknown OtohaCatalogModel nullable field %s", name)
@@ -31315,6 +31537,15 @@ func (m *OtohaCatalogModelMutation) ResetField(name string) error {
 		return nil
 	case otohacatalogmodel.FieldAPI:
 		m.ResetAPI()
+		return nil
+	case otohacatalogmodel.FieldPriceTiers:
+		m.ResetPriceTiers()
+		return nil
+	case otohacatalogmodel.FieldCompactionKind:
+		m.ResetCompactionKind()
+		return nil
+	case otohacatalogmodel.FieldCompactionMinTrigger:
+		m.ResetCompactionMinTrigger()
 		return nil
 	}
 	return fmt.Errorf("unknown OtohaCatalogModel field %s", name)

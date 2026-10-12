@@ -4,6 +4,7 @@ package ent
 
 import (
 	"context"
+	"encoding/json/jsontext"
 	"errors"
 	"fmt"
 	"time"
@@ -351,6 +352,59 @@ func (_u *OtohaCatalogModelUpdate) SetNillableAPI(v *string) *OtohaCatalogModelU
 	return _u
 }
 
+// SetPriceTiers sets the "price_tiers" field.
+func (_u *OtohaCatalogModelUpdate) SetPriceTiers(v jsontext.Value) *OtohaCatalogModelUpdate {
+	_u.mutation.SetPriceTiers(v)
+	return _u
+}
+
+// AppendPriceTiers appends value to the "price_tiers" field.
+func (_u *OtohaCatalogModelUpdate) AppendPriceTiers(v jsontext.Value) *OtohaCatalogModelUpdate {
+	_u.mutation.AppendPriceTiers(v)
+	return _u
+}
+
+// ClearPriceTiers clears the value of the "price_tiers" field.
+func (_u *OtohaCatalogModelUpdate) ClearPriceTiers() *OtohaCatalogModelUpdate {
+	_u.mutation.ClearPriceTiers()
+	return _u
+}
+
+// SetCompactionKind sets the "compaction_kind" field.
+func (_u *OtohaCatalogModelUpdate) SetCompactionKind(v string) *OtohaCatalogModelUpdate {
+	_u.mutation.SetCompactionKind(v)
+	return _u
+}
+
+// SetNillableCompactionKind sets the "compaction_kind" field if the given value is not nil.
+func (_u *OtohaCatalogModelUpdate) SetNillableCompactionKind(v *string) *OtohaCatalogModelUpdate {
+	if v != nil {
+		_u.SetCompactionKind(*v)
+	}
+	return _u
+}
+
+// SetCompactionMinTrigger sets the "compaction_min_trigger" field.
+func (_u *OtohaCatalogModelUpdate) SetCompactionMinTrigger(v int) *OtohaCatalogModelUpdate {
+	_u.mutation.ResetCompactionMinTrigger()
+	_u.mutation.SetCompactionMinTrigger(v)
+	return _u
+}
+
+// SetNillableCompactionMinTrigger sets the "compaction_min_trigger" field if the given value is not nil.
+func (_u *OtohaCatalogModelUpdate) SetNillableCompactionMinTrigger(v *int) *OtohaCatalogModelUpdate {
+	if v != nil {
+		_u.SetCompactionMinTrigger(*v)
+	}
+	return _u
+}
+
+// AddCompactionMinTrigger adds value to the "compaction_min_trigger" field.
+func (_u *OtohaCatalogModelUpdate) AddCompactionMinTrigger(v int) *OtohaCatalogModelUpdate {
+	_u.mutation.AddCompactionMinTrigger(v)
+	return _u
+}
+
 // SetGroup sets the "group" edge to the Group entity.
 func (_u *OtohaCatalogModelUpdate) SetGroup(v *Group) *OtohaCatalogModelUpdate {
 	return _u.SetGroupID(v.ID)
@@ -443,6 +497,11 @@ func (_u *OtohaCatalogModelUpdate) check() error {
 	if v, ok := _u.mutation.API(); ok {
 		if err := otohacatalogmodel.APIValidator(v); err != nil {
 			return &ValidationError{Name: "api", err: fmt.Errorf(`ent: validator failed for field "OtohaCatalogModel.api": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.CompactionKind(); ok {
+		if err := otohacatalogmodel.CompactionKindValidator(v); err != nil {
+			return &ValidationError{Name: "compaction_kind", err: fmt.Errorf(`ent: validator failed for field "OtohaCatalogModel.compaction_kind": %w`, err)}
 		}
 	}
 	if _u.mutation.GroupCleared() && len(_u.mutation.GroupIDs()) > 0 {
@@ -566,6 +625,26 @@ func (_u *OtohaCatalogModelUpdate) sqlSave(ctx context.Context) (_node int, err 
 	}
 	if value, ok := _u.mutation.API(); ok {
 		_spec.SetField(otohacatalogmodel.FieldAPI, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.PriceTiers(); ok {
+		_spec.SetField(otohacatalogmodel.FieldPriceTiers, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedPriceTiers(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, otohacatalogmodel.FieldPriceTiers, value)
+		})
+	}
+	if _u.mutation.PriceTiersCleared() {
+		_spec.ClearField(otohacatalogmodel.FieldPriceTiers, field.TypeJSON)
+	}
+	if value, ok := _u.mutation.CompactionKind(); ok {
+		_spec.SetField(otohacatalogmodel.FieldCompactionKind, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.CompactionMinTrigger(); ok {
+		_spec.SetField(otohacatalogmodel.FieldCompactionMinTrigger, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedCompactionMinTrigger(); ok {
+		_spec.AddField(otohacatalogmodel.FieldCompactionMinTrigger, field.TypeInt, value)
 	}
 	if _u.mutation.GroupCleared() {
 		edge := &sqlgraph.EdgeSpec{
@@ -937,6 +1016,59 @@ func (_u *OtohaCatalogModelUpdateOne) SetNillableAPI(v *string) *OtohaCatalogMod
 	return _u
 }
 
+// SetPriceTiers sets the "price_tiers" field.
+func (_u *OtohaCatalogModelUpdateOne) SetPriceTiers(v jsontext.Value) *OtohaCatalogModelUpdateOne {
+	_u.mutation.SetPriceTiers(v)
+	return _u
+}
+
+// AppendPriceTiers appends value to the "price_tiers" field.
+func (_u *OtohaCatalogModelUpdateOne) AppendPriceTiers(v jsontext.Value) *OtohaCatalogModelUpdateOne {
+	_u.mutation.AppendPriceTiers(v)
+	return _u
+}
+
+// ClearPriceTiers clears the value of the "price_tiers" field.
+func (_u *OtohaCatalogModelUpdateOne) ClearPriceTiers() *OtohaCatalogModelUpdateOne {
+	_u.mutation.ClearPriceTiers()
+	return _u
+}
+
+// SetCompactionKind sets the "compaction_kind" field.
+func (_u *OtohaCatalogModelUpdateOne) SetCompactionKind(v string) *OtohaCatalogModelUpdateOne {
+	_u.mutation.SetCompactionKind(v)
+	return _u
+}
+
+// SetNillableCompactionKind sets the "compaction_kind" field if the given value is not nil.
+func (_u *OtohaCatalogModelUpdateOne) SetNillableCompactionKind(v *string) *OtohaCatalogModelUpdateOne {
+	if v != nil {
+		_u.SetCompactionKind(*v)
+	}
+	return _u
+}
+
+// SetCompactionMinTrigger sets the "compaction_min_trigger" field.
+func (_u *OtohaCatalogModelUpdateOne) SetCompactionMinTrigger(v int) *OtohaCatalogModelUpdateOne {
+	_u.mutation.ResetCompactionMinTrigger()
+	_u.mutation.SetCompactionMinTrigger(v)
+	return _u
+}
+
+// SetNillableCompactionMinTrigger sets the "compaction_min_trigger" field if the given value is not nil.
+func (_u *OtohaCatalogModelUpdateOne) SetNillableCompactionMinTrigger(v *int) *OtohaCatalogModelUpdateOne {
+	if v != nil {
+		_u.SetCompactionMinTrigger(*v)
+	}
+	return _u
+}
+
+// AddCompactionMinTrigger adds value to the "compaction_min_trigger" field.
+func (_u *OtohaCatalogModelUpdateOne) AddCompactionMinTrigger(v int) *OtohaCatalogModelUpdateOne {
+	_u.mutation.AddCompactionMinTrigger(v)
+	return _u
+}
+
 // SetGroup sets the "group" edge to the Group entity.
 func (_u *OtohaCatalogModelUpdateOne) SetGroup(v *Group) *OtohaCatalogModelUpdateOne {
 	return _u.SetGroupID(v.ID)
@@ -1042,6 +1174,11 @@ func (_u *OtohaCatalogModelUpdateOne) check() error {
 	if v, ok := _u.mutation.API(); ok {
 		if err := otohacatalogmodel.APIValidator(v); err != nil {
 			return &ValidationError{Name: "api", err: fmt.Errorf(`ent: validator failed for field "OtohaCatalogModel.api": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.CompactionKind(); ok {
+		if err := otohacatalogmodel.CompactionKindValidator(v); err != nil {
+			return &ValidationError{Name: "compaction_kind", err: fmt.Errorf(`ent: validator failed for field "OtohaCatalogModel.compaction_kind": %w`, err)}
 		}
 	}
 	if _u.mutation.GroupCleared() && len(_u.mutation.GroupIDs()) > 0 {
@@ -1182,6 +1319,26 @@ func (_u *OtohaCatalogModelUpdateOne) sqlSave(ctx context.Context) (_node *Otoha
 	}
 	if value, ok := _u.mutation.API(); ok {
 		_spec.SetField(otohacatalogmodel.FieldAPI, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.PriceTiers(); ok {
+		_spec.SetField(otohacatalogmodel.FieldPriceTiers, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedPriceTiers(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, otohacatalogmodel.FieldPriceTiers, value)
+		})
+	}
+	if _u.mutation.PriceTiersCleared() {
+		_spec.ClearField(otohacatalogmodel.FieldPriceTiers, field.TypeJSON)
+	}
+	if value, ok := _u.mutation.CompactionKind(); ok {
+		_spec.SetField(otohacatalogmodel.FieldCompactionKind, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.CompactionMinTrigger(); ok {
+		_spec.SetField(otohacatalogmodel.FieldCompactionMinTrigger, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedCompactionMinTrigger(); ok {
+		_spec.AddField(otohacatalogmodel.FieldCompactionMinTrigger, field.TypeInt, value)
 	}
 	if _u.mutation.GroupCleared() {
 		edge := &sqlgraph.EdgeSpec{

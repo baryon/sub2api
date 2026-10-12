@@ -200,6 +200,45 @@ export default {
       upstreamNow: '分组价格（倍率前）：{price}',
       noUpstreamPrice: '价格表里没有这个模型的价格。',
       priceHint: '售价 = 这个模型在分组里的价格（分组逐模型定价，没有时用渠道价格或内置价格表）× 分组倍率，与实际扣费一致。要改价格，请在分组设置的「分组逐模型定价」里设置。',
+      tiers: {
+        title: '长提示的价格',
+        manual: '手动设置',
+        hint: '有些模型的提示变长后会按更高的价格计费。默认跟随实际扣费（再乘分组倍率）；只有要让 App 显示别的价格时才手动设置。',
+        base: '基础价格',
+        above: '提示超过（token）',
+        inclusive: '含该长度',
+        input: '输入 / 百万',
+        output: '输出 / 百万',
+        cached: '缓存输入 / 百万',
+        cachedShort: '缓存输入 {price}',
+        add: '增加一档价格',
+        afterSave: '保存后显示实际生效的价格。',
+        range: {
+          all: '任意长度',
+          upTo: '提示不超过 {tokens}',
+          below: '提示低于 {tokens}',
+          above: '提示超过 {tokens}',
+          from: '提示达到 {tokens} 及以上'
+        },
+        errors: {
+          empty: '至少要有基础价格，或关闭手动设置。',
+          base: '第一档是基础价格，从 0 token 起。',
+          order: '每一档的提示长度必须比上一档更长。',
+          number: '提示长度要填整数，价格不能为负数或留空。'
+        }
+      },
+      compaction: {
+        title: '长对话的自动压缩',
+        kind: '由模型服务完成',
+        minTrigger: '可接受的最短提示（token）',
+        hint: '模型自己的服务能否把过长的对话自动压缩。除非模型文档写明支持，否则保持关闭。',
+        invalid: '最短提示要填 0 到 1 亿之间的整数。',
+        kinds: {
+          none: '不支持',
+          anthropic: 'Claude 格式',
+          openai: 'OpenAI 格式'
+        }
+      },
       tier: '价位',
       required: '请填写模型名称。',
       modelIdInvalid: '模型名称不能有空格，最多 200 个字符。',

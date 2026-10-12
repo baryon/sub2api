@@ -29,6 +29,9 @@ type ContextPricingTier struct {
 	CacheWrite   *float64
 	CacheWrite1h *float64
 	CacheRead    *float64
+	// Inclusive is set on the tier that starts at a catalog threshold billing applies once reached (xAI): its
+	// range is (MinTokens, ...], which is "at least MinTokens+1" input tokens, the threshold itself.
+	Inclusive bool
 }
 
 // TimePricingPeriod 分时倍率时段：配置时区当天 [StartTime, EndTime) 内整单费用乘 Multiplier。
@@ -434,6 +437,7 @@ func applyContextTierLabels(tiers []ContextPricingTier, plan contextBreakpointPl
 		case plan.thresholdInclusive && t.MaxTokens != nil && *t.MaxTokens == plan.thresholdBound:
 			t.Label = "<" + formatContextTokenCount(plan.threshold)
 		case plan.thresholdInclusive && t.MinTokens == plan.thresholdBound:
+			t.Inclusive = true
 			t.Label = "≥" + formatContextTokenCount(plan.threshold)
 		case t.MaxTokens != nil:
 			t.Label = "≤" + formatContextTokenCount(*t.MaxTokens)

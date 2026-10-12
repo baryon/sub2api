@@ -59,6 +59,13 @@ const (
 	// The format the app calls a model in (OtohaCatalogModel.API, TASK-64), each through the same key and gateway:
 	// Anthropic Messages on POST /v1/messages, DeepSeek's own Responses dialect and OpenAI Responses on
 	// POST /v1/responses.
+	// Whether the model service compacts a conversation itself (OtohaCompaction.Kind, TASK-67).
+	OtohaCompactionNone      = "none"
+	OtohaCompactionAnthropic = "anthropic"
+	OtohaCompactionOpenAI    = "openai"
+	otohaPriceTiersMax       = 8
+	otohaPriceMax            = 100000
+
 	OtohaAPIAnthropicMessages = "anthropic-messages"
 	OtohaAPIDeepSeekResponses = "deepseek-responses"
 	OtohaAPIOpenAIResponses   = "openai-responses"
@@ -85,6 +92,7 @@ var (
 	otohaProfileSources   = []string{"vendor", "evaluation", "admin"}
 	otohaInputs           = []string{"text", "image", "audio", "video", "file"}
 	otohaCostTiers        = []string{OtohaCostLow, OtohaCostStandard, OtohaCostHigh}
+	otohaCompactionKinds  = []string{OtohaCompactionNone, OtohaCompactionAnthropic, OtohaCompactionOpenAI}
 	otohaAPIs             = []string{OtohaAPIAnthropicMessages, OtohaAPIDeepSeekResponses, OtohaAPIOpenAIResponses}
 	otohaReasoningPattern = regexp.MustCompile(`^[a-z][a-z0-9_-]{0,31}$`)
 
@@ -122,9 +130,14 @@ type OtohaCatalogEntry struct {
 	// CostTier is the admin's price tier; empty derives it from the sale price.
 	CostTier string `json:"cost_tier"`
 	// API is the admin's choice of the format the app calls the model in; empty derives it from the provider.
-	API       string    `json:"api"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	API string `json:"api"`
+	// PriceTiers is the admin's price tiers by prompt length (sale prices, as the app receives them); empty
+	// derives them from billing's long-context rules and the group's rate (TASK-67).
+	PriceTiers []OtohaPriceTier `json:"price_tiers"`
+	// Compaction is whether the model service compacts a conversation itself; the zero value is none.
+	Compaction OtohaCompaction `json:"compaction"`
+	CreatedAt  time.Time       `json:"created_at"`
+	UpdatedAt  time.Time       `json:"updated_at"`
 }
 
 // OtohaCatalogEntryInput is what the admin submits for an entry. The order is changed with ReorderEntries.
@@ -147,6 +160,8 @@ type OtohaCatalogEntryInput struct {
 	ProfileSource    string
 	CostTier         string
 	API              string
+	PriceTiers       []OtohaPriceTier
+	Compaction       OtohaCompaction
 }
 
 // OtohaModelMetadata is what upstream says about a model, used to prefill an entry.
@@ -182,6 +197,8 @@ type OtohaCatalogAdminEntry struct {
 	// EffectiveAPI is the format the app calls the model in: the admin's, else the provider's own; empty when the
 	// provider has none the app speaks.
 	EffectiveAPI string `json:"effective_api"`
+	// EffectivePriceTiers is the price tiers the app receives: the admin's, else derived from billing.
+	EffectivePriceTiers []OtohaPriceTier `json:"effective_price_tiers"`
 
 	lookupFailed bool
 }
@@ -242,6 +259,12 @@ type OtohaCatalogGroupSource interface {
 // when there is none (not token-priced, or unknown).
 type OtohaUpstreamPricer interface {
 	UpstreamPrice(ctx context.Context, group *Group, modelID string) (OtohaModelPrice, bool)
+}
+
+// OtohaUpstreamTierPricer is implemented by a pricer that also knows the long-context tiers billing applies: the
+// tiers above the base price, before the group's rate, per million tokens, lowest bound first.
+type OtohaUpstreamTierPricer interface {
+	UpstreamLongerTiers(ctx context.Context, group *Group, modelID string) []OtohaPriceTier
 }
 
 // OtohaModelMetadataSource gives upstream metadata about a model as the group serves it.
@@ -345,6 +368,8 @@ type otohaCatalogItem struct {
 	upstream OtohaModelPrice
 	use      []string
 	api      string
+	// tiers are the tiers above the base price, before any rate (derived from billing).
+	tiers []OtohaPriceTier
 }
 
 // otohaCatalogSnapshot is a group's evaluated catalog: hasCatalog is false when the group has no entries;
@@ -773,7 +798,9 @@ func (s *OtohaCatalogService) evaluate(ctx context.Context, group *Group, entrie
 			item.RouteModel = forwarded
 		}
 		upstream, billed, varies, priced := s.routedPrice(ctx, group, entry.ModelID, route)
+		var derivedTiers []OtohaPriceTier
 		if priced {
+			derivedTiers = s.routedLongerTiers(ctx, group, entry.ModelID, route, billed)
 			if billed != forwarded {
 				item.BilledModel = billed
 			}
@@ -782,6 +809,7 @@ func (s *OtohaCatalogService) evaluate(ctx context.Context, group *Group, entrie
 			item.UpstreamPrice = &upstream
 			item.SalePrice = &sale
 			item.EffectiveCost = otohaEffectiveCost(entry, sale)
+			item.EffectivePriceTiers = otohaPriceTiers(entry, upstream, derivedTiers, group.RateMultiplier)
 		}
 		switch {
 		case !entry.Enabled:
@@ -794,7 +822,7 @@ func (s *OtohaCatalogService) evaluate(ctx context.Context, group *Group, entrie
 			item.Problem = OtohaCatalogProblemNoPrice
 		default:
 			item.InCatalog = true
-			items = append(items, otohaCatalogItem{entry: entry, upstream: upstream, use: item.EffectiveUse, api: route.API})
+			items = append(items, otohaCatalogItem{entry: entry, upstream: upstream, use: item.EffectiveUse, api: route.API, tiers: derivedTiers})
 		}
 		out = append(out, item)
 	}
@@ -808,6 +836,7 @@ func buildOtohaCatalog(items []otohaCatalogItem, rate float64) *OtohaCatalog {
 		sale := otohaSalePrice(item.upstream, rate)
 		model := otohaCatalogModel(item.entry, sale, otohaEffectiveCost(item.entry, sale), item.use)
 		model.API = item.api
+		model.PriceTiers = otohaPriceTiers(item.entry, item.upstream, item.tiers, rate)
 		catalog.Models = append(catalog.Models, model)
 	}
 	catalog.Revision = otohaCatalogRevision(catalog)
@@ -858,7 +887,62 @@ func otohaCatalogModel(entry OtohaCatalogEntry, price OtohaModelPrice, cost stri
 	if len(entry.Roles) > 0 {
 		model.Roles = append([]string(nil), entry.Roles...)
 	}
+	model.Compaction = otohaCompactionOf(entry.Compaction)
 	return model
+}
+
+// otohaCompactionOf is the compaction the app receives: none unless the admin set a kind, and no trigger without
+// a kind.
+func otohaCompactionOf(c OtohaCompaction) OtohaCompaction {
+	if c.Kind == "" || c.Kind == OtohaCompactionNone {
+		return OtohaCompaction{Kind: OtohaCompactionNone}
+	}
+	return c
+}
+
+// otohaPriceTiers is the price tiers the app receives: the admin's when set, else the base price (the model's sale
+// price) followed by the tiers billing applies to longer requests, at the rate.
+func otohaPriceTiers(entry OtohaCatalogEntry, upstream OtohaModelPrice, longer []OtohaPriceTier, rate float64) []OtohaPriceTier {
+	if len(entry.PriceTiers) > 0 {
+		return append([]OtohaPriceTier(nil), entry.PriceTiers...)
+	}
+	base := otohaSalePrice(upstream, rate)
+	tiers := make([]OtohaPriceTier, 0, 1+len(longer))
+	tiers = append(tiers, OtohaPriceTier{Input: base.Input, Output: base.Output, CachedInput: base.CachedInput})
+	for _, tier := range longer {
+		sale := otohaSalePrice(OtohaModelPrice{Input: tier.Input, Output: tier.Output, CachedInput: tier.CachedInput}, rate)
+		tiers = append(tiers, OtohaPriceTier{
+			AboveInputTokens: tier.AboveInputTokens,
+			Inclusive:        tier.Inclusive,
+			Input:            sale.Input,
+			Output:           sale.Output,
+			CachedInput:      sale.CachedInput,
+		})
+	}
+	return tiers
+}
+
+// routedLongerTiers is the long-context tiers billing applies to the model once routed, for the name its price was
+// read under; none when the pricer does not know tiers.
+func (s *OtohaCatalogService) routedLongerTiers(ctx context.Context, group *Group, modelID string, route OtohaModelRoute, billed string) []OtohaPriceTier {
+	tierPricer, ok := s.pricer.(OtohaUpstreamTierPricer)
+	if !ok || group == nil {
+		return nil
+	}
+	if billed == "" {
+		billed = route.forwardedModel(modelID)
+	}
+	tiers := tierPricer.UpstreamLongerTiers(route.routedContext(ctx, modelID), group, billed)
+	out := make([]OtohaPriceTier, 0, len(tiers))
+	for _, tier := range tiers {
+		if tier.AboveInputTokens <= 0 {
+			continue
+		}
+		price := normalizeOtohaPrice(OtohaModelPrice{Input: tier.Input, Output: tier.Output, CachedInput: tier.CachedInput})
+		tier.Input, tier.Output, tier.CachedInput = price.Input, price.Output, price.CachedInput
+		out = append(out, tier)
+	}
+	return out
 }
 
 // otohaCatalogRevision hashes what the app receives, so any change to a model, a price or the order changes it.
@@ -1024,6 +1108,12 @@ func normalizeOtohaCatalogEntryInput(input OtohaCatalogEntryInput) (OtohaCatalog
 	if entry.API, err = normalizeOtohaChoice(input.API, otohaAPIs, "format"); err != nil {
 		return entry, err
 	}
+	if entry.PriceTiers, err = normalizeOtohaPriceTiers(input.PriceTiers); err != nil {
+		return entry, err
+	}
+	if entry.Compaction, err = normalizeOtohaCompaction(input.Compaction); err != nil {
+		return entry, err
+	}
 	if entry.Roles, err = normalizeOtohaList(input.Roles, otohaRoles, "role"); err != nil {
 		return entry, err
 	}
@@ -1052,6 +1142,61 @@ func normalizeOtohaCatalogEntryInput(input OtohaCatalogEntryInput) (OtohaCatalog
 	}
 
 	return entry, nil
+}
+
+func normalizeOtohaCompaction(c OtohaCompaction) (OtohaCompaction, error) {
+	kind, err := normalizeOtohaChoice(c.Kind, otohaCompactionKinds, "compaction kind")
+	if err != nil {
+		return OtohaCompaction{}, err
+	}
+	if c.MinTrigger < 0 || c.MinTrigger > otohaTokensMax {
+		return OtohaCompaction{}, otohaInvalid("compaction trigger must be between 0 and %d tokens", otohaTokensMax)
+	}
+	if kind == "" || kind == OtohaCompactionNone {
+		return OtohaCompaction{Kind: OtohaCompactionNone}, nil
+	}
+	return OtohaCompaction{Kind: kind, MinTrigger: c.MinTrigger}, nil
+}
+
+// normalizeOtohaPriceTiers checks the admin's price tiers: none (derive from billing), or a list that starts at the
+// base price (0 tokens) and rises, with prices that are not negative.
+func normalizeOtohaPriceTiers(tiers []OtohaPriceTier) ([]OtohaPriceTier, error) {
+	if len(tiers) == 0 {
+		return nil, nil
+	}
+	if len(tiers) > otohaPriceTiersMax {
+		return nil, otohaInvalid("at most %d price tiers", otohaPriceTiersMax)
+	}
+	out := make([]OtohaPriceTier, 0, len(tiers))
+	for i, tier := range tiers {
+		if i == 0 && (tier.AboveInputTokens != 0 || tier.Inclusive) {
+			return nil, otohaInvalid("the first price tier is the base price and starts at 0 tokens")
+		}
+		if i > 0 && tier.AboveInputTokens <= tiers[i-1].AboveInputTokens {
+			return nil, otohaInvalid("price tiers must rise in prompt length")
+		}
+		if tier.AboveInputTokens < 0 || tier.AboveInputTokens > otohaTokensMax {
+			return nil, otohaInvalid("a price tier's prompt length must be between 0 and %d tokens", otohaTokensMax)
+		}
+		prices := []float64{tier.Input, tier.Output}
+		if tier.CachedInput != nil {
+			prices = append(prices, *tier.CachedInput)
+		}
+		for _, p := range prices {
+			if math.IsNaN(p) || math.IsInf(p, 0) || p < 0 || p > otohaPriceMax {
+				return nil, otohaInvalid("a price tier's prices must be between 0 and %d", otohaPriceMax)
+			}
+		}
+		price := normalizeOtohaPrice(OtohaModelPrice{Input: tier.Input, Output: tier.Output, CachedInput: tier.CachedInput})
+		out = append(out, OtohaPriceTier{
+			AboveInputTokens: tier.AboveInputTokens,
+			Inclusive:        tier.Inclusive,
+			Input:            price.Input,
+			Output:           price.Output,
+			CachedInput:      price.CachedInput,
+		})
+	}
+	return out, nil
 }
 
 func normalizeOtohaChoice(value string, allowed []string, what string) (string, error) {

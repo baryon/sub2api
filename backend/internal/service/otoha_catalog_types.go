@@ -53,6 +53,31 @@ type OtohaCatalogModel struct {
 	// "anthropic-messages" (POST /v1/messages), "deepseek-responses" (DeepSeek's own Responses dialect, passed
 	// through, POST /v1/responses) or "openai-responses" (POST /v1/responses). Every model the server lists has one.
 	API string `json:"api,omitempty"`
+	// PriceTiers is the price by prompt length (TASK-67): the first tier is the base price (aboveInputTokens 0,
+	// equal to Price) and each later tier applies to a whole request whose input is above (or, with inclusive, at
+	// least) aboveInputTokens. Prices are in Price's currency and unit, after the group's rate.
+	PriceTiers []OtohaPriceTier `json:"priceTiers"`
+	// Compaction tells whether the model service can compact a conversation itself.
+	Compaction OtohaCompaction `json:"compaction"`
+}
+
+// OtohaPriceTier is the price of requests whose input is longer than a bound.
+type OtohaPriceTier struct {
+	// AboveInputTokens is the bound in input tokens (cached tokens included); 0 for the base price.
+	AboveInputTokens int `json:"aboveInputTokens"`
+	// Inclusive makes the tier apply at AboveInputTokens itself, not only above it.
+	Inclusive   bool     `json:"inclusive"`
+	Input       float64  `json:"input"`
+	Output      float64  `json:"output"`
+	CachedInput *float64 `json:"cachedInput,omitempty"`
+}
+
+// OtohaCompaction says whether the model service compacts a conversation itself: Kind is "none", "anthropic"
+// (context-management compaction edit) or "openai" (the responses compaction); MinTrigger is the smallest input
+// trigger the service takes, in tokens, when it has one.
+type OtohaCompaction struct {
+	Kind       string `json:"kind"`
+	MinTrigger int    `json:"minTrigger,omitempty"`
 }
 
 // OtohaModelPrice is a model's sale price in US dollars per million tokens.

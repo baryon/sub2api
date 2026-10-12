@@ -80,6 +80,52 @@ func (p otohaResolverPricer) UpstreamPrice(ctx context.Context, group *Group, mo
 	return price, true
 }
 
+// UpstreamLongerTiers gives the long-context tiers billing applies to the model above its base price, from the same
+// schedule the model plaza shows (probed from billing itself, so the thresholds, multipliers and the group's own
+// prices agree with what is charged), at the standard rate and per million tokens.
+func (p otohaResolverPricer) UpstreamLongerTiers(ctx context.Context, group *Group, modelID string) []OtohaPriceTier {
+	if p.resolver == nil || p.resolver.billingService == nil || group == nil {
+		return nil
+	}
+	platform, _ := ResolvedTargetPlatformFromContext(ctx)
+	schedule, err := p.resolver.billingService.ResolveContextPricingSchedule(ctx, p.resolver, ContextPricingScheduleInput{
+		Model:    modelID,
+		Group:    group,
+		Platform: platform,
+	})
+	if err != nil || schedule == nil || len(schedule.Tiers) < 2 {
+		return nil
+	}
+	return otohaTiersFromSchedule(schedule.Tiers)
+}
+
+// otohaTiersFromSchedule turns the schedule's ranges (min, max] into "above N" tiers, skipping the first (base)
+// range and any range without an input and output price.
+func otohaTiersFromSchedule(tiers []ContextPricingTier) []OtohaPriceTier {
+	out := make([]OtohaPriceTier, 0, len(tiers)-1)
+	for _, tier := range tiers[1:] {
+		if tier.Input == nil || tier.Output == nil {
+			continue
+		}
+		above := tier.MinTokens
+		if tier.Inclusive {
+			above = tier.MinTokens + 1
+		}
+		priced := OtohaPriceTier{
+			AboveInputTokens: above,
+			Inclusive:        tier.Inclusive,
+			Input:            *tier.Input * 1e6,
+			Output:           *tier.Output * 1e6,
+		}
+		if tier.CacheRead != nil && *tier.CacheRead > 0 {
+			cached := *tier.CacheRead * 1e6
+			priced.CachedInput = &cached
+		}
+		out = append(out, priced)
+	}
+	return out
+}
+
 // otohaGatewayMetadata reads a model's metadata from the Codex manifest the group would serve (display name,
 // inputs, context, reasoning levels), and fills gaps from the metadata synced onto the group's accounts.
 type otohaGatewayMetadata struct {

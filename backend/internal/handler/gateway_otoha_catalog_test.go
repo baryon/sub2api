@@ -165,3 +165,51 @@ func TestUsageWithoutTheOtohaClientIsUnchanged(t *testing.T) {
 	require.NotContains(t, response, "period")
 	require.NotContains(t, response, "model_usage")
 }
+
+func TestOtohaModelsCarriesPriceTiersAndCompaction(t *testing.T) {
+	cached := 0.5
+	h := &GatewayHandler{}
+	h.SetOtohaCatalog(otohaCatalogReaderStub{catalog: &service.OtohaCatalog{Schema: 1, Revision: "r1", Models: []service.OtohaCatalogModel{
+		{
+			ID: "claude-haiku-5-5", Name: "Claude Haiku 5.5", Inputs: []string{"text"}, Cost: "low",
+			Price: service.OtohaModelPrice{Currency: "USD", Per: "1M tokens", Input: 1, Output: 5},
+			PriceTiers: []service.OtohaPriceTier{
+				{Input: 1, Output: 5},
+				{AboveInputTokens: 100000, Input: 5, Output: 25, CachedInput: &cached},
+			},
+			Compaction: service.OtohaCompaction{Kind: "anthropic", MinTrigger: 50000},
+		},
+		{
+			ID: "grok-4.5", Name: "Grok 4.5", Inputs: []string{"text"}, Cost: "low",
+			Price: service.OtohaModelPrice{Currency: "USD", Per: "1M tokens", Input: 2, Output: 6},
+			PriceTiers: []service.OtohaPriceTier{
+				{Input: 2, Output: 6},
+				{AboveInputTokens: 200000, Inclusive: true, Input: 4, Output: 12},
+			},
+			Compaction: service.OtohaCompaction{Kind: "none"},
+		},
+		{
+			ID: "plain", Name: "Plain", Inputs: []string{"text"}, Cost: "low",
+			Price:      service.OtohaModelPrice{Currency: "USD", Per: "1M tokens", Input: 1, Output: 2},
+			PriceTiers: []service.OtohaPriceTier{{Input: 1, Output: 2}},
+			Compaction: service.OtohaCompaction{Kind: "none"},
+		},
+	}}})
+
+	rec := otohaModelsRequest(h, nil)
+	require.Equal(t, http.StatusOK, rec.Code)
+	var body struct {
+		Models []map[string]json.RawMessage `json:"models"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
+	require.Len(t, body.Models, 3)
+
+	require.JSONEq(t, `[{"aboveInputTokens":0,"inclusive":false,"input":1,"output":5},
+		{"aboveInputTokens":100000,"inclusive":false,"input":5,"output":25,"cachedInput":0.5}]`, string(body.Models[0]["priceTiers"]))
+	require.JSONEq(t, `{"kind":"anthropic","minTrigger":50000}`, string(body.Models[0]["compaction"]))
+	require.JSONEq(t, `[{"aboveInputTokens":0,"inclusive":false,"input":2,"output":6},
+		{"aboveInputTokens":200000,"inclusive":true,"input":4,"output":12}]`, string(body.Models[1]["priceTiers"]))
+	require.JSONEq(t, `[{"aboveInputTokens":0,"inclusive":false,"input":1,"output":2}]`, string(body.Models[2]["priceTiers"]))
+	require.JSONEq(t, `{"kind":"none"}`, string(body.Models[2]["compaction"]))
+	require.JSONEq(t, `{"currency":"USD","per":"1M tokens","input":1,"output":5}`, string(body.Models[0]["price"]), "price is unchanged for older apps")
+}

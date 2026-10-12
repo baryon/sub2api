@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"encoding/json"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/otohacatalogmodel"
@@ -39,7 +40,7 @@ func (r *otohaCatalogRepository) Create(ctx context.Context, entry *service.Otoh
 	if entry == nil {
 		return service.ErrOtohaCatalogEntryNotFound
 	}
-	created, err := clientFromContext(ctx, r.client).OtohaCatalogModel.Create().
+	create := clientFromContext(ctx, r.client).OtohaCatalogModel.Create().
 		SetGroupID(entry.GroupID).
 		SetModelID(entry.ModelID).
 		SetName(entry.Name).
@@ -60,7 +61,12 @@ func (r *otohaCatalogRepository) Create(ctx context.Context, entry *service.Otoh
 		SetProfileSource(entry.ProfileSource).
 		SetCostTier(entry.CostTier).
 		SetAPI(entry.API).
-		Save(ctx)
+		SetCompactionKind(entry.Compaction.Kind).
+		SetCompactionMinTrigger(entry.Compaction.MinTrigger)
+	if raw := otohaPriceTiersJSON(entry.PriceTiers); raw != nil {
+		create = create.SetPriceTiers(raw)
+	}
+	created, err := create.Save(ctx)
 	if err != nil {
 		return translatePersistenceError(err, nil, service.ErrOtohaCatalogEntryExists)
 	}
@@ -86,7 +92,9 @@ func (r *otohaCatalogRepository) Update(ctx context.Context, entry *service.Otoh
 		SetComplexity(entry.Complexity).
 		SetProfileSource(entry.ProfileSource).
 		SetCostTier(entry.CostTier).
-		SetAPI(entry.API)
+		SetAPI(entry.API).
+		SetCompactionKind(entry.Compaction.Kind).
+		SetCompactionMinTrigger(entry.Compaction.MinTrigger)
 	update = setOtohaJSONFields(update, entry)
 	updated, err := update.Save(ctx)
 	if err != nil {
@@ -122,7 +130,35 @@ func setOtohaJSONFields(update *dbent.OtohaCatalogModelUpdateOne, entry *service
 	} else {
 		update = update.ClearUses()
 	}
+	if raw := otohaPriceTiersJSON(entry.PriceTiers); raw != nil {
+		update = update.SetPriceTiers(raw)
+	} else {
+		update = update.ClearPriceTiers()
+	}
 	return update
+}
+
+// otohaPriceTiersJSON is the stored form of the admin's price tiers; nil when there are none.
+func otohaPriceTiersJSON(tiers []service.OtohaPriceTier) json.RawMessage {
+	if len(tiers) == 0 {
+		return nil
+	}
+	raw, err := json.Marshal(tiers)
+	if err != nil {
+		return nil
+	}
+	return raw
+}
+
+func otohaPriceTiersFromJSON(raw json.RawMessage) []service.OtohaPriceTier {
+	if len(raw) == 0 {
+		return nil
+	}
+	var tiers []service.OtohaPriceTier
+	if err := json.Unmarshal(raw, &tiers); err != nil {
+		return nil
+	}
+	return tiers
 }
 
 func (r *otohaCatalogRepository) Delete(ctx context.Context, id int64) error {
@@ -178,6 +214,8 @@ func otohaCatalogEntityToService(row *dbent.OtohaCatalogModel) service.OtohaCata
 		ProfileSource:    row.ProfileSource,
 		CostTier:         row.CostTier,
 		API:              row.API,
+		PriceTiers:       otohaPriceTiersFromJSON(row.PriceTiers),
+		Compaction:       service.OtohaCompaction{Kind: row.CompactionKind, MinTrigger: row.CompactionMinTrigger},
 		CreatedAt:        row.CreatedAt,
 		UpdatedAt:        row.UpdatedAt,
 	}

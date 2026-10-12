@@ -4,6 +4,7 @@ package ent
 
 import (
 	"encoding/json"
+	"encoding/json/jsontext"
 	"fmt"
 	"strings"
 	"time"
@@ -63,6 +64,12 @@ type OtohaCatalogModel struct {
 	CostTier string `json:"cost_tier,omitempty"`
 	// Format the app calls the model in; empty derives it from the routed provider (TASK-64).
 	API string `json:"api,omitempty"`
+	// Admin's price tiers by prompt length (sale prices); empty derives them from billing (TASK-67).
+	PriceTiers jsontext.Value `json:"price_tiers,omitempty"`
+	// Whether the model service compacts a conversation itself: none, anthropic or openai (TASK-67).
+	CompactionKind string `json:"compaction_kind,omitempty"`
+	// Smallest input-token trigger the service takes for compaction; 0 when none or unknown.
+	CompactionMinTrigger int `json:"compaction_min_trigger,omitempty"`
 	// Edges holds the relations/edges for other nodes in the graph.
 	// The values are being populated by the OtohaCatalogModelQuery when eager-loading is set.
 	Edges        OtohaCatalogModelEdges `json:"edges"`
@@ -94,13 +101,13 @@ func (*OtohaCatalogModel) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case otohacatalogmodel.FieldInputs, otohacatalogmodel.FieldReasoningLevels, otohacatalogmodel.FieldStrengths, otohacatalogmodel.FieldRoles, otohacatalogmodel.FieldUses:
+		case otohacatalogmodel.FieldInputs, otohacatalogmodel.FieldReasoningLevels, otohacatalogmodel.FieldStrengths, otohacatalogmodel.FieldRoles, otohacatalogmodel.FieldUses, otohacatalogmodel.FieldPriceTiers:
 			values[i] = new([]byte)
 		case otohacatalogmodel.FieldEnabled, otohacatalogmodel.FieldTools:
 			values[i] = new(sql.NullBool)
-		case otohacatalogmodel.FieldID, otohacatalogmodel.FieldGroupID, otohacatalogmodel.FieldSortOrder, otohacatalogmodel.FieldContextTokens, otohacatalogmodel.FieldMaxOutputTokens:
+		case otohacatalogmodel.FieldID, otohacatalogmodel.FieldGroupID, otohacatalogmodel.FieldSortOrder, otohacatalogmodel.FieldContextTokens, otohacatalogmodel.FieldMaxOutputTokens, otohacatalogmodel.FieldCompactionMinTrigger:
 			values[i] = new(sql.NullInt64)
-		case otohacatalogmodel.FieldModelID, otohacatalogmodel.FieldName, otohacatalogmodel.FieldDescription, otohacatalogmodel.FieldDefaultReasoning, otohacatalogmodel.FieldSpeed, otohacatalogmodel.FieldComplexity, otohacatalogmodel.FieldProfileSource, otohacatalogmodel.FieldCostTier, otohacatalogmodel.FieldAPI:
+		case otohacatalogmodel.FieldModelID, otohacatalogmodel.FieldName, otohacatalogmodel.FieldDescription, otohacatalogmodel.FieldDefaultReasoning, otohacatalogmodel.FieldSpeed, otohacatalogmodel.FieldComplexity, otohacatalogmodel.FieldProfileSource, otohacatalogmodel.FieldCostTier, otohacatalogmodel.FieldAPI, otohacatalogmodel.FieldCompactionKind:
 			values[i] = new(sql.NullString)
 		case otohacatalogmodel.FieldCreatedAt, otohacatalogmodel.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
@@ -267,6 +274,26 @@ func (_m *OtohaCatalogModel) assignValues(columns []string, values []any) error 
 			} else if value.Valid {
 				_m.API = value.String
 			}
+		case otohacatalogmodel.FieldPriceTiers:
+			if value, ok := values[i].(*[]byte); !ok {
+				return fmt.Errorf("unexpected type %T for field price_tiers", values[i])
+			} else if value != nil && len(*value) > 0 {
+				if err := json.Unmarshal(*value, &_m.PriceTiers); err != nil {
+					return fmt.Errorf("unmarshal field price_tiers: %w", err)
+				}
+			}
+		case otohacatalogmodel.FieldCompactionKind:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field compaction_kind", values[i])
+			} else if value.Valid {
+				_m.CompactionKind = value.String
+			}
+		case otohacatalogmodel.FieldCompactionMinTrigger:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field compaction_min_trigger", values[i])
+			} else if value.Valid {
+				_m.CompactionMinTrigger = int(value.Int64)
+			}
 		default:
 			_m.selectValues.Set(columns[i], values[i])
 		}
@@ -373,6 +400,15 @@ func (_m *OtohaCatalogModel) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("api=")
 	builder.WriteString(_m.API)
+	builder.WriteString(", ")
+	builder.WriteString("price_tiers=")
+	builder.WriteString(fmt.Sprintf("%v", _m.PriceTiers))
+	builder.WriteString(", ")
+	builder.WriteString("compaction_kind=")
+	builder.WriteString(_m.CompactionKind)
+	builder.WriteString(", ")
+	builder.WriteString("compaction_min_trigger=")
+	builder.WriteString(fmt.Sprintf("%v", _m.CompactionMinTrigger))
 	builder.WriteByte(')')
 	return builder.String()
 }

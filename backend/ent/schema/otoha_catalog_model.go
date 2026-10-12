@@ -1,6 +1,8 @@
 package schema
 
 import (
+	"encoding/json"
+
 	"github.com/Wei-Shaw/sub2api/ent/schema/mixins"
 
 	"entgo.io/ent"
@@ -83,6 +85,16 @@ func (OtohaCatalogModel) Fields() []ent.Field {
 			MaxLen(32).
 			Default("").
 			Comment("Format the app calls the model in; empty derives it from the routed provider (TASK-64)."),
+		field.JSON("price_tiers", json.RawMessage{}).
+			Optional().
+			Comment("Admin's price tiers by prompt length (sale prices); empty derives them from billing (TASK-67)."),
+		field.String("compaction_kind").
+			MaxLen(16).
+			Default("none").
+			Comment("Whether the model service compacts a conversation itself: none, anthropic or openai (TASK-67)."),
+		field.Int("compaction_min_trigger").
+			Default(0).
+			Comment("Smallest input-token trigger the service takes for compaction; 0 when none or unknown."),
 	}
 }
 

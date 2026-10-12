@@ -140,6 +140,16 @@ func API(v string) predicate.OtohaCatalogModel {
 	return predicate.OtohaCatalogModel(sql.FieldEQ(FieldAPI, v))
 }
 
+// CompactionKind applies equality check predicate on the "compaction_kind" field. It's identical to CompactionKindEQ.
+func CompactionKind(v string) predicate.OtohaCatalogModel {
+	return predicate.OtohaCatalogModel(sql.FieldEQ(FieldCompactionKind, v))
+}
+
+// CompactionMinTrigger applies equality check predicate on the "compaction_min_trigger" field. It's identical to CompactionMinTriggerEQ.
+func CompactionMinTrigger(v int) predicate.OtohaCatalogModel {
+	return predicate.OtohaCatalogModel(sql.FieldEQ(FieldCompactionMinTrigger, v))
+}
+
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.
 func CreatedAtEQ(v time.Time) predicate.OtohaCatalogModel {
 	return predicate.OtohaCatalogModel(sql.FieldEQ(FieldCreatedAt, v))
@@ -1013,6 +1023,121 @@ func APIEqualFold(v string) predicate.OtohaCatalogModel {
 // APIContainsFold applies the ContainsFold predicate on the "api" field.
 func APIContainsFold(v string) predicate.OtohaCatalogModel {
 	return predicate.OtohaCatalogModel(sql.FieldContainsFold(FieldAPI, v))
+}
+
+// PriceTiersIsNil applies the IsNil predicate on the "price_tiers" field.
+func PriceTiersIsNil() predicate.OtohaCatalogModel {
+	return predicate.OtohaCatalogModel(sql.FieldIsNull(FieldPriceTiers))
+}
+
+// PriceTiersNotNil applies the NotNil predicate on the "price_tiers" field.
+func PriceTiersNotNil() predicate.OtohaCatalogModel {
+	return predicate.OtohaCatalogModel(sql.FieldNotNull(FieldPriceTiers))
+}
+
+// CompactionKindEQ applies the EQ predicate on the "compaction_kind" field.
+func CompactionKindEQ(v string) predicate.OtohaCatalogModel {
+	return predicate.OtohaCatalogModel(sql.FieldEQ(FieldCompactionKind, v))
+}
+
+// CompactionKindNEQ applies the NEQ predicate on the "compaction_kind" field.
+func CompactionKindNEQ(v string) predicate.OtohaCatalogModel {
+	return predicate.OtohaCatalogModel(sql.FieldNEQ(FieldCompactionKind, v))
+}
+
+// CompactionKindIn applies the In predicate on the "compaction_kind" field.
+func CompactionKindIn(vs ...string) predicate.OtohaCatalogModel {
+	return predicate.OtohaCatalogModel(sql.FieldIn(FieldCompactionKind, vs...))
+}
+
+// CompactionKindNotIn applies the NotIn predicate on the "compaction_kind" field.
+func CompactionKindNotIn(vs ...string) predicate.OtohaCatalogModel {
+	return predicate.OtohaCatalogModel(sql.FieldNotIn(FieldCompactionKind, vs...))
+}
+
+// CompactionKindGT applies the GT predicate on the "compaction_kind" field.
+func CompactionKindGT(v string) predicate.OtohaCatalogModel {
+	return predicate.OtohaCatalogModel(sql.FieldGT(FieldCompactionKind, v))
+}
+
+// CompactionKindGTE applies the GTE predicate on the "compaction_kind" field.
+func CompactionKindGTE(v string) predicate.OtohaCatalogModel {
+	return predicate.OtohaCatalogModel(sql.FieldGTE(FieldCompactionKind, v))
+}
+
+// CompactionKindLT applies the LT predicate on the "compaction_kind" field.
+func CompactionKindLT(v string) predicate.OtohaCatalogModel {
+	return predicate.OtohaCatalogModel(sql.FieldLT(FieldCompactionKind, v))
+}
+
+// CompactionKindLTE applies the LTE predicate on the "compaction_kind" field.
+func CompactionKindLTE(v string) predicate.OtohaCatalogModel {
+	return predicate.OtohaCatalogModel(sql.FieldLTE(FieldCompactionKind, v))
+}
+
+// CompactionKindContains applies the Contains predicate on the "compaction_kind" field.
+func CompactionKindContains(v string) predicate.OtohaCatalogModel {
+	return predicate.OtohaCatalogModel(sql.FieldContains(FieldCompactionKind, v))
+}
+
+// CompactionKindHasPrefix applies the HasPrefix predicate on the "compaction_kind" field.
+func CompactionKindHasPrefix(v string) predicate.OtohaCatalogModel {
+	return predicate.OtohaCatalogModel(sql.FieldHasPrefix(FieldCompactionKind, v))
+}
+
+// CompactionKindHasSuffix applies the HasSuffix predicate on the "compaction_kind" field.
+func CompactionKindHasSuffix(v string) predicate.OtohaCatalogModel {
+	return predicate.OtohaCatalogModel(sql.FieldHasSuffix(FieldCompactionKind, v))
+}
+
+// CompactionKindEqualFold applies the EqualFold predicate on the "compaction_kind" field.
+func CompactionKindEqualFold(v string) predicate.OtohaCatalogModel {
+	return predicate.OtohaCatalogModel(sql.FieldEqualFold(FieldCompactionKind, v))
+}
+
+// CompactionKindContainsFold applies the ContainsFold predicate on the "compaction_kind" field.
+func CompactionKindContainsFold(v string) predicate.OtohaCatalogModel {
+	return predicate.OtohaCatalogModel(sql.FieldContainsFold(FieldCompactionKind, v))
+}
+
+// CompactionMinTriggerEQ applies the EQ predicate on the "compaction_min_trigger" field.
+func CompactionMinTriggerEQ(v int) predicate.OtohaCatalogModel {
+	return predicate.OtohaCatalogModel(sql.FieldEQ(FieldCompactionMinTrigger, v))
+}
+
+// CompactionMinTriggerNEQ applies the NEQ predicate on the "compaction_min_trigger" field.
+func CompactionMinTriggerNEQ(v int) predicate.OtohaCatalogModel {
+	return predicate.OtohaCatalogModel(sql.FieldNEQ(FieldCompactionMinTrigger, v))
+}
+
+// CompactionMinTriggerIn applies the In predicate on the "compaction_min_trigger" field.
+func CompactionMinTriggerIn(vs ...int) predicate.OtohaCatalogModel {
+	return predicate.OtohaCatalogModel(sql.FieldIn(FieldCompactionMinTrigger, vs...))
+}
+
+// CompactionMinTriggerNotIn applies the NotIn predicate on the "compaction_min_trigger" field.
+func CompactionMinTriggerNotIn(vs ...int) predicate.OtohaCatalogModel {
+	return predicate.OtohaCatalogModel(sql.FieldNotIn(FieldCompactionMinTrigger, vs...))
+}
+
+// CompactionMinTriggerGT applies the GT predicate on the "compaction_min_trigger" field.
+func CompactionMinTriggerGT(v int) predicate.OtohaCatalogModel {
+	return predicate.OtohaCatalogModel(sql.FieldGT(FieldCompactionMinTrigger, v))
+}
+
+// CompactionMinTriggerGTE applies the GTE predicate on the "compaction_min_trigger" field.
+func CompactionMinTriggerGTE(v int) predicate.OtohaCatalogModel {
+	return predicate.OtohaCatalogModel(sql.FieldGTE(FieldCompactionMinTrigger, v))
+}
+
+// CompactionMinTriggerLT applies the LT predicate on the "compaction_min_trigger" field.
+func CompactionMinTriggerLT(v int) predicate.OtohaCatalogModel {
+	return predicate.OtohaCatalogModel(sql.FieldLT(FieldCompactionMinTrigger, v))
+}
+
+// CompactionMinTriggerLTE applies the LTE predicate on the "compaction_min_trigger" field.
+func CompactionMinTriggerLTE(v int) predicate.OtohaCatalogModel {
+	return predicate.OtohaCatalogModel(sql.FieldLTE(FieldCompactionMinTrigger, v))
 }
 
 // HasGroup applies the HasEdge predicate on the "group" edge.

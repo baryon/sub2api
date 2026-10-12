@@ -3,7 +3,10 @@ import {
   catalogAbilities,
   catalogGroupOptions,
   formatCatalogTokens,
-  initialCatalogGroupId
+  initialCatalogGroupId,
+  priceTierRange,
+  priceTierRows,
+  priceTiersFromRows
 } from '../otohaCatalogPage'
 
 const groups = [
@@ -68,5 +71,50 @@ describe('formatCatalogTokens', () => {
     expect(formatCatalogTokens(1_000_000)).toBe('1M')
     expect(formatCatalogTokens(128_000)).toBe('128K')
     expect(formatCatalogTokens(512)).toBe('512')
+  })
+})
+
+describe('price tiers', () => {
+  const base = { above: 0, inclusive: false, input: 1, output: 5, cached: '' }
+
+  it('reads tiers into rows and back', () => {
+    const tiers = [
+      { aboveInputTokens: 0, inclusive: false, input: 1, output: 5 },
+      { aboveInputTokens: 100000, inclusive: false, input: 5, output: 25, cachedInput: 0.5 }
+    ]
+    expect(priceTiersFromRows(priceTierRows(tiers))).toEqual({ tiers })
+  })
+
+  it('accepts typed text and leaves the cached price out when empty', () => {
+    const result = priceTiersFromRows([base, { above: '200000', inclusive: true, input: '4', output: '12', cached: '' }])
+    expect(result).toEqual({
+      tiers: [
+        { aboveInputTokens: 0, inclusive: false, input: 1, output: 5 },
+        { aboveInputTokens: 200000, inclusive: true, input: 4, output: 12 }
+      ]
+    })
+  })
+
+  it('refuses tiers the server would refuse', () => {
+    expect(priceTiersFromRows([])).toEqual({ error: 'empty' })
+    expect(priceTiersFromRows([{ ...base, above: 1000 }])).toEqual({ error: 'base' })
+    expect(priceTiersFromRows([{ ...base, inclusive: true }])).toEqual({ error: 'base' })
+    expect(priceTiersFromRows([base, { ...base, above: 5000 }, { ...base, above: 5000 }])).toEqual({ error: 'order' })
+    expect(priceTiersFromRows([{ ...base, input: -1 }])).toEqual({ error: 'number' })
+    expect(priceTiersFromRows([{ ...base, output: '' }])).toEqual({ error: 'number' })
+    expect(priceTiersFromRows([base, { ...base, above: 1.5 }])).toEqual({ error: 'number' })
+  })
+
+  it('names each tier by its range', () => {
+    const tiers = [
+      { aboveInputTokens: 0, inclusive: false, input: 1, output: 5 },
+      { aboveInputTokens: 100000, inclusive: false, input: 5, output: 25 }
+    ]
+    expect(priceTierRange(tiers, 0)).toEqual({ kind: 'upTo', tokens: '100K' })
+    expect(priceTierRange(tiers, 1)).toEqual({ kind: 'above', tokens: '100K' })
+    const xai = [tiers[0], { aboveInputTokens: 200000, inclusive: true, input: 4, output: 12 }]
+    expect(priceTierRange(xai, 0)).toEqual({ kind: 'below', tokens: '200K' })
+    expect(priceTierRange(xai, 1)).toEqual({ kind: 'from', tokens: '200K' })
+    expect(priceTierRange([tiers[0]], 0)).toEqual({ kind: 'all', tokens: '' })
   })
 })

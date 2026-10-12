@@ -4,6 +4,7 @@ package ent
 
 import (
 	"context"
+	"encoding/json/jsontext"
 	"errors"
 	"fmt"
 	"time"
@@ -275,6 +276,40 @@ func (_c *OtohaCatalogModelCreate) SetNillableAPI(v *string) *OtohaCatalogModelC
 	return _c
 }
 
+// SetPriceTiers sets the "price_tiers" field.
+func (_c *OtohaCatalogModelCreate) SetPriceTiers(v jsontext.Value) *OtohaCatalogModelCreate {
+	_c.mutation.SetPriceTiers(v)
+	return _c
+}
+
+// SetCompactionKind sets the "compaction_kind" field.
+func (_c *OtohaCatalogModelCreate) SetCompactionKind(v string) *OtohaCatalogModelCreate {
+	_c.mutation.SetCompactionKind(v)
+	return _c
+}
+
+// SetNillableCompactionKind sets the "compaction_kind" field if the given value is not nil.
+func (_c *OtohaCatalogModelCreate) SetNillableCompactionKind(v *string) *OtohaCatalogModelCreate {
+	if v != nil {
+		_c.SetCompactionKind(*v)
+	}
+	return _c
+}
+
+// SetCompactionMinTrigger sets the "compaction_min_trigger" field.
+func (_c *OtohaCatalogModelCreate) SetCompactionMinTrigger(v int) *OtohaCatalogModelCreate {
+	_c.mutation.SetCompactionMinTrigger(v)
+	return _c
+}
+
+// SetNillableCompactionMinTrigger sets the "compaction_min_trigger" field if the given value is not nil.
+func (_c *OtohaCatalogModelCreate) SetNillableCompactionMinTrigger(v *int) *OtohaCatalogModelCreate {
+	if v != nil {
+		_c.SetCompactionMinTrigger(*v)
+	}
+	return _c
+}
+
 // SetGroup sets the "group" edge to the Group entity.
 func (_c *OtohaCatalogModelCreate) SetGroup(v *Group) *OtohaCatalogModelCreate {
 	return _c.SetGroupID(v.ID)
@@ -375,6 +410,14 @@ func (_c *OtohaCatalogModelCreate) defaults() {
 		v := otohacatalogmodel.DefaultAPI
 		_c.mutation.SetAPI(v)
 	}
+	if _, ok := _c.mutation.CompactionKind(); !ok {
+		v := otohacatalogmodel.DefaultCompactionKind
+		_c.mutation.SetCompactionKind(v)
+	}
+	if _, ok := _c.mutation.CompactionMinTrigger(); !ok {
+		v := otohacatalogmodel.DefaultCompactionMinTrigger
+		_c.mutation.SetCompactionMinTrigger(v)
+	}
 }
 
 // check runs all checks and user-defined validators on the builder.
@@ -469,6 +512,17 @@ func (_c *OtohaCatalogModelCreate) check() error {
 		if err := otohacatalogmodel.APIValidator(v); err != nil {
 			return &ValidationError{Name: "api", err: fmt.Errorf(`ent: validator failed for field "OtohaCatalogModel.api": %w`, err)}
 		}
+	}
+	if _, ok := _c.mutation.CompactionKind(); !ok {
+		return &ValidationError{Name: "compaction_kind", err: errors.New(`ent: missing required field "OtohaCatalogModel.compaction_kind"`)}
+	}
+	if v, ok := _c.mutation.CompactionKind(); ok {
+		if err := otohacatalogmodel.CompactionKindValidator(v); err != nil {
+			return &ValidationError{Name: "compaction_kind", err: fmt.Errorf(`ent: validator failed for field "OtohaCatalogModel.compaction_kind": %w`, err)}
+		}
+	}
+	if _, ok := _c.mutation.CompactionMinTrigger(); !ok {
+		return &ValidationError{Name: "compaction_min_trigger", err: errors.New(`ent: missing required field "OtohaCatalogModel.compaction_min_trigger"`)}
 	}
 	if len(_c.mutation.GroupIDs()) == 0 {
 		return &ValidationError{Name: "group", err: errors.New(`ent: missing required edge "OtohaCatalogModel.group"`)}
@@ -583,6 +637,18 @@ func (_c *OtohaCatalogModelCreate) createSpec() (*OtohaCatalogModel, *sqlgraph.C
 	if value, ok := _c.mutation.API(); ok {
 		_spec.SetField(otohacatalogmodel.FieldAPI, field.TypeString, value)
 		_node.API = value
+	}
+	if value, ok := _c.mutation.PriceTiers(); ok {
+		_spec.SetField(otohacatalogmodel.FieldPriceTiers, field.TypeJSON, value)
+		_node.PriceTiers = value
+	}
+	if value, ok := _c.mutation.CompactionKind(); ok {
+		_spec.SetField(otohacatalogmodel.FieldCompactionKind, field.TypeString, value)
+		_node.CompactionKind = value
+	}
+	if value, ok := _c.mutation.CompactionMinTrigger(); ok {
+		_spec.SetField(otohacatalogmodel.FieldCompactionMinTrigger, field.TypeInt, value)
+		_node.CompactionMinTrigger = value
 	}
 	if nodes := _c.mutation.GroupIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
@@ -950,6 +1016,54 @@ func (u *OtohaCatalogModelUpsert) SetAPI(v string) *OtohaCatalogModelUpsert {
 // UpdateAPI sets the "api" field to the value that was provided on create.
 func (u *OtohaCatalogModelUpsert) UpdateAPI() *OtohaCatalogModelUpsert {
 	u.SetExcluded(otohacatalogmodel.FieldAPI)
+	return u
+}
+
+// SetPriceTiers sets the "price_tiers" field.
+func (u *OtohaCatalogModelUpsert) SetPriceTiers(v jsontext.Value) *OtohaCatalogModelUpsert {
+	u.Set(otohacatalogmodel.FieldPriceTiers, v)
+	return u
+}
+
+// UpdatePriceTiers sets the "price_tiers" field to the value that was provided on create.
+func (u *OtohaCatalogModelUpsert) UpdatePriceTiers() *OtohaCatalogModelUpsert {
+	u.SetExcluded(otohacatalogmodel.FieldPriceTiers)
+	return u
+}
+
+// ClearPriceTiers clears the value of the "price_tiers" field.
+func (u *OtohaCatalogModelUpsert) ClearPriceTiers() *OtohaCatalogModelUpsert {
+	u.SetNull(otohacatalogmodel.FieldPriceTiers)
+	return u
+}
+
+// SetCompactionKind sets the "compaction_kind" field.
+func (u *OtohaCatalogModelUpsert) SetCompactionKind(v string) *OtohaCatalogModelUpsert {
+	u.Set(otohacatalogmodel.FieldCompactionKind, v)
+	return u
+}
+
+// UpdateCompactionKind sets the "compaction_kind" field to the value that was provided on create.
+func (u *OtohaCatalogModelUpsert) UpdateCompactionKind() *OtohaCatalogModelUpsert {
+	u.SetExcluded(otohacatalogmodel.FieldCompactionKind)
+	return u
+}
+
+// SetCompactionMinTrigger sets the "compaction_min_trigger" field.
+func (u *OtohaCatalogModelUpsert) SetCompactionMinTrigger(v int) *OtohaCatalogModelUpsert {
+	u.Set(otohacatalogmodel.FieldCompactionMinTrigger, v)
+	return u
+}
+
+// UpdateCompactionMinTrigger sets the "compaction_min_trigger" field to the value that was provided on create.
+func (u *OtohaCatalogModelUpsert) UpdateCompactionMinTrigger() *OtohaCatalogModelUpsert {
+	u.SetExcluded(otohacatalogmodel.FieldCompactionMinTrigger)
+	return u
+}
+
+// AddCompactionMinTrigger adds v to the "compaction_min_trigger" field.
+func (u *OtohaCatalogModelUpsert) AddCompactionMinTrigger(v int) *OtohaCatalogModelUpsert {
+	u.Add(otohacatalogmodel.FieldCompactionMinTrigger, v)
 	return u
 }
 
@@ -1345,6 +1459,62 @@ func (u *OtohaCatalogModelUpsertOne) SetAPI(v string) *OtohaCatalogModelUpsertOn
 func (u *OtohaCatalogModelUpsertOne) UpdateAPI() *OtohaCatalogModelUpsertOne {
 	return u.Update(func(s *OtohaCatalogModelUpsert) {
 		s.UpdateAPI()
+	})
+}
+
+// SetPriceTiers sets the "price_tiers" field.
+func (u *OtohaCatalogModelUpsertOne) SetPriceTiers(v jsontext.Value) *OtohaCatalogModelUpsertOne {
+	return u.Update(func(s *OtohaCatalogModelUpsert) {
+		s.SetPriceTiers(v)
+	})
+}
+
+// UpdatePriceTiers sets the "price_tiers" field to the value that was provided on create.
+func (u *OtohaCatalogModelUpsertOne) UpdatePriceTiers() *OtohaCatalogModelUpsertOne {
+	return u.Update(func(s *OtohaCatalogModelUpsert) {
+		s.UpdatePriceTiers()
+	})
+}
+
+// ClearPriceTiers clears the value of the "price_tiers" field.
+func (u *OtohaCatalogModelUpsertOne) ClearPriceTiers() *OtohaCatalogModelUpsertOne {
+	return u.Update(func(s *OtohaCatalogModelUpsert) {
+		s.ClearPriceTiers()
+	})
+}
+
+// SetCompactionKind sets the "compaction_kind" field.
+func (u *OtohaCatalogModelUpsertOne) SetCompactionKind(v string) *OtohaCatalogModelUpsertOne {
+	return u.Update(func(s *OtohaCatalogModelUpsert) {
+		s.SetCompactionKind(v)
+	})
+}
+
+// UpdateCompactionKind sets the "compaction_kind" field to the value that was provided on create.
+func (u *OtohaCatalogModelUpsertOne) UpdateCompactionKind() *OtohaCatalogModelUpsertOne {
+	return u.Update(func(s *OtohaCatalogModelUpsert) {
+		s.UpdateCompactionKind()
+	})
+}
+
+// SetCompactionMinTrigger sets the "compaction_min_trigger" field.
+func (u *OtohaCatalogModelUpsertOne) SetCompactionMinTrigger(v int) *OtohaCatalogModelUpsertOne {
+	return u.Update(func(s *OtohaCatalogModelUpsert) {
+		s.SetCompactionMinTrigger(v)
+	})
+}
+
+// AddCompactionMinTrigger adds v to the "compaction_min_trigger" field.
+func (u *OtohaCatalogModelUpsertOne) AddCompactionMinTrigger(v int) *OtohaCatalogModelUpsertOne {
+	return u.Update(func(s *OtohaCatalogModelUpsert) {
+		s.AddCompactionMinTrigger(v)
+	})
+}
+
+// UpdateCompactionMinTrigger sets the "compaction_min_trigger" field to the value that was provided on create.
+func (u *OtohaCatalogModelUpsertOne) UpdateCompactionMinTrigger() *OtohaCatalogModelUpsertOne {
+	return u.Update(func(s *OtohaCatalogModelUpsert) {
+		s.UpdateCompactionMinTrigger()
 	})
 }
 
@@ -1906,6 +2076,62 @@ func (u *OtohaCatalogModelUpsertBulk) SetAPI(v string) *OtohaCatalogModelUpsertB
 func (u *OtohaCatalogModelUpsertBulk) UpdateAPI() *OtohaCatalogModelUpsertBulk {
 	return u.Update(func(s *OtohaCatalogModelUpsert) {
 		s.UpdateAPI()
+	})
+}
+
+// SetPriceTiers sets the "price_tiers" field.
+func (u *OtohaCatalogModelUpsertBulk) SetPriceTiers(v jsontext.Value) *OtohaCatalogModelUpsertBulk {
+	return u.Update(func(s *OtohaCatalogModelUpsert) {
+		s.SetPriceTiers(v)
+	})
+}
+
+// UpdatePriceTiers sets the "price_tiers" field to the value that was provided on create.
+func (u *OtohaCatalogModelUpsertBulk) UpdatePriceTiers() *OtohaCatalogModelUpsertBulk {
+	return u.Update(func(s *OtohaCatalogModelUpsert) {
+		s.UpdatePriceTiers()
+	})
+}
+
+// ClearPriceTiers clears the value of the "price_tiers" field.
+func (u *OtohaCatalogModelUpsertBulk) ClearPriceTiers() *OtohaCatalogModelUpsertBulk {
+	return u.Update(func(s *OtohaCatalogModelUpsert) {
+		s.ClearPriceTiers()
+	})
+}
+
+// SetCompactionKind sets the "compaction_kind" field.
+func (u *OtohaCatalogModelUpsertBulk) SetCompactionKind(v string) *OtohaCatalogModelUpsertBulk {
+	return u.Update(func(s *OtohaCatalogModelUpsert) {
+		s.SetCompactionKind(v)
+	})
+}
+
+// UpdateCompactionKind sets the "compaction_kind" field to the value that was provided on create.
+func (u *OtohaCatalogModelUpsertBulk) UpdateCompactionKind() *OtohaCatalogModelUpsertBulk {
+	return u.Update(func(s *OtohaCatalogModelUpsert) {
+		s.UpdateCompactionKind()
+	})
+}
+
+// SetCompactionMinTrigger sets the "compaction_min_trigger" field.
+func (u *OtohaCatalogModelUpsertBulk) SetCompactionMinTrigger(v int) *OtohaCatalogModelUpsertBulk {
+	return u.Update(func(s *OtohaCatalogModelUpsert) {
+		s.SetCompactionMinTrigger(v)
+	})
+}
+
+// AddCompactionMinTrigger adds v to the "compaction_min_trigger" field.
+func (u *OtohaCatalogModelUpsertBulk) AddCompactionMinTrigger(v int) *OtohaCatalogModelUpsertBulk {
+	return u.Update(func(s *OtohaCatalogModelUpsert) {
+		s.AddCompactionMinTrigger(v)
+	})
+}
+
+// UpdateCompactionMinTrigger sets the "compaction_min_trigger" field to the value that was provided on create.
+func (u *OtohaCatalogModelUpsertBulk) UpdateCompactionMinTrigger() *OtohaCatalogModelUpsertBulk {
+	return u.Update(func(s *OtohaCatalogModelUpsert) {
+		s.UpdateCompactionMinTrigger()
 	})
 }
 

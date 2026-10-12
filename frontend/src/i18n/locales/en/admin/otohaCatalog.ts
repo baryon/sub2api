@@ -200,6 +200,45 @@ export default {
       upstreamNow: 'Price in the group (before the rate): {price}',
       noUpstreamPrice: 'The price table has no price for this model.',
       priceHint: 'Price = the model\'s price in the group (the group\'s per-model pricing, else the channel price or the built-in price table) × group rate, the same as what is charged. To change it, use the group\'s per-model pricing.',
+      tiers: {
+        title: 'Prices for long prompts',
+        manual: 'Set by hand',
+        hint: 'Some models charge more once a request\'s prompt is long. By default these prices follow what is charged, times the group rate. Set them by hand only when the app should show something else.',
+        base: 'Base price',
+        above: 'Prompts above (tokens)',
+        inclusive: 'Includes the limit',
+        input: 'Input per 1M',
+        output: 'Output per 1M',
+        cached: 'Cached input per 1M',
+        cachedShort: 'cached input {price}',
+        add: 'Add a price step',
+        afterSave: 'The prices that apply are shown after saving.',
+        range: {
+          all: 'Any length',
+          upTo: 'Prompts up to {tokens}',
+          below: 'Prompts below {tokens}',
+          above: 'Prompts above {tokens}',
+          from: 'Prompts of {tokens} or more'
+        },
+        errors: {
+          empty: 'Add at least the base price, or turn off setting by hand.',
+          base: 'The first price is the base price and starts at 0 tokens.',
+          order: 'Each step must start at a longer prompt than the one before.',
+          number: 'Prompt lengths must be whole numbers, and prices cannot be negative or empty.'
+        }
+      },
+      compaction: {
+        title: 'Summarising long conversations',
+        kind: 'Done by the model service',
+        minTrigger: 'Shortest prompt it accepts (tokens)',
+        hint: 'Whether the model\'s own service can shorten a long conversation by itself. Leave it off unless the model\'s documentation says so.',
+        invalid: 'The shortest prompt must be a whole number from 0 to 100 million.',
+        kinds: {
+          none: 'Not available',
+          anthropic: 'Claude format',
+          openai: 'OpenAI format'
+        }
+      },
       tier: 'Tier',
       required: 'Please enter the model name.',
       modelIdInvalid: 'The model name cannot contain spaces and has at most 200 characters.',

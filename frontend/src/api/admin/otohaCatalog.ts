@@ -24,6 +24,24 @@ export interface OtohaModelPrice {
   cachedInput?: number
 }
 
+/** The price of requests whose input is longer than a bound; the first tier (bound 0) is the base price. */
+export interface OtohaPriceTier {
+  aboveInputTokens: number
+  /** The tier applies at the bound itself, not only above it. */
+  inclusive: boolean
+  input: number
+  output: number
+  cachedInput?: number
+}
+
+export type OtohaCompactionKind = 'none' | 'anthropic' | 'openai'
+
+/** Whether the model service compacts a conversation itself. */
+export interface OtohaCompaction {
+  kind: OtohaCompactionKind
+  minTrigger?: number
+}
+
 /** The format the app calls a model in; '' derives it from the provider. */
 export type OtohaCatalogAPI = '' | 'anthropic-messages' | 'deepseek-responses' | 'openai-responses'
 
@@ -46,6 +64,9 @@ export interface OtohaCatalogEntryInput {
   profile_source: string
   cost_tier: string
   api: OtohaCatalogAPI
+  /** The admin's price tiers (sale prices); empty derives them from billing. */
+  price_tiers: OtohaPriceTier[]
+  compaction: OtohaCompaction
 }
 
 export interface OtohaCatalogEntry extends OtohaCatalogEntryInput {
@@ -73,6 +94,8 @@ export interface OtohaCatalogAdminEntry extends OtohaCatalogEntry {
   price_varies: boolean
   /** The format the app calls the model in: the admin's choice, else the provider's own ('' when none). */
   effective_api: OtohaCatalogAPI
+  /** The price tiers the app receives: the admin's, else derived from billing. */
+  effective_price_tiers: OtohaPriceTier[] | null
 }
 
 export interface OtohaCatalogModel {

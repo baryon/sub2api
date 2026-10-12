@@ -383,7 +383,7 @@ func TestOtohaCatalogJSONCarriesNoInternalFields(t *testing.T) {
 		"id": true, "name": true, "description": true, "inputs": true, "images": true, "tools": true,
 		"context": true, "maxOutput": true, "reasoning": true, "defaultReasoning": true, "cost": true,
 		"price": true, "speed": true, "strengths": true, "complexity": true, "roles": true, "use": true,
-		"profileSource": true, "api": true,
+		"profileSource": true, "api": true, "priceTiers": true, "compaction": true,
 	}
 	for key := range decoded.Models[0] {
 		require.True(t, allowed[key], "unexpected field %q in the app's catalog", key)

@@ -58,6 +58,12 @@ const (
 	FieldCostTier = "cost_tier"
 	// FieldAPI holds the string denoting the api field in the database.
 	FieldAPI = "api"
+	// FieldPriceTiers holds the string denoting the price_tiers field in the database.
+	FieldPriceTiers = "price_tiers"
+	// FieldCompactionKind holds the string denoting the compaction_kind field in the database.
+	FieldCompactionKind = "compaction_kind"
+	// FieldCompactionMinTrigger holds the string denoting the compaction_min_trigger field in the database.
+	FieldCompactionMinTrigger = "compaction_min_trigger"
 	// EdgeGroup holds the string denoting the group edge name in mutations.
 	EdgeGroup = "group"
 	// Table holds the table name of the otohacatalogmodel in the database.
@@ -96,6 +102,9 @@ var Columns = []string{
 	FieldProfileSource,
 	FieldCostTier,
 	FieldAPI,
+	FieldPriceTiers,
+	FieldCompactionKind,
+	FieldCompactionMinTrigger,
 }
 
 // ValidColumn reports if the column name is valid (part of the table columns).
@@ -157,6 +166,12 @@ var (
 	DefaultAPI string
 	// APIValidator is a validator for the "api" field. It is called by the builders before save.
 	APIValidator func(string) error
+	// DefaultCompactionKind holds the default value on creation for the "compaction_kind" field.
+	DefaultCompactionKind string
+	// CompactionKindValidator is a validator for the "compaction_kind" field. It is called by the builders before save.
+	CompactionKindValidator func(string) error
+	// DefaultCompactionMinTrigger holds the default value on creation for the "compaction_min_trigger" field.
+	DefaultCompactionMinTrigger int
 )
 
 // OrderOption defines the ordering options for the OtohaCatalogModel queries.
@@ -250,6 +265,16 @@ func ByCostTier(opts ...sql.OrderTermOption) OrderOption {
 // ByAPI orders the results by the api field.
 func ByAPI(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldAPI, opts...).ToFunc()
+}
+
+// ByCompactionKind orders the results by the compaction_kind field.
+func ByCompactionKind(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldCompactionKind, opts...).ToFunc()
+}
+
+// ByCompactionMinTrigger orders the results by the compaction_min_trigger field.
+func ByCompactionMinTrigger(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldCompactionMinTrigger, opts...).ToFunc()
 }
 
 // ByGroupField orders the results by group field.

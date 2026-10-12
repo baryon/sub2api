@@ -352,9 +352,12 @@ func TestOtohaRedeemClaimReturnsTheAppConfiguration(t *testing.T) {
 	f.repo.planOrder = &OtohaPlanOrder{PlanName: "Otoha Pro", Reference: "sub2_20261004ABC"}
 	f.catalog.catalog = &OtohaCatalog{Schema: 1, Revision: "r7", Models: []OtohaCatalogModel{
 		{ID: "deepseek-v4", Name: "DeepSeek V4", Inputs: []string{"text"}, Tools: true, Cost: "low",
-			Price: OtohaModelPrice{Currency: "USD", Per: "1M tokens", Input: 0.5, Output: 1}, Use: []string{"fast"}},
+			Price: OtohaModelPrice{Currency: "USD", Per: "1M tokens", Input: 0.5, Output: 1}, Use: []string{"fast"},
+			PriceTiers: []OtohaPriceTier{{Input: 0.5, Output: 1}}, Compaction: OtohaCompaction{Kind: "none"}},
 		{ID: "gpt-6-luna", Name: "GPT-6 Luna", Inputs: []string{"text", "image"}, Images: true, Tools: true, Cost: "standard",
-			Price: OtohaModelPrice{Currency: "USD", Per: "1M tokens", Input: 2, Output: 8}, Use: []string{"default", "writing"}},
+			Price: OtohaModelPrice{Currency: "USD", Per: "1M tokens", Input: 2, Output: 8}, Use: []string{"default", "writing"},
+			PriceTiers: []OtohaPriceTier{{Input: 2, Output: 8}, {AboveInputTokens: 272000, Input: 4, Output: 12}},
+			Compaction: OtohaCompaction{Kind: "openai"}},
 	}}
 
 	claim, err := f.svc.CreateClaim(context.Background(), 1)
@@ -383,9 +386,12 @@ func TestOtohaRedeemClaimReturnsTheAppConfiguration(t *testing.T) {
 	      "refreshURL": "https://api.otohaai.com/v1/models?client=otoha",
 	      "models": [
 	        {"id": "deepseek-v4", "name": "DeepSeek V4", "inputs": ["text"], "images": false, "tools": true, "cost": "low",
-	         "price": {"currency": "USD", "per": "1M tokens", "input": 0.5, "output": 1}, "use": ["fast"]},
+	         "price": {"currency": "USD", "per": "1M tokens", "input": 0.5, "output": 1}, "use": ["fast"],
+	         "priceTiers": [{"aboveInputTokens": 0, "inclusive": false, "input": 0.5, "output": 1}], "compaction": {"kind": "none"}},
 	        {"id": "gpt-6-luna", "name": "GPT-6 Luna", "inputs": ["text", "image"], "images": true, "tools": true, "cost": "standard",
-	         "price": {"currency": "USD", "per": "1M tokens", "input": 2, "output": 8}, "use": ["default", "writing"]}
+	         "price": {"currency": "USD", "per": "1M tokens", "input": 2, "output": 8}, "use": ["default", "writing"],
+	         "priceTiers": [{"aboveInputTokens": 0, "inclusive": false, "input": 2, "output": 8}, {"aboveInputTokens": 272000, "inclusive": false, "input": 4, "output": 12}],
+	         "compaction": {"kind": "openai"}}
 	      ]
 	    }
 	  }],

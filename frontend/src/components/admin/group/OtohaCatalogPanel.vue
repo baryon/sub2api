@@ -376,6 +376,71 @@
         </div>
       </section>
 
+      <section class="space-y-3" data-testid="otoha-catalog-tiers">
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <h4 class="text-sm font-semibold text-gray-800 dark:text-gray-100">{{ t('admin.otohaCatalog.editor.tiers.title') }}</h4>
+          <label class="inline-flex items-center gap-1.5 text-sm">
+            <input v-model="tiersManual" type="checkbox" class="rounded border-gray-300" data-testid="otoha-catalog-tiers-manual" @change="onTiersManualChange" />
+            {{ t('admin.otohaCatalog.editor.tiers.manual') }}
+          </label>
+        </div>
+        <p class="input-hint">{{ t('admin.otohaCatalog.editor.tiers.hint') }}</p>
+        <template v-if="tiersManual">
+          <div v-for="(row, index) in tierRows" :key="index" class="grid grid-cols-2 items-end gap-2 sm:grid-cols-6" data-testid="otoha-catalog-tier-row">
+            <label class="block">
+              <span class="input-label">{{ index === 0 ? t('admin.otohaCatalog.editor.tiers.base') : t('admin.otohaCatalog.editor.tiers.above') }}</span>
+              <input v-model="row.above" type="number" min="0" :max="TOKENS_MAX" step="1" class="input w-full" :disabled="index === 0" />
+            </label>
+            <label class="inline-flex items-center gap-1.5 pb-2 text-sm">
+              <input v-model="row.inclusive" type="checkbox" class="rounded border-gray-300" :disabled="index === 0" />
+              {{ t('admin.otohaCatalog.editor.tiers.inclusive') }}
+            </label>
+            <label class="block">
+              <span class="input-label">{{ t('admin.otohaCatalog.editor.tiers.input') }}</span>
+              <input v-model="row.input" type="number" min="0" step="any" class="input w-full" />
+            </label>
+            <label class="block">
+              <span class="input-label">{{ t('admin.otohaCatalog.editor.tiers.output') }}</span>
+              <input v-model="row.output" type="number" min="0" step="any" class="input w-full" />
+            </label>
+            <label class="block">
+              <span class="input-label">{{ t('admin.otohaCatalog.editor.tiers.cached') }}</span>
+              <input v-model="row.cached" type="number" min="0" step="any" class="input w-full" />
+            </label>
+            <div class="pb-1">
+              <button v-if="index > 0" type="button" class="btn btn-secondary btn-sm" @click="removeTierRow(index)">{{ t('common.delete') }}</button>
+            </div>
+          </div>
+          <button v-if="tierRows.length < PRICE_TIERS_MAX" type="button" class="btn btn-secondary btn-sm" @click="addTierRow">
+            {{ t('admin.otohaCatalog.editor.tiers.add') }}
+          </button>
+        </template>
+        <ul v-else-if="editorTiers.length > 0" class="rounded-md bg-gray-50 px-3 py-2 text-sm text-gray-700 dark:bg-dark-700 dark:text-gray-300">
+          <li v-for="(tier, index) in editorTiers" :key="index">
+            {{ tierRangeLabel(editorTiers, index) }}: {{ formatPrice({ currency: 'USD', per: '1M tokens', input: tier.input, output: tier.output }) }}
+            <template v-if="tier.cachedInput !== undefined">· {{ t('admin.otohaCatalog.editor.tiers.cachedShort', { price: formatAmount(tier.cachedInput) }) }}</template>
+          </li>
+        </ul>
+        <p v-else class="text-sm text-gray-500 dark:text-gray-400">{{ t('admin.otohaCatalog.editor.tiers.afterSave') }}</p>
+      </section>
+
+      <section class="space-y-3" data-testid="otoha-catalog-compaction">
+        <h4 class="text-sm font-semibold text-gray-800 dark:text-gray-100">{{ t('admin.otohaCatalog.editor.compaction.title') }}</h4>
+        <div class="grid gap-3 sm:grid-cols-2">
+          <label class="block">
+            <span class="input-label">{{ t('admin.otohaCatalog.editor.compaction.kind') }}</span>
+            <select v-model="form.compaction.kind" class="input w-full" data-testid="otoha-catalog-compaction-kind">
+              <option v-for="kind in COMPACTION_KINDS" :key="kind" :value="kind">{{ t('admin.otohaCatalog.editor.compaction.kinds.' + kind) }}</option>
+            </select>
+          </label>
+          <label v-if="form.compaction.kind !== 'none'" class="block">
+            <span class="input-label">{{ t('admin.otohaCatalog.editor.compaction.minTrigger') }}</span>
+            <input v-model.number="form.compaction.minTrigger" type="number" min="0" :max="TOKENS_MAX" step="1" class="input w-full" />
+          </label>
+        </div>
+        <p class="input-hint">{{ t('admin.otohaCatalog.editor.compaction.hint') }}</p>
+      </section>
+
       <p v-if="formError" class="input-error-text" role="alert">{{ formError }}</p>
     </form>
 
@@ -410,7 +475,9 @@ import type {
   OtohaCatalogAdminEntry,
   OtohaCatalogAdminView,
   OtohaCatalogEntryInput,
-  OtohaModelPrice
+  OtohaCompactionKind,
+  OtohaModelPrice,
+  OtohaPriceTier
 } from '@/api/admin/otohaCatalog'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
@@ -418,7 +485,15 @@ import Toggle from '@/components/common/Toggle.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { extractApiErrorCode, extractApiErrorMessage } from '@/utils/apiError'
 import { platformLabel } from '@/utils/platformColors'
-import { catalogAbilities, formatCatalogTokens } from '@/views/admin/otohaCatalogPage'
+import {
+  PRICE_TIERS_MAX,
+  catalogAbilities,
+  formatCatalogTokens,
+  priceTierRange,
+  priceTierRows,
+  priceTiersFromRows,
+  type PriceTierRow
+} from '@/views/admin/otohaCatalogPage'
 
 const INPUT_KINDS = ['text', 'image', 'audio', 'video', 'file'] as const
 const SPEEDS = ['fast', 'standard', 'slow'] as const
@@ -435,6 +510,7 @@ const API_LABEL_KEYS: Record<string, string> = {
   'deepseek-responses': 'deepseekResponses',
   'openai-responses': 'openaiResponses'
 }
+const COMPACTION_KINDS: OtohaCompactionKind[] = ['none', 'anthropic', 'openai']
 const TOKENS_MAX = 100_000_000
 const MODEL_ID_MAX = 200
 const NAME_MAX = 200
@@ -484,6 +560,12 @@ const editorRoute = ref('')
 // The format the app calls the edited model in when the admin leaves it automatic ('' when it has none).
 const editorRouteAPI = ref<OtohaCatalogAPI>('')
 const editorAPI = computed<OtohaCatalogAPI>(() => form.api || editorRouteAPI.value)
+
+// Price tiers by prompt length: derived from billing, or typed by the admin.
+const tiersManual = ref(false)
+const tierRows = ref<PriceTierRow[]>([])
+// The tiers the app receives for the edited model now (empty for a model not saved yet).
+const editorTiers = ref<OtohaPriceTier[]>([])
 
 const entries = computed(() => view.value?.entries ?? [])
 const isMixed = computed(() => view.value?.group_platform === 'composite')
@@ -580,7 +662,9 @@ function emptyInput(modelId: string): OtohaCatalogEntryInput {
     use: [],
     profile_source: '',
     cost_tier: '',
-    api: ''
+    api: '',
+    price_tiers: [],
+    compaction: { kind: 'none', minTrigger: 0 }
   }
 }
 
@@ -686,7 +770,9 @@ function inputFromEntry(entry: OtohaCatalogEntryInput): OtohaCatalogEntryInput {
     use: [...(entry.use ?? [])],
     profile_source: entry.profile_source ?? '',
     cost_tier: entry.cost_tier ?? '',
-    api: entry.api ?? ''
+    api: entry.api ?? '',
+    price_tiers: (entry.price_tiers ?? []).map((tier) => ({ ...tier })),
+    compaction: { kind: entry.compaction?.kind || 'none', minTrigger: entry.compaction?.minTrigger ?? 0 }
   }
 }
 
@@ -696,6 +782,33 @@ function fillForm(input: OtohaCatalogEntryInput) {
     strengths[domain] = input.strengths[domain] ?? ''
   }
   reasoningText.value = input.reasoning.join(', ')
+  tiersManual.value = input.price_tiers.length > 0
+  tierRows.value = priceTierRows(input.price_tiers)
+  editorTiers.value = []
+}
+
+function tierRangeLabel(tiers: OtohaPriceTier[], index: number): string {
+  const range = priceTierRange(tiers, index)
+  return t('admin.otohaCatalog.editor.tiers.range.' + range.kind, { tokens: range.tokens })
+}
+
+// Turning manual setting on starts from the tiers the app receives now, so the admin edits rather than types anew.
+function onTiersManualChange() {
+  if (!tiersManual.value || tierRows.value.length > 0) return
+  const seed = editorTiers.value.length > 0 ? editorTiers.value : editorSale.value
+    ? [{ aboveInputTokens: 0, inclusive: false, input: editorSale.value.input, output: editorSale.value.output, cachedInput: editorSale.value.cachedInput }]
+    : [{ aboveInputTokens: 0, inclusive: false, input: 0, output: 0 }]
+  tierRows.value = priceTierRows(seed)
+}
+
+function addTierRow() {
+  const last = tierRows.value[tierRows.value.length - 1]
+  const above = Number(last?.above) || 0
+  tierRows.value.push({ above: above + 100_000, inclusive: false, input: last?.input ?? '', output: last?.output ?? '', cached: last?.cached ?? '' })
+}
+
+function removeTierRow(index: number) {
+  tierRows.value.splice(index, 1)
 }
 
 // Upstream values replace the form's abilities; what upstream does not know keeps the admin's value.
@@ -757,6 +870,7 @@ function openEdit(entry: OtohaCatalogAdminEntry) {
   // Without an admin choice the effective format is the automatic one. With a choice the automatic format is not
   // known here, so clearing the choice shows no format until the entry is saved or filled from upstream again.
   editorRouteAPI.value = entry.api ? '' : (entry.effective_api ?? '')
+  editorTiers.value = (entry.effective_price_tiers ?? []).map((tier) => ({ ...tier }))
   editingId.value = entry.id
   editorOpen.value = true
 }
@@ -821,8 +935,19 @@ function buildInput(): OtohaCatalogEntryInput | null {
   for (const domain of DOMAINS) {
     if (strengths[domain]) chosenStrengths[domain] = strengths[domain]
   }
+  let priceTiers: OtohaPriceTier[] = []
+  if (tiersManual.value) {
+    const result = priceTiersFromRows(tierRows.value)
+    if ('error' in result) return fail(t('admin.otohaCatalog.editor.tiers.errors.' + result.error))
+    priceTiers = result.tiers
+  }
+  const compactionKind = form.compaction.kind
+  const minTrigger = compactionKind === 'none' ? 0 : wholeTokens(form.compaction.minTrigger)
+  if (minTrigger === null) return fail(t('admin.otohaCatalog.editor.compaction.invalid'))
   return {
     ...form,
+    price_tiers: priceTiers,
+    compaction: { kind: compactionKind, minTrigger },
     model_id: modelId,
     name,
     description,
