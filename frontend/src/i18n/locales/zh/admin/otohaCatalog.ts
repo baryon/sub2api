@@ -35,39 +35,6 @@ export default {
       provider: '服务商',
       abilities: '能力',
       salePrice: '售价（输入 / 输出）',
-      thinking: {
-        title: '思考',
-        hint: '模型在思考上接受的设置，依据模型厂商的文档。不清楚时全部留空。',
-        canBeOff: '能否关闭思考',
-        canBeOffChoices: { unknown: '不清楚', yes: '能', no: '不能' },
-        maxEffort: '最高可用的强度',
-        anyEffort: '任何强度',
-        settings: {
-          off: '关闭',
-          between_tools: '只在调用工具之间思考',
-          adaptive: '由模型自己决定',
-          budget: '固定额度'
-        },
-        errors: {
-          offConflict: '思考不能关闭时，设置里不能有「关闭」。',
-          effort: '最高强度要填简短的小写单词，例如 high。'
-        }
-      },
-      levels: {
-        title: '各思考档位能胜任的工作',
-        hint: '每个思考档位能胜任的最难工作，以及模型要多写多少（思考按输出计费）。不清楚时留空。',
-        setting: '设置',
-        effort: '强度',
-        complexity: '能胜任的最难工作',
-        extraOutput: '额外输出',
-        extraOutputs: { low: '很少', medium: '一些', high: '很多' },
-        add: '增加一档',
-        remove: '删除',
-        errors: {
-          incomplete: '每一档都要填设置、能胜任的最难工作和额外输出。',
-          effort: '强度要填简短的小写单词，例如 high。'
-        }
-      },
       tier: '价位',
       status: '状态',
       actions: '操作'
@@ -204,7 +171,20 @@ export default {
         unknown: '未知',
         strong: '擅长',
         usable: '可用',
-        avoid: '不推荐'
+        avoid: '不推荐',
+        title: '各思考档位能胜任的工作',
+        hint: '每个思考档位能胜任的最难工作，以及模型要多写多少（思考按输出计费）。不清楚时留空。',
+        setting: '设置',
+        effort: '强度',
+        complexity: '能胜任的最难工作',
+        extraOutput: '额外输出',
+        extraOutputs: { low: '很少', medium: '一些', high: '很多' },
+        add: '增加一档',
+        remove: '删除',
+        errors: {
+          incomplete: '每一档都要填设置、能胜任的最难工作和额外输出。',
+          effort: '强度要填简短的小写单词，例如 high。'
+        }
       },
       use: '用途',
       useHint: '不选时按上面的档案自动推出。',
@@ -270,6 +250,24 @@ export default {
           none: '不支持',
           anthropic: 'Claude 格式',
           openai: 'OpenAI 格式'
+        }
+      },
+      thinking: {
+        title: '思考',
+        hint: '模型在思考上接受的设置，依据模型厂商的文档。不清楚时全部留空。',
+        canBeOff: '能否关闭思考',
+        canBeOffChoices: { unknown: '不清楚', yes: '能', no: '不能' },
+        maxEffort: '最高可用的强度',
+        anyEffort: '任何强度',
+        settings: {
+          off: '关闭',
+          between_tools: '只在调用工具之间思考',
+          adaptive: '由模型自己决定',
+          budget: '固定额度'
+        },
+        errors: {
+          offConflict: '思考不能关闭时，设置里不能有「关闭」。',
+          effort: '最高强度要填简短的小写单词，例如 high。'
         }
       },
       tier: '价位',
