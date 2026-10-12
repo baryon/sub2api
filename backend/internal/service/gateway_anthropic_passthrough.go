@@ -270,7 +270,7 @@ func (s *GatewayService) forwardAnthropicAPIKeyPassthroughWithInput(
 		if err != nil {
 			// 流中断时保留已观测到的 usage 与错误一起返回，避免上游已计量的请求
 			// 完全漏记漏计费（issue #5148）。
-			if partial := partialStreamUsageResult(c, resp, streamResult, input.OriginalModel, input.RequestModel, input.StartTime, err); partial != nil {
+			if partial := partialStreamUsageResult(c, resp, streamResult, input.OriginalModel, input.RequestModel, input.StartTime, err, true); partial != nil {
 				return partial, err
 			}
 			return nil, err
@@ -278,7 +278,7 @@ func (s *GatewayService) forwardAnthropicAPIKeyPassthroughWithInput(
 		if account.IsDeepSeekAPIKey() && (streamResult.usage == nil || !hasBillableClaudeUsage(*streamResult.usage)) {
 			_ = newDeepSeekMissingUsageFailoverError(c, account, openAICompatibleUpstreamRequestID(resp.Header))
 			missingUsageErr := errors.New(deepSeekMissingUsageMsg)
-			if partial := partialStreamUsageResult(c, resp, streamResult, input.OriginalModel, input.RequestModel, input.StartTime, missingUsageErr); partial != nil {
+			if partial := partialStreamUsageResult(c, resp, streamResult, input.OriginalModel, input.RequestModel, input.StartTime, missingUsageErr, true); partial != nil {
 				return partial, missingUsageErr
 			}
 			return nil, missingUsageErr
@@ -295,6 +295,7 @@ func (s *GatewayService) forwardAnthropicAPIKeyPassthroughWithInput(
 	if usage == nil {
 		usage = &ClaudeUsage{}
 	}
+	usage.foldCompactionIterations()
 
 	return &ForwardResult{
 		RequestID:                     openAICompatibleUpstreamRequestID(resp.Header),
@@ -768,6 +769,7 @@ func parseSSEUsagePassthrough(data string, usage *ClaudeUsage) {
 	case "message_delta":
 		deltaUsage := parsed.Get("usage")
 		if deltaUsage.Exists() {
+			usage.setCompactionIterations(deltaUsage)
 			if v := deltaUsage.Get("input_tokens").Int(); v > 0 {
 				usage.InputTokens = int(v)
 			}
@@ -896,6 +898,7 @@ func parseClaudeUsageFromResponseBody(body []byte) *ClaudeUsage {
 	usage.OutputTokens = int(usageNode.Get("output_tokens").Int())
 	usage.CacheCreationInputTokens = int(usageNode.Get("cache_creation_input_tokens").Int())
 	usage.CacheReadInputTokens = int(usageNode.Get("cache_read_input_tokens").Int())
+	usage.setCompactionIterations(usageNode)
 
 	cc5m := usageNode.Get("cache_creation.ephemeral_5m_input_tokens").Int()
 	cc1h := usageNode.Get("cache_creation.ephemeral_1h_input_tokens").Int()

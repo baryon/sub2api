@@ -708,7 +708,7 @@ func (u *ClaudeUsage) hasObservedTokens() bool {
 	return u.InputTokens > 0 || u.OutputTokens > 0 ||
 		u.CacheCreationInputTokens > 0 || u.CacheReadInputTokens > 0 ||
 		u.CacheCreation5mTokens > 0 || u.CacheCreation1hTokens > 0 ||
-		u.ImageOutputTokens > 0
+		u.ImageOutputTokens > 0 || u.hasCompactionIterations()
 }
 
 // partialStreamUsageResult 在流式转发中途出错时，把已观测到 usage 的部分结果包装为
@@ -718,13 +718,16 @@ func (u *ClaudeUsage) hasObservedTokens() bool {
 //
 // 不变式：UpstreamFailoverError 必须保持 result=nil——failover 重试成功后按成功请求
 // 计费，若同时返回部分 usage 会造成双重计费，此处显式拦截兜底。
-func partialStreamUsageResult(c *gin.Context, resp *http.Response, streamResult *streamingResult, model, upstreamModel string, startTime time.Time, err error) *ForwardResult {
+func partialStreamUsageResult(c *gin.Context, resp *http.Response, streamResult *streamingResult, model, upstreamModel string, startTime time.Time, err error, billCompaction bool) *ForwardResult {
 	if streamResult == nil || !streamResult.usage.hasObservedTokens() {
 		return nil
 	}
 	var failoverErr *UpstreamFailoverError
 	if errors.As(err, &failoverErr) {
 		return nil
+	}
+	if billCompaction {
+		streamResult.usage.foldCompactionIterations()
 	}
 	return &ForwardResult{
 		RequestID:                     resp.Header.Get("x-request-id"),
@@ -1226,6 +1229,9 @@ type sseUsagePatch struct {
 	hasCacheCreation5m       bool
 	cacheCreation1hTokens    int
 	hasCacheCreation1h       bool
+	// compaction replaces the recorded compaction sampling (usage.iterations), when the object carried the table.
+	compaction    compactionIterationUsage
+	hasCompaction bool
 }
 
 func (s *GatewayService) extractSSEUsagePatch(event map[string]any) *sseUsagePatch {
@@ -1274,6 +1280,11 @@ func (s *GatewayService) extractSSEUsagePatch(event map[string]any) *sseUsagePat
 		}
 
 		patch := &sseUsagePatch{}
+		if iterations, ok := usageObj["iterations"]; ok {
+			if raw, err := json.Marshal(map[string]any{"iterations": iterations}); err == nil {
+				patch.compaction, patch.hasCompaction = compactionIterationsFromUsageNode(gjson.ParseBytes(raw))
+			}
+		}
 		if v, ok := parseSSEUsageInt(usageObj["input_tokens"]); ok && v > 0 {
 			patch.inputTokens = v
 			patch.hasInputTokens = true
@@ -1311,6 +1322,9 @@ func mergeSSEUsagePatch(usage *ClaudeUsage, patch *sseUsagePatch) {
 		return
 	}
 
+	if patch.hasCompaction {
+		usage.compaction = patch.compaction
+	}
 	if patch.hasInputTokens {
 		usage.InputTokens = patch.inputTokens
 	}
@@ -1454,6 +1468,8 @@ func (s *GatewayService) handleNonStreamingResponse(ctx context.Context, resp *h
 		}
 		return nil, fmt.Errorf("parse response: %w", err)
 	}
+
+	response.Usage.setCompactionIterations(gjson.GetBytes(body, "usage"))
 
 	// 解析嵌套的 cache_creation 对象中的 5m/1h 明细
 	cc5m := gjson.GetBytes(body, "usage.cache_creation.ephemeral_5m_input_tokens")
