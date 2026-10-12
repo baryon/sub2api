@@ -18,6 +18,7 @@ vi.mock('@/stores/auth', () => ({ useAuthStore: () => ({ isAdmin: false, user: {
 vi.mock('@/stores/adminSettings', () => ({ useAdminSettingsStore: () => ({ customMenuItems: [] }) }))
 vi.mock('@/api/client', () => ({ buildApiUrl: (path: string) => `/api/v1${path}` }))
 vi.mock('@/components/layout/AppLayout.vue', () => ({ default: { template: '<div><slot /></div>' } }))
+vi.mock('@/components/otoha/PortalAwareLayout.vue', () => ({ default: { template: '<div><slot /></div>' } }))
 enableAutoUnmount(afterEach)
 
 function deferred<T>() {
