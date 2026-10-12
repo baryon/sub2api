@@ -95,6 +95,12 @@ func (OtohaCatalogModel) Fields() []ent.Field {
 		field.Int("compaction_min_trigger").
 			Default(0).
 			Comment("Smallest input-token trigger the service takes for compaction; 0 when none or unknown."),
+		field.JSON("thinking", json.RawMessage{}).
+			Optional().
+			Comment("Thinking settings the model accepts, {canBeOff, settings}; NULL when not known (TASK-70)."),
+		field.JSON("levels", json.RawMessage{}).
+			Optional().
+			Comment("Profile per thinking level, [{setting, effort, complexity, extraOutput}] (TASK-70)."),
 	}
 }
 

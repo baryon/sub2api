@@ -64,6 +64,10 @@ const (
 	FieldCompactionKind = "compaction_kind"
 	// FieldCompactionMinTrigger holds the string denoting the compaction_min_trigger field in the database.
 	FieldCompactionMinTrigger = "compaction_min_trigger"
+	// FieldThinking holds the string denoting the thinking field in the database.
+	FieldThinking = "thinking"
+	// FieldLevels holds the string denoting the levels field in the database.
+	FieldLevels = "levels"
 	// EdgeGroup holds the string denoting the group edge name in mutations.
 	EdgeGroup = "group"
 	// Table holds the table name of the otohacatalogmodel in the database.
@@ -105,6 +109,8 @@ var Columns = []string{
 	FieldPriceTiers,
 	FieldCompactionKind,
 	FieldCompactionMinTrigger,
+	FieldThinking,
+	FieldLevels,
 }
 
 // ValidColumn reports if the column name is valid (part of the table columns).

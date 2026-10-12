@@ -42,6 +42,26 @@ export interface OtohaCompaction {
   minTrigger?: number
 }
 
+/** A thinking setting a model accepts; maxEffort is the highest effort it is accepted at (empty: any). */
+export interface OtohaThinkingSetting {
+  value: string
+  maxEffort?: string
+}
+
+/** What a model accepts for thinking; null (on the entry) when not known. */
+export interface OtohaThinking {
+  canBeOff: boolean | null
+  settings: OtohaThinkingSetting[]
+}
+
+/** The profile of one thinking level. */
+export interface OtohaThinkingLevel {
+  setting: string
+  effort?: string
+  complexity: string
+  extraOutput: string
+}
+
 /** The format the app calls a model in; '' derives it from the provider. */
 export type OtohaCatalogAPI = '' | 'anthropic-messages' | 'deepseek-responses' | 'openai-responses'
 
@@ -67,6 +87,10 @@ export interface OtohaCatalogEntryInput {
   /** The admin's price tiers (sale prices); empty derives them from billing. */
   price_tiers: OtohaPriceTier[]
   compaction: OtohaCompaction
+  /** The thinking settings the model accepts; null when not known. */
+  thinking: OtohaThinking | null
+  /** The profile per thinking level; empty when not known. */
+  levels: OtohaThinkingLevel[]
 }
 
 export interface OtohaCatalogEntry extends OtohaCatalogEntryInput {

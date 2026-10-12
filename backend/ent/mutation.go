@@ -29651,6 +29651,10 @@ type OtohaCatalogModelMutation struct {
 	compaction_kind           *string
 	compaction_min_trigger    *int
 	addcompaction_min_trigger *int
+	thinking                  *jsontext.Value
+	appendthinking            jsontext.Value
+	levels                    *jsontext.Value
+	appendlevels              jsontext.Value
 	clearedFields             map[string]struct{}
 	group                     *int64
 	clearedgroup              bool
@@ -30895,6 +30899,136 @@ func (m *OtohaCatalogModelMutation) ResetCompactionMinTrigger() {
 	m.addcompaction_min_trigger = nil
 }
 
+// SetThinking sets the "thinking" field.
+func (m *OtohaCatalogModelMutation) SetThinking(j jsontext.Value) {
+	m.thinking = &j
+	m.appendthinking = nil
+}
+
+// Thinking returns the value of the "thinking" field in the mutation.
+func (m *OtohaCatalogModelMutation) Thinking() (r jsontext.Value, exists bool) {
+	v := m.thinking
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldThinking returns the old "thinking" field's value of the OtohaCatalogModel entity.
+// If the OtohaCatalogModel object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *OtohaCatalogModelMutation) OldThinking(ctx context.Context) (v jsontext.Value, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldThinking is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldThinking requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldThinking: %w", err)
+	}
+	return oldValue.Thinking, nil
+}
+
+// AppendThinking adds j to the "thinking" field.
+func (m *OtohaCatalogModelMutation) AppendThinking(j jsontext.Value) {
+	m.appendthinking = append(m.appendthinking, j...)
+}
+
+// AppendedThinking returns the list of values that were appended to the "thinking" field in this mutation.
+func (m *OtohaCatalogModelMutation) AppendedThinking() (jsontext.Value, bool) {
+	if len(m.appendthinking) == 0 {
+		return nil, false
+	}
+	return m.appendthinking, true
+}
+
+// ClearThinking clears the value of the "thinking" field.
+func (m *OtohaCatalogModelMutation) ClearThinking() {
+	m.thinking = nil
+	m.appendthinking = nil
+	m.clearedFields[otohacatalogmodel.FieldThinking] = struct{}{}
+}
+
+// ThinkingCleared returns if the "thinking" field was cleared in this mutation.
+func (m *OtohaCatalogModelMutation) ThinkingCleared() bool {
+	_, ok := m.clearedFields[otohacatalogmodel.FieldThinking]
+	return ok
+}
+
+// ResetThinking resets all changes to the "thinking" field.
+func (m *OtohaCatalogModelMutation) ResetThinking() {
+	m.thinking = nil
+	m.appendthinking = nil
+	delete(m.clearedFields, otohacatalogmodel.FieldThinking)
+}
+
+// SetLevels sets the "levels" field.
+func (m *OtohaCatalogModelMutation) SetLevels(j jsontext.Value) {
+	m.levels = &j
+	m.appendlevels = nil
+}
+
+// Levels returns the value of the "levels" field in the mutation.
+func (m *OtohaCatalogModelMutation) Levels() (r jsontext.Value, exists bool) {
+	v := m.levels
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLevels returns the old "levels" field's value of the OtohaCatalogModel entity.
+// If the OtohaCatalogModel object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *OtohaCatalogModelMutation) OldLevels(ctx context.Context) (v jsontext.Value, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLevels is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLevels requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLevels: %w", err)
+	}
+	return oldValue.Levels, nil
+}
+
+// AppendLevels adds j to the "levels" field.
+func (m *OtohaCatalogModelMutation) AppendLevels(j jsontext.Value) {
+	m.appendlevels = append(m.appendlevels, j...)
+}
+
+// AppendedLevels returns the list of values that were appended to the "levels" field in this mutation.
+func (m *OtohaCatalogModelMutation) AppendedLevels() (jsontext.Value, bool) {
+	if len(m.appendlevels) == 0 {
+		return nil, false
+	}
+	return m.appendlevels, true
+}
+
+// ClearLevels clears the value of the "levels" field.
+func (m *OtohaCatalogModelMutation) ClearLevels() {
+	m.levels = nil
+	m.appendlevels = nil
+	m.clearedFields[otohacatalogmodel.FieldLevels] = struct{}{}
+}
+
+// LevelsCleared returns if the "levels" field was cleared in this mutation.
+func (m *OtohaCatalogModelMutation) LevelsCleared() bool {
+	_, ok := m.clearedFields[otohacatalogmodel.FieldLevels]
+	return ok
+}
+
+// ResetLevels resets all changes to the "levels" field.
+func (m *OtohaCatalogModelMutation) ResetLevels() {
+	m.levels = nil
+	m.appendlevels = nil
+	delete(m.clearedFields, otohacatalogmodel.FieldLevels)
+}
+
 // ClearGroup clears the "group" edge to the Group entity.
 func (m *OtohaCatalogModelMutation) ClearGroup() {
 	m.clearedgroup = true
@@ -30956,7 +31090,7 @@ func (m *OtohaCatalogModelMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *OtohaCatalogModelMutation) Fields() []string {
-	fields := make([]string, 0, 25)
+	fields := make([]string, 0, 27)
 	if m.created_at != nil {
 		fields = append(fields, otohacatalogmodel.FieldCreatedAt)
 	}
@@ -31032,6 +31166,12 @@ func (m *OtohaCatalogModelMutation) Fields() []string {
 	if m.compaction_min_trigger != nil {
 		fields = append(fields, otohacatalogmodel.FieldCompactionMinTrigger)
 	}
+	if m.thinking != nil {
+		fields = append(fields, otohacatalogmodel.FieldThinking)
+	}
+	if m.levels != nil {
+		fields = append(fields, otohacatalogmodel.FieldLevels)
+	}
 	return fields
 }
 
@@ -31090,6 +31230,10 @@ func (m *OtohaCatalogModelMutation) Field(name string) (ent.Value, bool) {
 		return m.CompactionKind()
 	case otohacatalogmodel.FieldCompactionMinTrigger:
 		return m.CompactionMinTrigger()
+	case otohacatalogmodel.FieldThinking:
+		return m.Thinking()
+	case otohacatalogmodel.FieldLevels:
+		return m.Levels()
 	}
 	return nil, false
 }
@@ -31149,6 +31293,10 @@ func (m *OtohaCatalogModelMutation) OldField(ctx context.Context, name string) (
 		return m.OldCompactionKind(ctx)
 	case otohacatalogmodel.FieldCompactionMinTrigger:
 		return m.OldCompactionMinTrigger(ctx)
+	case otohacatalogmodel.FieldThinking:
+		return m.OldThinking(ctx)
+	case otohacatalogmodel.FieldLevels:
+		return m.OldLevels(ctx)
 	}
 	return nil, fmt.Errorf("unknown OtohaCatalogModel field %s", name)
 }
@@ -31333,6 +31481,20 @@ func (m *OtohaCatalogModelMutation) SetField(name string, value ent.Value) error
 		}
 		m.SetCompactionMinTrigger(v)
 		return nil
+	case otohacatalogmodel.FieldThinking:
+		v, ok := value.(jsontext.Value)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetThinking(v)
+		return nil
+	case otohacatalogmodel.FieldLevels:
+		v, ok := value.(jsontext.Value)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLevels(v)
+		return nil
 	}
 	return fmt.Errorf("unknown OtohaCatalogModel field %s", name)
 }
@@ -31432,6 +31594,12 @@ func (m *OtohaCatalogModelMutation) ClearedFields() []string {
 	if m.FieldCleared(otohacatalogmodel.FieldPriceTiers) {
 		fields = append(fields, otohacatalogmodel.FieldPriceTiers)
 	}
+	if m.FieldCleared(otohacatalogmodel.FieldThinking) {
+		fields = append(fields, otohacatalogmodel.FieldThinking)
+	}
+	if m.FieldCleared(otohacatalogmodel.FieldLevels) {
+		fields = append(fields, otohacatalogmodel.FieldLevels)
+	}
 	return fields
 }
 
@@ -31463,6 +31631,12 @@ func (m *OtohaCatalogModelMutation) ClearField(name string) error {
 		return nil
 	case otohacatalogmodel.FieldPriceTiers:
 		m.ClearPriceTiers()
+		return nil
+	case otohacatalogmodel.FieldThinking:
+		m.ClearThinking()
+		return nil
+	case otohacatalogmodel.FieldLevels:
+		m.ClearLevels()
 		return nil
 	}
 	return fmt.Errorf("unknown OtohaCatalogModel nullable field %s", name)
@@ -31546,6 +31720,12 @@ func (m *OtohaCatalogModelMutation) ResetField(name string) error {
 		return nil
 	case otohacatalogmodel.FieldCompactionMinTrigger:
 		m.ResetCompactionMinTrigger()
+		return nil
+	case otohacatalogmodel.FieldThinking:
+		m.ResetThinking()
+		return nil
+	case otohacatalogmodel.FieldLevels:
+		m.ResetLevels()
 		return nil
 	}
 	return fmt.Errorf("unknown OtohaCatalogModel field %s", name)

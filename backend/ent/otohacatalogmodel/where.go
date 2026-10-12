@@ -1140,6 +1140,26 @@ func CompactionMinTriggerLTE(v int) predicate.OtohaCatalogModel {
 	return predicate.OtohaCatalogModel(sql.FieldLTE(FieldCompactionMinTrigger, v))
 }
 
+// ThinkingIsNil applies the IsNil predicate on the "thinking" field.
+func ThinkingIsNil() predicate.OtohaCatalogModel {
+	return predicate.OtohaCatalogModel(sql.FieldIsNull(FieldThinking))
+}
+
+// ThinkingNotNil applies the NotNil predicate on the "thinking" field.
+func ThinkingNotNil() predicate.OtohaCatalogModel {
+	return predicate.OtohaCatalogModel(sql.FieldNotNull(FieldThinking))
+}
+
+// LevelsIsNil applies the IsNil predicate on the "levels" field.
+func LevelsIsNil() predicate.OtohaCatalogModel {
+	return predicate.OtohaCatalogModel(sql.FieldIsNull(FieldLevels))
+}
+
+// LevelsNotNil applies the NotNil predicate on the "levels" field.
+func LevelsNotNil() predicate.OtohaCatalogModel {
+	return predicate.OtohaCatalogModel(sql.FieldNotNull(FieldLevels))
+}
+
 // HasGroup applies the HasEdge predicate on the "group" edge.
 func HasGroup() predicate.OtohaCatalogModel {
 	return predicate.OtohaCatalogModel(func(s *sql.Selector) {

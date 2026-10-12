@@ -405,6 +405,42 @@ func (_u *OtohaCatalogModelUpdate) AddCompactionMinTrigger(v int) *OtohaCatalogM
 	return _u
 }
 
+// SetThinking sets the "thinking" field.
+func (_u *OtohaCatalogModelUpdate) SetThinking(v jsontext.Value) *OtohaCatalogModelUpdate {
+	_u.mutation.SetThinking(v)
+	return _u
+}
+
+// AppendThinking appends value to the "thinking" field.
+func (_u *OtohaCatalogModelUpdate) AppendThinking(v jsontext.Value) *OtohaCatalogModelUpdate {
+	_u.mutation.AppendThinking(v)
+	return _u
+}
+
+// ClearThinking clears the value of the "thinking" field.
+func (_u *OtohaCatalogModelUpdate) ClearThinking() *OtohaCatalogModelUpdate {
+	_u.mutation.ClearThinking()
+	return _u
+}
+
+// SetLevels sets the "levels" field.
+func (_u *OtohaCatalogModelUpdate) SetLevels(v jsontext.Value) *OtohaCatalogModelUpdate {
+	_u.mutation.SetLevels(v)
+	return _u
+}
+
+// AppendLevels appends value to the "levels" field.
+func (_u *OtohaCatalogModelUpdate) AppendLevels(v jsontext.Value) *OtohaCatalogModelUpdate {
+	_u.mutation.AppendLevels(v)
+	return _u
+}
+
+// ClearLevels clears the value of the "levels" field.
+func (_u *OtohaCatalogModelUpdate) ClearLevels() *OtohaCatalogModelUpdate {
+	_u.mutation.ClearLevels()
+	return _u
+}
+
 // SetGroup sets the "group" edge to the Group entity.
 func (_u *OtohaCatalogModelUpdate) SetGroup(v *Group) *OtohaCatalogModelUpdate {
 	return _u.SetGroupID(v.ID)
@@ -645,6 +681,28 @@ func (_u *OtohaCatalogModelUpdate) sqlSave(ctx context.Context) (_node int, err 
 	}
 	if value, ok := _u.mutation.AddedCompactionMinTrigger(); ok {
 		_spec.AddField(otohacatalogmodel.FieldCompactionMinTrigger, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.Thinking(); ok {
+		_spec.SetField(otohacatalogmodel.FieldThinking, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedThinking(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, otohacatalogmodel.FieldThinking, value)
+		})
+	}
+	if _u.mutation.ThinkingCleared() {
+		_spec.ClearField(otohacatalogmodel.FieldThinking, field.TypeJSON)
+	}
+	if value, ok := _u.mutation.Levels(); ok {
+		_spec.SetField(otohacatalogmodel.FieldLevels, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedLevels(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, otohacatalogmodel.FieldLevels, value)
+		})
+	}
+	if _u.mutation.LevelsCleared() {
+		_spec.ClearField(otohacatalogmodel.FieldLevels, field.TypeJSON)
 	}
 	if _u.mutation.GroupCleared() {
 		edge := &sqlgraph.EdgeSpec{
@@ -1069,6 +1127,42 @@ func (_u *OtohaCatalogModelUpdateOne) AddCompactionMinTrigger(v int) *OtohaCatal
 	return _u
 }
 
+// SetThinking sets the "thinking" field.
+func (_u *OtohaCatalogModelUpdateOne) SetThinking(v jsontext.Value) *OtohaCatalogModelUpdateOne {
+	_u.mutation.SetThinking(v)
+	return _u
+}
+
+// AppendThinking appends value to the "thinking" field.
+func (_u *OtohaCatalogModelUpdateOne) AppendThinking(v jsontext.Value) *OtohaCatalogModelUpdateOne {
+	_u.mutation.AppendThinking(v)
+	return _u
+}
+
+// ClearThinking clears the value of the "thinking" field.
+func (_u *OtohaCatalogModelUpdateOne) ClearThinking() *OtohaCatalogModelUpdateOne {
+	_u.mutation.ClearThinking()
+	return _u
+}
+
+// SetLevels sets the "levels" field.
+func (_u *OtohaCatalogModelUpdateOne) SetLevels(v jsontext.Value) *OtohaCatalogModelUpdateOne {
+	_u.mutation.SetLevels(v)
+	return _u
+}
+
+// AppendLevels appends value to the "levels" field.
+func (_u *OtohaCatalogModelUpdateOne) AppendLevels(v jsontext.Value) *OtohaCatalogModelUpdateOne {
+	_u.mutation.AppendLevels(v)
+	return _u
+}
+
+// ClearLevels clears the value of the "levels" field.
+func (_u *OtohaCatalogModelUpdateOne) ClearLevels() *OtohaCatalogModelUpdateOne {
+	_u.mutation.ClearLevels()
+	return _u
+}
+
 // SetGroup sets the "group" edge to the Group entity.
 func (_u *OtohaCatalogModelUpdateOne) SetGroup(v *Group) *OtohaCatalogModelUpdateOne {
 	return _u.SetGroupID(v.ID)
@@ -1339,6 +1433,28 @@ func (_u *OtohaCatalogModelUpdateOne) sqlSave(ctx context.Context) (_node *Otoha
 	}
 	if value, ok := _u.mutation.AddedCompactionMinTrigger(); ok {
 		_spec.AddField(otohacatalogmodel.FieldCompactionMinTrigger, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.Thinking(); ok {
+		_spec.SetField(otohacatalogmodel.FieldThinking, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedThinking(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, otohacatalogmodel.FieldThinking, value)
+		})
+	}
+	if _u.mutation.ThinkingCleared() {
+		_spec.ClearField(otohacatalogmodel.FieldThinking, field.TypeJSON)
+	}
+	if value, ok := _u.mutation.Levels(); ok {
+		_spec.SetField(otohacatalogmodel.FieldLevels, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedLevels(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, otohacatalogmodel.FieldLevels, value)
+		})
+	}
+	if _u.mutation.LevelsCleared() {
+		_spec.ClearField(otohacatalogmodel.FieldLevels, field.TypeJSON)
 	}
 	if _u.mutation.GroupCleared() {
 		edge := &sqlgraph.EdgeSpec{

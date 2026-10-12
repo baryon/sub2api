@@ -64,6 +64,7 @@ const (
 	OtohaCompactionAnthropic = "anthropic"
 	OtohaCompactionOpenAI    = "openai"
 	otohaPriceTiersMax       = 8
+	otohaThinkingLevelsMax   = 32
 	otohaPriceMax            = 100000
 
 	OtohaAPIAnthropicMessages = "anthropic-messages"
@@ -94,6 +95,8 @@ var (
 	otohaCostTiers        = []string{OtohaCostLow, OtohaCostStandard, OtohaCostHigh}
 	otohaCompactionKinds  = []string{OtohaCompactionNone, OtohaCompactionAnthropic, OtohaCompactionOpenAI}
 	otohaAPIs             = []string{OtohaAPIAnthropicMessages, OtohaAPIDeepSeekResponses, OtohaAPIOpenAIResponses}
+	otohaThinkingSettings = []string{"off", "between_tools", "adaptive", "budget"}
+	otohaExtraOutputs     = []string{"low", "medium", "high"}
 	otohaReasoningPattern = regexp.MustCompile(`^[a-z][a-z0-9_-]{0,31}$`)
 
 	// A strong domain suggests the purchase design's use; the app's first catalog shape reads only `use`.
@@ -136,8 +139,12 @@ type OtohaCatalogEntry struct {
 	PriceTiers []OtohaPriceTier `json:"price_tiers"`
 	// Compaction is whether the model service compacts a conversation itself; the zero value is none.
 	Compaction OtohaCompaction `json:"compaction"`
-	CreatedAt  time.Time       `json:"created_at"`
-	UpdatedAt  time.Time       `json:"updated_at"`
+	// Thinking is the thinking the model accepts; nil when not known (TASK-70).
+	Thinking *OtohaThinking `json:"thinking"`
+	// Levels is the profile per thinking level; empty when not known (TASK-70).
+	Levels    []OtohaThinkingLevel `json:"levels"`
+	CreatedAt time.Time            `json:"created_at"`
+	UpdatedAt time.Time            `json:"updated_at"`
 }
 
 // OtohaCatalogEntryInput is what the admin submits for an entry. The order is changed with ReorderEntries.
@@ -162,6 +169,8 @@ type OtohaCatalogEntryInput struct {
 	API              string
 	PriceTiers       []OtohaPriceTier
 	Compaction       OtohaCompaction
+	Thinking         *OtohaThinking
+	Levels           []OtohaThinkingLevel
 }
 
 // OtohaModelMetadata is what upstream says about a model, used to prefill an entry.
@@ -888,6 +897,8 @@ func otohaCatalogModel(entry OtohaCatalogEntry, price OtohaModelPrice, cost stri
 		model.Roles = append([]string(nil), entry.Roles...)
 	}
 	model.Compaction = otohaCompactionOf(entry.Compaction)
+	model.Thinking = entry.Thinking
+	model.Levels = append([]OtohaThinkingLevel{}, entry.Levels...)
 	return model
 }
 
@@ -1114,6 +1125,12 @@ func normalizeOtohaCatalogEntryInput(input OtohaCatalogEntryInput) (OtohaCatalog
 	if entry.Compaction, err = normalizeOtohaCompaction(input.Compaction); err != nil {
 		return entry, err
 	}
+	if entry.Thinking, err = normalizeOtohaThinking(input.Thinking); err != nil {
+		return entry, err
+	}
+	if entry.Levels, err = normalizeOtohaThinkingLevels(input.Levels); err != nil {
+		return entry, err
+	}
 	if entry.Roles, err = normalizeOtohaList(input.Roles, otohaRoles, "role"); err != nil {
 		return entry, err
 	}
@@ -1142,6 +1159,83 @@ func normalizeOtohaCatalogEntryInput(input OtohaCatalogEntryInput) (OtohaCatalog
 	}
 
 	return entry, nil
+}
+
+// normalizeOtohaThinking checks the admin's thinking settings: nil (not known) when nothing is said, else known
+// settings once each, effort names in the same form as reasoning levels, and "off" only when thinking can be off.
+func normalizeOtohaThinking(in *OtohaThinking) (*OtohaThinking, error) {
+	if in == nil || (in.CanBeOff == nil && len(in.Settings) == 0) {
+		return nil, nil
+	}
+	out := &OtohaThinking{Settings: make([]OtohaThinkingSetting, 0, len(in.Settings))}
+	if in.CanBeOff != nil {
+		canBeOff := *in.CanBeOff
+		out.CanBeOff = &canBeOff
+	}
+	seen := map[string]bool{}
+	for _, setting := range in.Settings {
+		value, err := normalizeOtohaChoice(setting.Value, otohaThinkingSettings, "thinking setting")
+		if err != nil {
+			return nil, err
+		}
+		if value == "" {
+			return nil, otohaInvalid("a thinking setting needs a value")
+		}
+		if seen[value] {
+			return nil, otohaInvalid("thinking setting %q is listed twice", value)
+		}
+		seen[value] = true
+		effort, err := normalizeOtohaEffort(setting.MaxEffort)
+		if err != nil {
+			return nil, err
+		}
+		out.Settings = append(out.Settings, OtohaThinkingSetting{Value: value, MaxEffort: effort})
+	}
+	if out.CanBeOff != nil && !*out.CanBeOff && seen["off"] {
+		return nil, otohaInvalid("thinking cannot be off, yet the setting \"off\" is listed")
+	}
+	return out, nil
+}
+
+func normalizeOtohaEffort(value string) (string, error) {
+	value = strings.ToLower(strings.TrimSpace(value))
+	if value != "" && !otohaReasoningPattern.MatchString(value) {
+		return "", otohaInvalid("invalid effort %q", value)
+	}
+	return value, nil
+}
+
+func normalizeOtohaThinkingLevels(levels []OtohaThinkingLevel) ([]OtohaThinkingLevel, error) {
+	if len(levels) == 0 {
+		return nil, nil
+	}
+	if len(levels) > otohaThinkingLevelsMax {
+		return nil, otohaInvalid("at most %d thinking levels", otohaThinkingLevelsMax)
+	}
+	out := make([]OtohaThinkingLevel, 0, len(levels))
+	for _, level := range levels {
+		setting, err := normalizeOtohaChoice(level.Setting, otohaThinkingSettings, "thinking setting")
+		if err != nil {
+			return nil, err
+		}
+		complexity, err := normalizeOtohaChoice(level.Complexity, otohaComplexities, "complexity")
+		if err != nil {
+			return nil, err
+		}
+		extra, err := normalizeOtohaChoice(level.ExtraOutput, otohaExtraOutputs, "extra output")
+		if err != nil {
+			return nil, err
+		}
+		if setting == "" || complexity == "" || extra == "" {
+			return nil, otohaInvalid("a thinking level needs a setting, a complexity and an extra output")
+		}
+		effort, err := normalizeOtohaEffort(level.Effort)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, OtohaThinkingLevel{Setting: setting, Effort: effort, Complexity: complexity, ExtraOutput: extra})
+	}
+	return out, nil
 }
 
 func normalizeOtohaCompaction(c OtohaCompaction) (OtohaCompaction, error) {

@@ -217,3 +217,17 @@ func TestOtohaCatalogAdminTakesPriceTiersAndCompaction(t *testing.T) {
 	}, stub.input.PriceTiers)
 	require.Equal(t, service.OtohaCompaction{Kind: "anthropic", MinTrigger: 50000}, stub.input.Compaction)
 }
+
+func TestOtohaCatalogAdminTakesThinkingAndLevels(t *testing.T) {
+	stub := &otohaCatalogAdminStub{}
+	rec := otohaAdminDo(otohaAdminRouter(stub), http.MethodPut, "/groups/7/otoha-catalog/entries/3", `{
+		"model_id":"claude-haiku-5-5",
+		"thinking":{"canBeOff":true,"settings":[{"value":"off","maxEffort":"high"},{"value":"adaptive"}]},
+		"levels":[{"setting":"off","complexity":"simple","extraOutput":"low"}]}`)
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	yes := true
+	require.Equal(t, &service.OtohaThinking{CanBeOff: &yes, Settings: []service.OtohaThinkingSetting{
+		{Value: "off", MaxEffort: "high"}, {Value: "adaptive"},
+	}}, stub.input.Thinking)
+	require.Equal(t, []service.OtohaThinkingLevel{{Setting: "off", Complexity: "simple", ExtraOutput: "low"}}, stub.input.Levels)
+}

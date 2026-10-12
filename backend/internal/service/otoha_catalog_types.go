@@ -59,6 +59,36 @@ type OtohaCatalogModel struct {
 	PriceTiers []OtohaPriceTier `json:"priceTiers"`
 	// Compaction tells whether the model service can compact a conversation itself.
 	Compaction OtohaCompaction `json:"compaction"`
+	// Thinking is which thinking settings the model accepts (TASK-70); null when not known.
+	Thinking *OtohaThinking `json:"thinking"`
+	// Levels is the profile per thinking level (TASK-70): the hardest complexity each setting and effort is suited
+	// to and how much more output it costs. Empty when not known; Complexity above stays for older apps.
+	Levels []OtohaThinkingLevel `json:"levels"`
+}
+
+// OtohaThinking is what a model accepts for thinking, from the vendor's documentation or the admin.
+type OtohaThinking struct {
+	// CanBeOff is whether thinking can be turned off; null when not known.
+	CanBeOff *bool `json:"canBeOff"`
+	// Settings are the settings the model accepts: "off", "between_tools", "adaptive" or "budget".
+	Settings []OtohaThinkingSetting `json:"settings"`
+}
+
+// OtohaThinkingSetting is one accepted setting; MaxEffort is the highest effort at which it is accepted (empty:
+// at every effort).
+type OtohaThinkingSetting struct {
+	Value     string `json:"value"`
+	MaxEffort string `json:"maxEffort,omitempty"`
+}
+
+// OtohaThinkingLevel is the profile of one thinking level: Setting and (optionally) Effort, the hardest
+// Complexity ("simple", "medium", "complex") it is suited to, and ExtraOutput ("low", "medium", "high"), how much
+// more output the thinking costs.
+type OtohaThinkingLevel struct {
+	Setting     string `json:"setting"`
+	Effort      string `json:"effort,omitempty"`
+	Complexity  string `json:"complexity"`
+	ExtraOutput string `json:"extraOutput"`
 }
 
 // OtohaPriceTier is the price of requests whose input is longer than a bound.

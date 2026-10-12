@@ -147,3 +147,87 @@ export function priceTierRange(tiers: PriceTierValue[], index: number): { kind: 
   }
   return { kind: tier.inclusive ? 'from' : 'above', tokens: formatCatalogTokens(tier.aboveInputTokens) }
 }
+
+export const THINKING_SETTINGS = ['off', 'between_tools', 'adaptive', 'budget'] as const
+export const THINKING_LEVELS_MAX = 32
+const EFFORT_NAME = /^[a-z][a-z0-9_-]{0,31}$/
+
+export interface ThinkingValue {
+  canBeOff: boolean | null
+  settings: { value: string; maxEffort?: string }[]
+}
+
+/** The thinking settings as the admin edits them: one row per setting, and "can it be off" as yes, no or unknown. */
+export interface ThinkingForm {
+  canBeOff: 'unknown' | 'yes' | 'no'
+  settings: { value: string; on: boolean; maxEffort: string }[]
+}
+
+export function thinkingForm(thinking: ThinkingValue | null | undefined): ThinkingForm {
+  const canBeOff = thinking?.canBeOff === true ? 'yes' : thinking?.canBeOff === false ? 'no' : 'unknown'
+  return {
+    canBeOff,
+    settings: THINKING_SETTINGS.map((value) => {
+      const found = thinking?.settings?.find((s) => s.value === value)
+      return { value, on: !!found, maxEffort: found?.maxEffort ?? '' }
+    })
+  }
+}
+
+export type ThinkingResult = { thinking: ThinkingValue | null } | { error: 'offConflict' | 'effort' }
+
+/** The thinking the admin set, checked as the server checks it; null when nothing is said (not known). */
+export function thinkingFromForm(form: ThinkingForm): ThinkingResult {
+  const settings: ThinkingValue['settings'] = []
+  for (const setting of form.settings) {
+    if (!setting.on) continue
+    const effort = setting.maxEffort.trim().toLowerCase()
+    if (effort && !EFFORT_NAME.test(effort)) return { error: 'effort' }
+    settings.push(effort ? { value: setting.value, maxEffort: effort } : { value: setting.value })
+  }
+  const canBeOff = form.canBeOff === 'yes' ? true : form.canBeOff === 'no' ? false : null
+  if (canBeOff === false && settings.some((s) => s.value === 'off')) return { error: 'offConflict' }
+  if (canBeOff === null && settings.length === 0) return { thinking: null }
+  return { thinking: { canBeOff, settings } }
+}
+
+export interface ThinkingLevelValue {
+  setting: string
+  effort?: string
+  complexity: string
+  extraOutput: string
+}
+
+export interface ThinkingLevelRow {
+  setting: string
+  effort: string
+  complexity: string
+  extraOutput: string
+}
+
+export function levelRows(levels: ThinkingLevelValue[] | null | undefined): ThinkingLevelRow[] {
+  return (levels ?? []).map((level) => ({
+    setting: level.setting,
+    effort: level.effort ?? '',
+    complexity: level.complexity,
+    extraOutput: level.extraOutput
+  }))
+}
+
+export type ThinkingLevelsResult = { levels: ThinkingLevelValue[] } | { error: 'incomplete' | 'effort' }
+
+export function levelsFromRows(rows: ThinkingLevelRow[]): ThinkingLevelsResult {
+  const levels: ThinkingLevelValue[] = []
+  for (const row of rows) {
+    if (!row.setting || !row.complexity || !row.extraOutput) return { error: 'incomplete' }
+    const effort = row.effort.trim().toLowerCase()
+    if (effort && !EFFORT_NAME.test(effort)) return { error: 'effort' }
+    levels.push({
+      setting: row.setting,
+      ...(effort ? { effort } : {}),
+      complexity: row.complexity,
+      extraOutput: row.extraOutput
+    })
+  }
+  return { levels }
+}

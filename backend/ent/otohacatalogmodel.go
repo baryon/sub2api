@@ -70,6 +70,10 @@ type OtohaCatalogModel struct {
 	CompactionKind string `json:"compaction_kind,omitempty"`
 	// Smallest input-token trigger the service takes for compaction; 0 when none or unknown.
 	CompactionMinTrigger int `json:"compaction_min_trigger,omitempty"`
+	// Thinking settings the model accepts, {canBeOff, settings}; NULL when not known (TASK-70).
+	Thinking jsontext.Value `json:"thinking,omitempty"`
+	// Profile per thinking level, [{setting, effort, complexity, extraOutput}] (TASK-70).
+	Levels jsontext.Value `json:"levels,omitempty"`
 	// Edges holds the relations/edges for other nodes in the graph.
 	// The values are being populated by the OtohaCatalogModelQuery when eager-loading is set.
 	Edges        OtohaCatalogModelEdges `json:"edges"`
@@ -101,7 +105,7 @@ func (*OtohaCatalogModel) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case otohacatalogmodel.FieldInputs, otohacatalogmodel.FieldReasoningLevels, otohacatalogmodel.FieldStrengths, otohacatalogmodel.FieldRoles, otohacatalogmodel.FieldUses, otohacatalogmodel.FieldPriceTiers:
+		case otohacatalogmodel.FieldInputs, otohacatalogmodel.FieldReasoningLevels, otohacatalogmodel.FieldStrengths, otohacatalogmodel.FieldRoles, otohacatalogmodel.FieldUses, otohacatalogmodel.FieldPriceTiers, otohacatalogmodel.FieldThinking, otohacatalogmodel.FieldLevels:
 			values[i] = new([]byte)
 		case otohacatalogmodel.FieldEnabled, otohacatalogmodel.FieldTools:
 			values[i] = new(sql.NullBool)
@@ -294,6 +298,22 @@ func (_m *OtohaCatalogModel) assignValues(columns []string, values []any) error 
 			} else if value.Valid {
 				_m.CompactionMinTrigger = int(value.Int64)
 			}
+		case otohacatalogmodel.FieldThinking:
+			if value, ok := values[i].(*[]byte); !ok {
+				return fmt.Errorf("unexpected type %T for field thinking", values[i])
+			} else if value != nil && len(*value) > 0 {
+				if err := json.Unmarshal(*value, &_m.Thinking); err != nil {
+					return fmt.Errorf("unmarshal field thinking: %w", err)
+				}
+			}
+		case otohacatalogmodel.FieldLevels:
+			if value, ok := values[i].(*[]byte); !ok {
+				return fmt.Errorf("unexpected type %T for field levels", values[i])
+			} else if value != nil && len(*value) > 0 {
+				if err := json.Unmarshal(*value, &_m.Levels); err != nil {
+					return fmt.Errorf("unmarshal field levels: %w", err)
+				}
+			}
 		default:
 			_m.selectValues.Set(columns[i], values[i])
 		}
@@ -409,6 +429,12 @@ func (_m *OtohaCatalogModel) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("compaction_min_trigger=")
 	builder.WriteString(fmt.Sprintf("%v", _m.CompactionMinTrigger))
+	builder.WriteString(", ")
+	builder.WriteString("thinking=")
+	builder.WriteString(fmt.Sprintf("%v", _m.Thinking))
+	builder.WriteString(", ")
+	builder.WriteString("levels=")
+	builder.WriteString(fmt.Sprintf("%v", _m.Levels))
 	builder.WriteByte(')')
 	return builder.String()
 }

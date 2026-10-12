@@ -310,6 +310,18 @@ func (_c *OtohaCatalogModelCreate) SetNillableCompactionMinTrigger(v *int) *Otoh
 	return _c
 }
 
+// SetThinking sets the "thinking" field.
+func (_c *OtohaCatalogModelCreate) SetThinking(v jsontext.Value) *OtohaCatalogModelCreate {
+	_c.mutation.SetThinking(v)
+	return _c
+}
+
+// SetLevels sets the "levels" field.
+func (_c *OtohaCatalogModelCreate) SetLevels(v jsontext.Value) *OtohaCatalogModelCreate {
+	_c.mutation.SetLevels(v)
+	return _c
+}
+
 // SetGroup sets the "group" edge to the Group entity.
 func (_c *OtohaCatalogModelCreate) SetGroup(v *Group) *OtohaCatalogModelCreate {
 	return _c.SetGroupID(v.ID)
@@ -649,6 +661,14 @@ func (_c *OtohaCatalogModelCreate) createSpec() (*OtohaCatalogModel, *sqlgraph.C
 	if value, ok := _c.mutation.CompactionMinTrigger(); ok {
 		_spec.SetField(otohacatalogmodel.FieldCompactionMinTrigger, field.TypeInt, value)
 		_node.CompactionMinTrigger = value
+	}
+	if value, ok := _c.mutation.Thinking(); ok {
+		_spec.SetField(otohacatalogmodel.FieldThinking, field.TypeJSON, value)
+		_node.Thinking = value
+	}
+	if value, ok := _c.mutation.Levels(); ok {
+		_spec.SetField(otohacatalogmodel.FieldLevels, field.TypeJSON, value)
+		_node.Levels = value
 	}
 	if nodes := _c.mutation.GroupIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
@@ -1064,6 +1084,42 @@ func (u *OtohaCatalogModelUpsert) UpdateCompactionMinTrigger() *OtohaCatalogMode
 // AddCompactionMinTrigger adds v to the "compaction_min_trigger" field.
 func (u *OtohaCatalogModelUpsert) AddCompactionMinTrigger(v int) *OtohaCatalogModelUpsert {
 	u.Add(otohacatalogmodel.FieldCompactionMinTrigger, v)
+	return u
+}
+
+// SetThinking sets the "thinking" field.
+func (u *OtohaCatalogModelUpsert) SetThinking(v jsontext.Value) *OtohaCatalogModelUpsert {
+	u.Set(otohacatalogmodel.FieldThinking, v)
+	return u
+}
+
+// UpdateThinking sets the "thinking" field to the value that was provided on create.
+func (u *OtohaCatalogModelUpsert) UpdateThinking() *OtohaCatalogModelUpsert {
+	u.SetExcluded(otohacatalogmodel.FieldThinking)
+	return u
+}
+
+// ClearThinking clears the value of the "thinking" field.
+func (u *OtohaCatalogModelUpsert) ClearThinking() *OtohaCatalogModelUpsert {
+	u.SetNull(otohacatalogmodel.FieldThinking)
+	return u
+}
+
+// SetLevels sets the "levels" field.
+func (u *OtohaCatalogModelUpsert) SetLevels(v jsontext.Value) *OtohaCatalogModelUpsert {
+	u.Set(otohacatalogmodel.FieldLevels, v)
+	return u
+}
+
+// UpdateLevels sets the "levels" field to the value that was provided on create.
+func (u *OtohaCatalogModelUpsert) UpdateLevels() *OtohaCatalogModelUpsert {
+	u.SetExcluded(otohacatalogmodel.FieldLevels)
+	return u
+}
+
+// ClearLevels clears the value of the "levels" field.
+func (u *OtohaCatalogModelUpsert) ClearLevels() *OtohaCatalogModelUpsert {
+	u.SetNull(otohacatalogmodel.FieldLevels)
 	return u
 }
 
@@ -1515,6 +1571,48 @@ func (u *OtohaCatalogModelUpsertOne) AddCompactionMinTrigger(v int) *OtohaCatalo
 func (u *OtohaCatalogModelUpsertOne) UpdateCompactionMinTrigger() *OtohaCatalogModelUpsertOne {
 	return u.Update(func(s *OtohaCatalogModelUpsert) {
 		s.UpdateCompactionMinTrigger()
+	})
+}
+
+// SetThinking sets the "thinking" field.
+func (u *OtohaCatalogModelUpsertOne) SetThinking(v jsontext.Value) *OtohaCatalogModelUpsertOne {
+	return u.Update(func(s *OtohaCatalogModelUpsert) {
+		s.SetThinking(v)
+	})
+}
+
+// UpdateThinking sets the "thinking" field to the value that was provided on create.
+func (u *OtohaCatalogModelUpsertOne) UpdateThinking() *OtohaCatalogModelUpsertOne {
+	return u.Update(func(s *OtohaCatalogModelUpsert) {
+		s.UpdateThinking()
+	})
+}
+
+// ClearThinking clears the value of the "thinking" field.
+func (u *OtohaCatalogModelUpsertOne) ClearThinking() *OtohaCatalogModelUpsertOne {
+	return u.Update(func(s *OtohaCatalogModelUpsert) {
+		s.ClearThinking()
+	})
+}
+
+// SetLevels sets the "levels" field.
+func (u *OtohaCatalogModelUpsertOne) SetLevels(v jsontext.Value) *OtohaCatalogModelUpsertOne {
+	return u.Update(func(s *OtohaCatalogModelUpsert) {
+		s.SetLevels(v)
+	})
+}
+
+// UpdateLevels sets the "levels" field to the value that was provided on create.
+func (u *OtohaCatalogModelUpsertOne) UpdateLevels() *OtohaCatalogModelUpsertOne {
+	return u.Update(func(s *OtohaCatalogModelUpsert) {
+		s.UpdateLevels()
+	})
+}
+
+// ClearLevels clears the value of the "levels" field.
+func (u *OtohaCatalogModelUpsertOne) ClearLevels() *OtohaCatalogModelUpsertOne {
+	return u.Update(func(s *OtohaCatalogModelUpsert) {
+		s.ClearLevels()
 	})
 }
 
@@ -2132,6 +2230,48 @@ func (u *OtohaCatalogModelUpsertBulk) AddCompactionMinTrigger(v int) *OtohaCatal
 func (u *OtohaCatalogModelUpsertBulk) UpdateCompactionMinTrigger() *OtohaCatalogModelUpsertBulk {
 	return u.Update(func(s *OtohaCatalogModelUpsert) {
 		s.UpdateCompactionMinTrigger()
+	})
+}
+
+// SetThinking sets the "thinking" field.
+func (u *OtohaCatalogModelUpsertBulk) SetThinking(v jsontext.Value) *OtohaCatalogModelUpsertBulk {
+	return u.Update(func(s *OtohaCatalogModelUpsert) {
+		s.SetThinking(v)
+	})
+}
+
+// UpdateThinking sets the "thinking" field to the value that was provided on create.
+func (u *OtohaCatalogModelUpsertBulk) UpdateThinking() *OtohaCatalogModelUpsertBulk {
+	return u.Update(func(s *OtohaCatalogModelUpsert) {
+		s.UpdateThinking()
+	})
+}
+
+// ClearThinking clears the value of the "thinking" field.
+func (u *OtohaCatalogModelUpsertBulk) ClearThinking() *OtohaCatalogModelUpsertBulk {
+	return u.Update(func(s *OtohaCatalogModelUpsert) {
+		s.ClearThinking()
+	})
+}
+
+// SetLevels sets the "levels" field.
+func (u *OtohaCatalogModelUpsertBulk) SetLevels(v jsontext.Value) *OtohaCatalogModelUpsertBulk {
+	return u.Update(func(s *OtohaCatalogModelUpsert) {
+		s.SetLevels(v)
+	})
+}
+
+// UpdateLevels sets the "levels" field to the value that was provided on create.
+func (u *OtohaCatalogModelUpsertBulk) UpdateLevels() *OtohaCatalogModelUpsertBulk {
+	return u.Update(func(s *OtohaCatalogModelUpsert) {
+		s.UpdateLevels()
+	})
+}
+
+// ClearLevels clears the value of the "levels" field.
+func (u *OtohaCatalogModelUpsertBulk) ClearLevels() *OtohaCatalogModelUpsertBulk {
+	return u.Update(func(s *OtohaCatalogModelUpsert) {
+		s.ClearLevels()
 	})
 }
 

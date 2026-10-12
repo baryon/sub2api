@@ -66,6 +66,12 @@ func (r *otohaCatalogRepository) Create(ctx context.Context, entry *service.Otoh
 	if raw := otohaPriceTiersJSON(entry.PriceTiers); raw != nil {
 		create = create.SetPriceTiers(raw)
 	}
+	if raw := otohaJSON(entry.Thinking, entry.Thinking != nil); raw != nil {
+		create = create.SetThinking(raw)
+	}
+	if raw := otohaJSON(entry.Levels, len(entry.Levels) > 0); raw != nil {
+		create = create.SetLevels(raw)
+	}
 	created, err := create.Save(ctx)
 	if err != nil {
 		return translatePersistenceError(err, nil, service.ErrOtohaCatalogEntryExists)
@@ -135,6 +141,16 @@ func setOtohaJSONFields(update *dbent.OtohaCatalogModelUpdateOne, entry *service
 	} else {
 		update = update.ClearPriceTiers()
 	}
+	if raw := otohaJSON(entry.Thinking, entry.Thinking != nil); raw != nil {
+		update = update.SetThinking(raw)
+	} else {
+		update = update.ClearThinking()
+	}
+	if raw := otohaJSON(entry.Levels, len(entry.Levels) > 0); raw != nil {
+		update = update.SetLevels(raw)
+	} else {
+		update = update.ClearLevels()
+	}
 	return update
 }
 
@@ -148,6 +164,40 @@ func otohaPriceTiersJSON(tiers []service.OtohaPriceTier) json.RawMessage {
 		return nil
 	}
 	return raw
+}
+
+// otohaJSON is the stored form of a value; nil when present is false.
+func otohaJSON(value any, present bool) json.RawMessage {
+	if !present {
+		return nil
+	}
+	raw, err := json.Marshal(value)
+	if err != nil {
+		return nil
+	}
+	return raw
+}
+
+func otohaThinkingFromJSON(raw json.RawMessage) *service.OtohaThinking {
+	if len(raw) == 0 {
+		return nil
+	}
+	var thinking service.OtohaThinking
+	if err := json.Unmarshal(raw, &thinking); err != nil {
+		return nil
+	}
+	return &thinking
+}
+
+func otohaLevelsFromJSON(raw json.RawMessage) []service.OtohaThinkingLevel {
+	if len(raw) == 0 {
+		return nil
+	}
+	var levels []service.OtohaThinkingLevel
+	if err := json.Unmarshal(raw, &levels); err != nil {
+		return nil
+	}
+	return levels
 }
 
 func otohaPriceTiersFromJSON(raw json.RawMessage) []service.OtohaPriceTier {
@@ -216,6 +266,8 @@ func otohaCatalogEntityToService(row *dbent.OtohaCatalogModel) service.OtohaCata
 		API:              row.API,
 		PriceTiers:       otohaPriceTiersFromJSON(row.PriceTiers),
 		Compaction:       service.OtohaCompaction{Kind: row.CompactionKind, MinTrigger: row.CompactionMinTrigger},
+		Thinking:         otohaThinkingFromJSON(row.Thinking),
+		Levels:           otohaLevelsFromJSON(row.Levels),
 		CreatedAt:        row.CreatedAt,
 		UpdatedAt:        row.UpdatedAt,
 	}

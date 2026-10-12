@@ -213,3 +213,30 @@ func TestOtohaModelsCarriesPriceTiersAndCompaction(t *testing.T) {
 	require.JSONEq(t, `{"kind":"none"}`, string(body.Models[2]["compaction"]))
 	require.JSONEq(t, `{"currency":"USD","per":"1M tokens","input":1,"output":5}`, string(body.Models[0]["price"]), "price is unchanged for older apps")
 }
+
+func TestOtohaModelsCarriesThinkingAndLevels(t *testing.T) {
+	yes := false
+	h := &GatewayHandler{}
+	h.SetOtohaCatalog(otohaCatalogReaderStub{catalog: &service.OtohaCatalog{Schema: 1, Revision: "r1", Models: []service.OtohaCatalogModel{
+		{
+			ID: "claude-sonnet-5-5", Name: "Claude Sonnet 5.5", Inputs: []string{"text"}, Cost: "standard", Complexity: "complex",
+			Thinking: &service.OtohaThinking{CanBeOff: &yes, Settings: []service.OtohaThinkingSetting{
+				{Value: "adaptive"}, {Value: "between_tools", MaxEffort: "high"},
+			}},
+			Levels: []service.OtohaThinkingLevel{{Setting: "adaptive", Effort: "high", Complexity: "complex", ExtraOutput: "high"}},
+		},
+		{ID: "plain", Name: "Plain", Inputs: []string{"text"}, Cost: "low", Levels: []service.OtohaThinkingLevel{}},
+	}}})
+
+	rec := otohaModelsRequest(h, nil)
+	require.Equal(t, http.StatusOK, rec.Code)
+	var body struct {
+		Models []map[string]json.RawMessage `json:"models"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
+	require.JSONEq(t, `{"canBeOff":false,"settings":[{"value":"adaptive"},{"value":"between_tools","maxEffort":"high"}]}`, string(body.Models[0]["thinking"]))
+	require.JSONEq(t, `[{"setting":"adaptive","effort":"high","complexity":"complex","extraOutput":"high"}]`, string(body.Models[0]["levels"]))
+	require.JSONEq(t, `"complex"`, string(body.Models[0]["complexity"]))
+	require.JSONEq(t, `null`, string(body.Models[1]["thinking"]))
+	require.JSONEq(t, `[]`, string(body.Models[1]["levels"]))
+}

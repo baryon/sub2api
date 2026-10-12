@@ -35,6 +35,39 @@ export default {
       provider: 'Provider',
       abilities: 'Abilities',
       salePrice: 'Price (input / output)',
+      thinking: {
+        title: 'Thinking',
+        hint: 'What the model accepts for thinking, from the model maker\'s documentation. Leave everything unset when it is not known.',
+        canBeOff: 'Can thinking be turned off',
+        canBeOffChoices: { unknown: 'Not known', yes: 'Yes', no: 'No' },
+        maxEffort: 'Highest effort it works at',
+        anyEffort: 'Any effort',
+        settings: {
+          off: 'Off',
+          between_tools: 'Only between tool calls',
+          adaptive: 'Decided by the model',
+          budget: 'Fixed amount'
+        },
+        errors: {
+          offConflict: 'Thinking cannot be turned off, so "Off" cannot be one of the settings.',
+          effort: 'The highest effort is a short lowercase word such as high.'
+        }
+      },
+      levels: {
+        title: 'Hardest work per thinking level',
+        hint: 'For each thinking level, the hardest work it suits and how much more the model writes (thinking is charged as output). Leave empty when not known.',
+        setting: 'Setting',
+        effort: 'Effort',
+        complexity: 'Hardest work',
+        extraOutput: 'Extra output',
+        extraOutputs: { low: 'Little', medium: 'Some', high: 'A lot' },
+        add: 'Add a level',
+        remove: 'Remove',
+        errors: {
+          incomplete: 'Each level needs a setting, the hardest work and the extra output.',
+          effort: 'The effort is a short lowercase word such as high.'
+        }
+      },
       tier: 'Tier',
       status: 'Status',
       actions: 'Actions'

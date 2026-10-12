@@ -69,6 +69,9 @@ type OtohaCatalogEntryRequest struct {
 	// PriceTiers overrides the price tiers derived from billing; empty derives them (TASK-67).
 	PriceTiers []service.OtohaPriceTier `json:"price_tiers"`
 	Compaction service.OtohaCompaction  `json:"compaction"`
+	// Thinking and Levels are the thinking the model accepts and its profile per level (TASK-70).
+	Thinking *service.OtohaThinking       `json:"thinking"`
+	Levels   []service.OtohaThinkingLevel `json:"levels"`
 }
 
 func (r OtohaCatalogEntryRequest) input() service.OtohaCatalogEntryInput {
@@ -97,6 +100,8 @@ func (r OtohaCatalogEntryRequest) input() service.OtohaCatalogEntryInput {
 		API:              r.API,
 		PriceTiers:       r.PriceTiers,
 		Compaction:       r.Compaction,
+		Thinking:         r.Thinking,
+		Levels:           r.Levels,
 	}
 }
 

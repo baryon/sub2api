@@ -387,11 +387,11 @@ func TestOtohaRedeemClaimReturnsTheAppConfiguration(t *testing.T) {
 	      "models": [
 	        {"id": "deepseek-v4", "name": "DeepSeek V4", "inputs": ["text"], "images": false, "tools": true, "cost": "low",
 	         "price": {"currency": "USD", "per": "1M tokens", "input": 0.5, "output": 1}, "use": ["fast"],
-	         "priceTiers": [{"aboveInputTokens": 0, "inclusive": false, "input": 0.5, "output": 1}], "compaction": {"kind": "none"}},
+	         "priceTiers": [{"aboveInputTokens": 0, "inclusive": false, "input": 0.5, "output": 1}], "compaction": {"kind": "none"}, "thinking": null, "levels": null},
 	        {"id": "gpt-6-luna", "name": "GPT-6 Luna", "inputs": ["text", "image"], "images": true, "tools": true, "cost": "standard",
 	         "price": {"currency": "USD", "per": "1M tokens", "input": 2, "output": 8}, "use": ["default", "writing"],
 	         "priceTiers": [{"aboveInputTokens": 0, "inclusive": false, "input": 2, "output": 8}, {"aboveInputTokens": 272000, "inclusive": false, "input": 4, "output": 12}],
-	         "compaction": {"kind": "openai"}}
+	         "compaction": {"kind": "openai"}, "thinking": null, "levels": null}
 	      ]
 	    }
 	  }],

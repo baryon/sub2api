@@ -6,7 +6,11 @@ import {
   initialCatalogGroupId,
   priceTierRange,
   priceTierRows,
-  priceTiersFromRows
+  priceTiersFromRows,
+  thinkingForm,
+  thinkingFromForm,
+  levelRows,
+  levelsFromRows
 } from '../otohaCatalogPage'
 
 const groups = [
@@ -116,5 +120,61 @@ describe('price tiers', () => {
     expect(priceTierRange(xai, 0)).toEqual({ kind: 'below', tokens: '200K' })
     expect(priceTierRange(xai, 1)).toEqual({ kind: 'from', tokens: '200K' })
     expect(priceTierRange([tiers[0]], 0)).toEqual({ kind: 'all', tokens: '' })
+  })
+})
+
+describe('thinking settings', () => {
+  it('shows a model nobody described as unknown with nothing chosen', () => {
+    const form = thinkingForm(null)
+    expect(form.canBeOff).toBe('unknown')
+    expect(form.settings.map((s) => [s.value, s.on])).toEqual([
+      ['off', false],
+      ['between_tools', false],
+      ['adaptive', false],
+      ['budget', false]
+    ])
+    expect(thinkingFromForm(form)).toEqual({ thinking: null })
+  })
+
+  it('reads settings into the form and back', () => {
+    const thinking = {
+      canBeOff: false,
+      settings: [{ value: 'between_tools', maxEffort: 'high' }, { value: 'adaptive' }]
+    }
+    const form = thinkingForm(thinking)
+    expect(form.canBeOff).toBe('no')
+    expect(form.settings.find((s) => s.value === 'between_tools')).toMatchObject({ on: true, maxEffort: 'high' })
+    expect(thinkingFromForm(form)).toEqual({ thinking })
+  })
+
+  it('keeps an unknown can-be-off as null when settings are known', () => {
+    const form = thinkingForm({ canBeOff: null, settings: [{ value: 'budget' }] })
+    expect(thinkingFromForm(form)).toEqual({ thinking: { canBeOff: null, settings: [{ value: 'budget' }] } })
+  })
+
+  it('refuses what the server refuses', () => {
+    const form = thinkingForm({ canBeOff: false, settings: [{ value: 'off' }] })
+    expect(thinkingFromForm(form)).toEqual({ error: 'offConflict' })
+    const bad = thinkingForm({ canBeOff: true, settings: [{ value: 'off', maxEffort: 'Very High!' }] })
+    expect(thinkingFromForm(bad)).toEqual({ error: 'effort' })
+  })
+})
+
+describe('thinking levels', () => {
+  const level = { setting: 'adaptive', effort: 'high', complexity: 'complex', extraOutput: 'high' }
+
+  it('reads levels into rows and back, leaving an empty effort out', () => {
+    const levels = [level, { setting: 'off', complexity: 'simple', extraOutput: 'low' }]
+    expect(levelsFromRows(levelRows(levels))).toEqual({ levels })
+  })
+
+  it('refuses a level missing its parts or with a bad effort', () => {
+    expect(levelsFromRows([{ setting: '', effort: '', complexity: 'simple', extraOutput: 'low' }])).toEqual({ error: 'incomplete' })
+    expect(levelsFromRows([{ ...level, extraOutput: '' }])).toEqual({ error: 'incomplete' })
+    expect(levelsFromRows([{ ...level, effort: 'A B' }])).toEqual({ error: 'effort' })
+  })
+
+  it('has no levels for a model nobody described', () => {
+    expect(levelsFromRows(levelRows(null))).toEqual({ levels: [] })
   })
 })

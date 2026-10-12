@@ -441,6 +441,60 @@
         <p class="input-hint">{{ t('admin.otohaCatalog.editor.compaction.hint') }}</p>
       </section>
 
+      <section class="space-y-3" data-testid="otoha-catalog-thinking">
+        <h4 class="text-sm font-semibold text-gray-800 dark:text-gray-100">{{ t('admin.otohaCatalog.editor.thinking.title') }}</h4>
+        <p class="input-hint">{{ t('admin.otohaCatalog.editor.thinking.hint') }}</p>
+        <label class="block sm:w-1/2">
+          <span class="input-label">{{ t('admin.otohaCatalog.editor.thinking.canBeOff') }}</span>
+          <select v-model="thinkingState.canBeOff" class="input w-full" data-testid="otoha-catalog-thinking-can-be-off">
+            <option v-for="choice in ['unknown', 'yes', 'no']" :key="choice" :value="choice">{{ t('admin.otohaCatalog.editor.thinking.canBeOffChoices.' + choice) }}</option>
+          </select>
+        </label>
+        <div v-for="setting in thinkingState.settings" :key="setting.value" class="grid items-end gap-2 sm:grid-cols-2" data-testid="otoha-catalog-thinking-setting">
+          <label class="inline-flex items-center gap-1.5 pb-2 text-sm">
+            <input v-model="setting.on" type="checkbox" class="rounded border-gray-300" />
+            {{ t('admin.otohaCatalog.editor.thinking.settings.' + setting.value) }}
+          </label>
+          <label v-if="setting.on" class="block">
+            <span class="input-label">{{ t('admin.otohaCatalog.editor.thinking.maxEffort') }}</span>
+            <input v-model="setting.maxEffort" type="text" class="input w-full" :placeholder="t('admin.otohaCatalog.editor.thinking.anyEffort')" />
+          </label>
+        </div>
+      </section>
+
+      <section class="space-y-3" data-testid="otoha-catalog-levels">
+        <h4 class="text-sm font-semibold text-gray-800 dark:text-gray-100">{{ t('admin.otohaCatalog.editor.levels.title') }}</h4>
+        <p class="input-hint">{{ t('admin.otohaCatalog.editor.levels.hint') }}</p>
+        <div v-for="(row, index) in levelRowsState" :key="index" class="grid grid-cols-2 items-end gap-2 sm:grid-cols-5" data-testid="otoha-catalog-level-row">
+          <label class="block">
+            <span class="input-label">{{ t('admin.otohaCatalog.editor.levels.setting') }}</span>
+            <select v-model="row.setting" class="input w-full">
+              <option v-for="value in THINKING_SETTINGS" :key="value" :value="value">{{ t('admin.otohaCatalog.editor.thinking.settings.' + value) }}</option>
+            </select>
+          </label>
+          <label class="block">
+            <span class="input-label">{{ t('admin.otohaCatalog.editor.levels.effort') }}</span>
+            <input v-model="row.effort" type="text" class="input w-full" />
+          </label>
+          <label class="block">
+            <span class="input-label">{{ t('admin.otohaCatalog.editor.levels.complexity') }}</span>
+            <select v-model="row.complexity" class="input w-full">
+              <option v-for="value in COMPLEXITIES" :key="value" :value="value">{{ t('admin.otohaCatalog.editor.complexities.' + value) }}</option>
+            </select>
+          </label>
+          <label class="block">
+            <span class="input-label">{{ t('admin.otohaCatalog.editor.levels.extraOutput') }}</span>
+            <select v-model="row.extraOutput" class="input w-full">
+              <option v-for="value in EXTRA_OUTPUTS" :key="value" :value="value">{{ t('admin.otohaCatalog.editor.levels.extraOutputs.' + value) }}</option>
+            </select>
+          </label>
+          <button type="button" class="btn btn-secondary btn-sm" @click="levelRowsState.splice(index, 1)">{{ t('admin.otohaCatalog.editor.levels.remove') }}</button>
+        </div>
+        <button v-if="levelRowsState.length < THINKING_LEVELS_MAX" type="button" class="btn btn-secondary btn-sm" @click="addLevelRow">
+          {{ t('admin.otohaCatalog.editor.levels.add') }}
+        </button>
+      </section>
+
       <p v-if="formError" class="input-error-text" role="alert">{{ formError }}</p>
     </form>
 
@@ -487,12 +541,20 @@ import { extractApiErrorCode, extractApiErrorMessage } from '@/utils/apiError'
 import { platformLabel } from '@/utils/platformColors'
 import {
   PRICE_TIERS_MAX,
+  THINKING_LEVELS_MAX,
+  THINKING_SETTINGS,
   catalogAbilities,
   formatCatalogTokens,
   priceTierRange,
   priceTierRows,
   priceTiersFromRows,
-  type PriceTierRow
+  thinkingForm,
+  thinkingFromForm,
+  levelRows,
+  levelsFromRows,
+  type PriceTierRow,
+  type ThinkingForm,
+  type ThinkingLevelRow
 } from '@/views/admin/otohaCatalogPage'
 
 const INPUT_KINDS = ['text', 'image', 'audio', 'video', 'file'] as const
@@ -510,6 +572,7 @@ const API_LABEL_KEYS: Record<string, string> = {
   'deepseek-responses': 'deepseekResponses',
   'openai-responses': 'openaiResponses'
 }
+const EXTRA_OUTPUTS = ['low', 'medium', 'high'] as const
 const COMPACTION_KINDS: OtohaCompactionKind[] = ['none', 'anthropic', 'openai']
 const TOKENS_MAX = 100_000_000
 const MODEL_ID_MAX = 200
@@ -564,6 +627,9 @@ const editorAPI = computed<OtohaCatalogAPI>(() => form.api || editorRouteAPI.val
 // Price tiers by prompt length: derived from billing, or typed by the admin.
 const tiersManual = ref(false)
 const tierRows = ref<PriceTierRow[]>([])
+// Thinking settings and the profile per thinking level, as typed.
+const thinkingState = ref<ThinkingForm>(thinkingForm(null))
+const levelRowsState = ref<ThinkingLevelRow[]>([])
 // The tiers the app receives for the edited model now (empty for a model not saved yet).
 const editorTiers = ref<OtohaPriceTier[]>([])
 
@@ -664,7 +730,9 @@ function emptyInput(modelId: string): OtohaCatalogEntryInput {
     cost_tier: '',
     api: '',
     price_tiers: [],
-    compaction: { kind: 'none', minTrigger: 0 }
+    compaction: { kind: 'none', minTrigger: 0 },
+    thinking: null,
+    levels: []
   }
 }
 
@@ -772,7 +840,9 @@ function inputFromEntry(entry: OtohaCatalogEntryInput): OtohaCatalogEntryInput {
     cost_tier: entry.cost_tier ?? '',
     api: entry.api ?? '',
     price_tiers: (entry.price_tiers ?? []).map((tier) => ({ ...tier })),
-    compaction: { kind: entry.compaction?.kind || 'none', minTrigger: entry.compaction?.minTrigger ?? 0 }
+    compaction: { kind: entry.compaction?.kind || 'none', minTrigger: entry.compaction?.minTrigger ?? 0 },
+    thinking: entry.thinking ? { canBeOff: entry.thinking.canBeOff ?? null, settings: entry.thinking.settings.map((s) => ({ ...s })) } : null,
+    levels: (entry.levels ?? []).map((level) => ({ ...level }))
   }
 }
 
@@ -784,7 +854,13 @@ function fillForm(input: OtohaCatalogEntryInput) {
   reasoningText.value = input.reasoning.join(', ')
   tiersManual.value = input.price_tiers.length > 0
   tierRows.value = priceTierRows(input.price_tiers)
+  thinkingState.value = thinkingForm(input.thinking)
+  levelRowsState.value = levelRows(input.levels)
   editorTiers.value = []
+}
+
+function addLevelRow() {
+  levelRowsState.value.push({ setting: 'adaptive', effort: '', complexity: 'medium', extraOutput: 'medium' })
 }
 
 function tierRangeLabel(tiers: OtohaPriceTier[], index: number): string {
@@ -944,8 +1020,14 @@ function buildInput(): OtohaCatalogEntryInput | null {
   const compactionKind = form.compaction.kind
   const minTrigger = compactionKind === 'none' ? 0 : wholeTokens(form.compaction.minTrigger)
   if (minTrigger === null) return fail(t('admin.otohaCatalog.editor.compaction.invalid'))
+  const thinkingResult = thinkingFromForm(thinkingState.value)
+  if ('error' in thinkingResult) return fail(t('admin.otohaCatalog.editor.thinking.errors.' + thinkingResult.error))
+  const levelsResult = levelsFromRows(levelRowsState.value)
+  if ('error' in levelsResult) return fail(t('admin.otohaCatalog.editor.levels.errors.' + levelsResult.error))
   return {
     ...form,
+    thinking: thinkingResult.thinking,
+    levels: levelsResult.levels,
     price_tiers: priceTiers,
     compaction: { kind: compactionKind, minTrigger },
     model_id: modelId,
