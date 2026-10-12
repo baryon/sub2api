@@ -643,7 +643,20 @@ func FilterThinkingBlocks(body []byte, mappedModel string) []byte {
 	if !ShouldPreFilterThinkingBlocks(mappedModel) {
 		return body
 	}
-	return filterThinkingBlocksInternal(body, isClaude55SignedThinkingModel(mappedModel))
+	return filterThinkingBlocksInternal(body, isClaude55SignedThinkingModel(mappedModel), false)
+}
+
+// FilterThinkingBlocksForAPIKey is FilterThinkingBlocks for API-key accounts, which send what the client sent
+// to Claude Platform (TASK-69). It only removes what Claude Platform cannot take: a thinking block without a
+// signature and a redacted_thinking block without data. Signed thinking blocks and redacted_thinking blocks
+// stay, whatever the thinking mode and the model: they are the model's own reasoning handed back, and
+// Claude Platform accepts them even when thinking is off. A block with a bad signature is left to the
+// signature error retry. OAuth and setup-token accounts keep FilterThinkingBlocks.
+func FilterThinkingBlocksForAPIKey(body []byte, mappedModel string) []byte {
+	if !ShouldPreFilterThinkingBlocks(mappedModel) {
+		return body
+	}
+	return filterThinkingBlocksInternal(body, isClaude55SignedThinkingModel(mappedModel), true)
 }
 
 // FilterThinkingBlocksForRetry strips thinking-related constructs for retry scenarios.
@@ -1008,6 +1021,20 @@ const anthropicBetaContextManagementToken = "context-management-2025-06-27"
 // 返回 (sanitized, changed)：changed 表示是否发生实际删除，供调用方决定
 // 是否重用原 body 引用。
 func sanitizeAnthropicBodyForBetaTokens(body []byte, anthropicBetaHeader string) ([]byte, bool) {
+	return sanitizeAnthropicBodyForBetaTokensWith(body, anthropicBetaHeader)
+}
+
+// sanitizeAnthropicAPIKeyBodyForBetaTokens is sanitizeAnthropicBodyForBetaTokens for API-key accounts
+// (TASK-69). Claude Platform also takes `context_management` under the compaction beta
+// (`compact-2026-01-12`), so a client that asks for compaction with that beta alone must still reach it with
+// the field in place. OAuth and setup-token accounts keep the older rule.
+func sanitizeAnthropicAPIKeyBodyForBetaTokens(body []byte, anthropicBetaHeader string) ([]byte, bool) {
+	return sanitizeAnthropicBodyForBetaTokensWith(body, anthropicBetaHeader, claude.BetaCompact)
+}
+
+// sanitizeAnthropicBodyForBetaTokensWith does the work of sanitizeAnthropicBodyForBetaTokens;
+// contextManagementBetas are further beta tokens that keep `context_management` in the body.
+func sanitizeAnthropicBodyForBetaTokensWith(body []byte, anthropicBetaHeader string, contextManagementBetas ...string) ([]byte, bool) {
 	if len(body) == 0 {
 		return body, false
 	}
@@ -1016,7 +1043,8 @@ func sanitizeAnthropicBodyForBetaTokens(body []byte, anthropicBetaHeader string)
 
 	// context_management：需要 context-management beta。
 	if b, deleted := stripAnthropicBodyFieldUnlessBeta(
-		body, "context_management", anthropicBetaHeader, anthropicBetaContextManagementToken,
+		body, "context_management", anthropicBetaHeader,
+		append([]string{anthropicBetaContextManagementToken}, contextManagementBetas...)...,
 	); deleted {
 		body, changed = b, true
 	}
@@ -1400,7 +1428,7 @@ func FilterSignatureSensitiveBlocksForRetry(body []byte, mappedModel string) []b
 //   - 当 thinking.type 是 "enabled"/"adaptive"：移除缺失/无效 signature 的 thinking 块
 //   - 对 5.5 模型，只要历史中有无效 thinking，就移除所有 thinking/redacted_thinking，
 //     避免留下不连续的签名历史
-func filterThinkingBlocksInternal(body []byte, alwaysThinking bool) []byte {
+func filterThinkingBlocksInternal(body []byte, alwaysThinking bool, keepAcceptedBlocks bool) []byte {
 	// Fast path: if body doesn't contain "thinking", skip parsing
 	if !bytes.Contains(body, []byte(`"type":"thinking"`)) &&
 		!bytes.Contains(body, []byte(`"type": "thinking"`)) &&
@@ -1455,9 +1483,19 @@ func filterThinkingBlocksInternal(body []byte, alwaysThinking bool) []byte {
 			blockType, _ := blockMap["type"].(string)
 
 			if blockType == "thinking" || blockType == "redacted_thinking" {
-				// When thinking is enabled and this is an assistant message,
-				// only keep thinking blocks with valid signatures
-				if thinkingEnabled && role == "assistant" {
+				if keepAcceptedBlocks {
+					if blockType == "redacted_thinking" {
+						if data, ok := blockMap["data"].(string); ok && data != "" {
+							newContent = append(newContent, block)
+							continue
+						}
+					} else if signature, _ := blockMap["signature"].(string); signature != "" && signature != antigravity.DummyThoughtSignature {
+						newContent = append(newContent, block)
+						continue
+					}
+				} else if thinkingEnabled && role == "assistant" {
+					// When thinking is enabled and this is an assistant message,
+					// only keep thinking blocks with valid signatures
 					if alwaysThinking && blockType == "redacted_thinking" {
 						if data, ok := blockMap["data"].(string); ok && data != "" {
 							newContent = append(newContent, block)

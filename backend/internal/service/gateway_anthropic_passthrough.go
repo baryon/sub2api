@@ -351,7 +351,7 @@ func (s *GatewayService) buildUpstreamRequestAnthropicAPIKeyPassthrough(
 		if beta, ok := account.HeaderOverrideValue("anthropic-beta"); ok {
 			clientBeta = beta
 		}
-		if sanitized, changed := sanitizeAnthropicBodyForBetaTokens(body, clientBeta); changed {
+		if sanitized, changed := sanitizeAnthropicAPIKeyBodyForBetaTokens(body, clientBeta); changed {
 			body = sanitized
 		}
 	}

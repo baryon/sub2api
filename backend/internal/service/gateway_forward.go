@@ -374,7 +374,12 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 	//
 	// 仅 anthropic-strict 模型族执行此过滤；passback-required 上游 (DeepSeek/Kimi/GLM 等)
 	// 要求历史 thinking block 原样回传，过滤反而制造 400。reqModel 此时已是映射后的模型 ID。
-	if err := replaceBody(FilterThinkingBlocks(body, reqModel)); err != nil {
+	// API-key accounts send what the client sent to Claude Platform: only blocks it cannot take are removed.
+	filterThinking := FilterThinkingBlocks
+	if account.Type == AccountTypeAPIKey {
+		filterThinking = FilterThinkingBlocksForAPIKey
+	}
+	if err := replaceBody(filterThinking(body, reqModel)); err != nil {
 		return nil, err
 	}
 	// Chinese LLM thinking.type 协议差异补正（如 MiniMax 只接受 adaptive；Anthropic-SDK

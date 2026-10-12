@@ -414,7 +414,7 @@ func (s *GatewayService) buildCountTokensRequestAnthropicAPIKeyPassthrough(
 	if beta, ok := account.HeaderOverrideValue("anthropic-beta"); ok {
 		clientBeta = beta
 	}
-	if sanitized, changed := sanitizeAnthropicBodyForBetaTokens(body, clientBeta); changed {
+	if sanitized, changed := sanitizeAnthropicAPIKeyBodyForBetaTokens(body, clientBeta); changed {
 		body = sanitized
 	}
 
@@ -536,7 +536,11 @@ func (s *GatewayService) buildCountTokensRequest(ctx context.Context, c *gin.Con
 	finalBetaHeader = filterSonnet55ToolsetBeta(finalBetaHeader, body, modelID)
 
 	// 能力维度 body sanitize：与最终 anthropic-beta header 对称
-	if sanitized, changed := sanitizeAnthropicBodyForBetaTokens(body, finalBetaHeader); changed {
+	sanitizeBody := sanitizeAnthropicBodyForBetaTokens
+	if account.Type == AccountTypeAPIKey {
+		sanitizeBody = sanitizeAnthropicAPIKeyBodyForBetaTokens
+	}
+	if sanitized, changed := sanitizeBody(body, finalBetaHeader); changed {
 		body = sanitized
 	}
 

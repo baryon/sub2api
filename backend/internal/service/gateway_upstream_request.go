@@ -119,7 +119,11 @@ func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Contex
 	finalBetaHeader = filterSonnet55ToolsetBeta(finalBetaHeader, body, modelID)
 
 	// 能力维度 body sanitize：与最终 anthropic-beta header 对称
-	if sanitized, changed := sanitizeAnthropicBodyForBetaTokens(body, finalBetaHeader); changed {
+	sanitizeBody := sanitizeAnthropicBodyForBetaTokens
+	if account.Type == AccountTypeAPIKey {
+		sanitizeBody = sanitizeAnthropicAPIKeyBodyForBetaTokens
+	}
+	if sanitized, changed := sanitizeBody(body, finalBetaHeader); changed {
 		body = sanitized
 	}
 
@@ -566,7 +570,10 @@ func (s *GatewayService) computeFinalAnthropicBeta(
 
 	// API-key accounts
 	if clientBeta != "" {
-		return stripBetaTokensWithSet(clientBeta, effectiveDropSet), true
+		// A policy that drops every token the client sent leaves nothing to send: no header at all, not an
+		// empty one (TASK-69).
+		kept := stripBetaTokensWithSet(clientBeta, effectiveDropSet)
+		return kept, kept != ""
 	}
 	if s.cfg != nil && s.cfg.Gateway.InjectBetaForAPIKey {
 		if requestNeedsBetaFeatures(body) {
@@ -623,7 +630,10 @@ func (s *GatewayService) computeFinalCountTokensAnthropicBeta(
 
 	// API-key accounts
 	if clientBeta != "" {
-		return stripBetaTokensWithSet(clientBeta, effectiveDropSet), true
+		// A policy that drops every token the client sent leaves nothing to send: no header at all, not an
+		// empty one (TASK-69).
+		kept := stripBetaTokensWithSet(clientBeta, effectiveDropSet)
+		return kept, kept != ""
 	}
 	if s.cfg != nil && s.cfg.Gateway.InjectBetaForAPIKey {
 		if requestNeedsBetaFeatures(body) {
