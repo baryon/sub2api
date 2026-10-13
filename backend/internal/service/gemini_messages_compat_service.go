@@ -2082,24 +2082,31 @@ func (s *GeminiMessagesCompatService) handleStreamingResponse(c *gin.Context, re
 	}
 
 	messageID := generateAnthropicMsgID()
-	messageStart := map[string]any{
-		"type": "message_start",
-		"message": map[string]any{
-			"id":            messageID,
-			"type":          "message",
-			"role":          "assistant",
-			"model":         originalModel,
-			"content":       []any{},
-			"stop_reason":   nil,
-			"stop_sequence": nil,
-			"usage": map[string]any{
-				"input_tokens":  0,
-				"output_tokens": 0,
+	// message_start is written when the first upstream chunk arrives, so the
+	// prompt and cache-read counts Gemini reports with it can be included
+	// (TASK-86). If Gemini only reports usage later, they are zero here and
+	// message_delta carries the final figures.
+	messageStarted := false
+	startMessage := func(startUsage ClaudeUsage) {
+		if messageStarted {
+			return
+		}
+		messageStarted = true
+		writeSSE(c.Writer, "message_start", map[string]any{
+			"type": "message_start",
+			"message": map[string]any{
+				"id":            messageID,
+				"type":          "message",
+				"role":          "assistant",
+				"model":         originalModel,
+				"content":       []any{},
+				"stop_reason":   nil,
+				"stop_sequence": nil,
+				"usage":         claudeMessageUsageMap(startUsage),
 			},
-		},
+		})
+		flusher.Flush()
 	}
-	writeSSE(c.Writer, "message_start", messageStart)
-	flusher.Flush()
 
 	var firstTokenMs *int
 	var usage ClaudeUsage
@@ -2151,6 +2158,11 @@ func (s *GeminiMessagesCompatService) handleStreamingResponse(c *gin.Context, re
 		if err := json.Unmarshal(unwrappedBytes, &geminiResp); err != nil {
 			continue
 		}
+
+		if u := extractGeminiUsage(unwrappedBytes); u != nil {
+			usage = *u
+		}
+		startMessage(usage)
 
 		if fr := extractGeminiFinishReason(geminiResp); fr != "" {
 			finishReason = fr
@@ -2294,10 +2306,6 @@ func (s *GeminiMessagesCompatService) handleStreamingResponse(c *gin.Context, re
 			}
 		}
 
-		if u := extractGeminiUsage(unwrappedBytes); u != nil {
-			usage = *u
-		}
-
 		// Process the final unterminated line at EOF as well.
 		if errors.Is(err, io.EOF) {
 			break
@@ -2322,12 +2330,10 @@ func (s *GeminiMessagesCompatService) handleStreamingResponse(c *gin.Context, re
 		stopReason = "tool_use"
 	}
 
-	usageObj := map[string]any{
-		"output_tokens": usage.OutputTokens,
-	}
-	if usage.InputTokens > 0 {
-		usageObj["input_tokens"] = usage.InputTokens
-	}
+	startMessage(usage)
+
+	// Cumulative totals, as Claude's own stream reports them in message_delta.
+	usageObj := claudeMessageUsageMap(usage)
 	writeSSE(c.Writer, "message_delta", map[string]any{
 		"type": "message_delta",
 		"delta": map[string]any{
@@ -2904,10 +2910,7 @@ func convertGeminiToClaudeMessage(geminiResp map[string]any, originalModel strin
 		"content":       contentBlocks,
 		"stop_reason":   stopReason,
 		"stop_sequence": nil,
-		"usage": map[string]any{
-			"input_tokens":  usage.InputTokens,
-			"output_tokens": usage.OutputTokens,
-		},
+		"usage":         claudeMessageUsageMap(*usage),
 	}
 
 	return resp, usage
@@ -2928,6 +2931,18 @@ func isValidBase64(data string) bool {
 	}
 	_, err := base64.StdEncoding.DecodeString(data)
 	return err == nil
+}
+
+// claudeMessageUsageMap renders usage in Claude's Messages shape. Input excludes
+// cache reads (they are reported separately), output includes Gemini thoughts;
+// this is the same split billing uses.
+func claudeMessageUsageMap(u ClaudeUsage) map[string]any {
+	return map[string]any{
+		"input_tokens":                u.InputTokens,
+		"cache_creation_input_tokens": u.CacheCreationInputTokens,
+		"cache_read_input_tokens":     u.CacheReadInputTokens,
+		"output_tokens":               u.OutputTokens,
+	}
 }
 
 func extractGeminiUsage(data []byte) *ClaudeUsage {
