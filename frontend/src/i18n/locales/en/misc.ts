@@ -586,6 +586,8 @@ export default {
       groupId: 'Group ID',
       features: 'Features',
       featuresHint: 'One feature per line',
+      translationsTitle: 'Text in other languages',
+      translationsHint: 'Shown to buyers who use that language. Anything left empty shows the text above.',
       featuresPlaceholder: 'Enter plan features...',
       providerManagement: 'Provider Management',
       providerManagementDesc: 'Manage payment provider instances',

@@ -1821,7 +1821,7 @@ func (h *GatewayHandler) usageUnrestricted(c *gin.Context, ctx context.Context, 
 		subscription, ok := middleware2.GetSubscriptionFromContext(c)
 		if ok {
 			// The plan the subscription was bought as, where it has one (TASK-60); else the group's name.
-			if name := h.subscriptionPlanName(ctx, subscription); name != "" {
+			if name := h.subscriptionPlanName(service.WithPlanLocale(ctx, c.GetHeader("Accept-Language")), subscription); name != "" {
 				resp["planName"] = name
 			}
 			remaining := h.calculateSubscriptionRemaining(apiKey.Group, subscription)

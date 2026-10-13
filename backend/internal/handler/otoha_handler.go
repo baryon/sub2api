@@ -107,7 +107,7 @@ func (h *OtohaHandler) GetAccount(c *gin.Context) {
 		response.Unauthorized(c, "User not authenticated")
 		return
 	}
-	account, err := h.otoha.AccountSummary(c.Request.Context(), subject.UserID)
+	account, err := h.otoha.AccountSummary(service.WithPlanLocale(c.Request.Context(), c.GetHeader("Accept-Language")), subject.UserID)
 	if response.ErrorFrom(c, err) {
 		return
 	}

@@ -202,6 +202,18 @@ func (_u *SubscriptionPlanUpdate) SetNillableProductName(v *string) *Subscriptio
 	return _u
 }
 
+// SetTranslations sets the "translations" field.
+func (_u *SubscriptionPlanUpdate) SetTranslations(v map[string]map[string]string) *SubscriptionPlanUpdate {
+	_u.mutation.SetTranslations(v)
+	return _u
+}
+
+// ClearTranslations clears the value of the "translations" field.
+func (_u *SubscriptionPlanUpdate) ClearTranslations() *SubscriptionPlanUpdate {
+	_u.mutation.ClearTranslations()
+	return _u
+}
+
 // SetDailyLimitUsd sets the "daily_limit_usd" field.
 func (_u *SubscriptionPlanUpdate) SetDailyLimitUsd(v float64) *SubscriptionPlanUpdate {
 	_u.mutation.ResetDailyLimitUsd()
@@ -447,6 +459,12 @@ func (_u *SubscriptionPlanUpdate) sqlSave(ctx context.Context) (_node int, err e
 	if value, ok := _u.mutation.ProductName(); ok {
 		_spec.SetField(subscriptionplan.FieldProductName, field.TypeString, value)
 	}
+	if value, ok := _u.mutation.Translations(); ok {
+		_spec.SetField(subscriptionplan.FieldTranslations, field.TypeJSON, value)
+	}
+	if _u.mutation.TranslationsCleared() {
+		_spec.ClearField(subscriptionplan.FieldTranslations, field.TypeJSON)
+	}
 	if value, ok := _u.mutation.DailyLimitUsd(); ok {
 		_spec.SetField(subscriptionplan.FieldDailyLimitUsd, field.TypeFloat64, value)
 	}
@@ -677,6 +695,18 @@ func (_u *SubscriptionPlanUpdateOne) SetNillableProductName(v *string) *Subscrip
 	if v != nil {
 		_u.SetProductName(*v)
 	}
+	return _u
+}
+
+// SetTranslations sets the "translations" field.
+func (_u *SubscriptionPlanUpdateOne) SetTranslations(v map[string]map[string]string) *SubscriptionPlanUpdateOne {
+	_u.mutation.SetTranslations(v)
+	return _u
+}
+
+// ClearTranslations clears the value of the "translations" field.
+func (_u *SubscriptionPlanUpdateOne) ClearTranslations() *SubscriptionPlanUpdateOne {
+	_u.mutation.ClearTranslations()
 	return _u
 }
 
@@ -954,6 +984,12 @@ func (_u *SubscriptionPlanUpdateOne) sqlSave(ctx context.Context) (_node *Subscr
 	}
 	if value, ok := _u.mutation.ProductName(); ok {
 		_spec.SetField(subscriptionplan.FieldProductName, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.Translations(); ok {
+		_spec.SetField(subscriptionplan.FieldTranslations, field.TypeJSON, value)
+	}
+	if _u.mutation.TranslationsCleared() {
+		_spec.ClearField(subscriptionplan.FieldTranslations, field.TypeJSON)
 	}
 	if value, ok := _u.mutation.DailyLimitUsd(); ok {
 		_spec.SetField(subscriptionplan.FieldDailyLimitUsd, field.TypeFloat64, value)

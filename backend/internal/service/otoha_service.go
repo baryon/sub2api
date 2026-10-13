@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/payment"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
@@ -69,6 +70,8 @@ type OtohaClaim struct {
 type OtohaPlanOrder struct {
 	PlanName  string
 	Reference string
+	// PlanTranslations are the plan's texts per language (TASK-82), so the name can follow the request's language.
+	PlanTranslations map[string]map[string]string
 }
 
 // OtohaRepository stores the Otoha key and claim codes.
@@ -407,7 +410,7 @@ func (s *OtohaService) buildConfig(ctx context.Context, user *User, key *APIKey)
 	switch {
 	case err == nil && sub != nil:
 		order := s.latestPlanOrder(ctx, user.ID)
-		subscription.Plan = otohaPlanName(order, group)
+		subscription.Plan = otohaPlanName(order, group, "")
 		subscription.ExpiresAt = formatOtohaTime(sub.ExpiresAt)
 		if order != nil {
 			subscription.Reference = order.Reference
@@ -444,10 +447,12 @@ func (s *OtohaService) latestPlanOrder(ctx context.Context, userID int64) *Otoha
 	return order
 }
 
-// otohaPlanName is the name of the plan the user last bought, or the group's name.
-func otohaPlanName(order *OtohaPlanOrder, group *Group) string {
+// otohaPlanName is the name of the plan the user last bought, in the language the request prefers where the
+// plan has it (TASK-82), or the group's name.
+func otohaPlanName(order *OtohaPlanOrder, group *Group, acceptLanguage string) string {
 	if order != nil && strings.TrimSpace(order.PlanName) != "" {
-		return strings.TrimSpace(order.PlanName)
+		plan := &dbent.SubscriptionPlan{Name: order.PlanName, Translations: order.PlanTranslations}
+		return strings.TrimSpace(LocalizedPlanText(plan, acceptLanguage).Name)
 	}
 	if group != nil {
 		return strings.TrimSpace(group.Name)
@@ -546,7 +551,7 @@ func (s *OtohaService) AccountSummary(ctx context.Context, userID int64) (*Otoha
 		plan := &OtohaAccountPlan{
 			PlanID:          current.PlanID,
 			HasOwnAllowance: current.hasOwnAllowance(),
-			Name:            otohaPlanName(s.latestPlanOrder(ctx, userID), group),
+			Name:            otohaPlanName(s.latestPlanOrder(ctx, userID), group, PlanLocaleFromContext(ctx)),
 			ExpiresAt:       current.ExpiresAt,
 			MonthlyUsedUSD:  current.MonthlyUsageUSD,
 			PeriodResetsAt:  current.MonthlyResetTime(),

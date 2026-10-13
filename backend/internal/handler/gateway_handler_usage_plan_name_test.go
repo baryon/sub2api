@@ -57,3 +57,44 @@ func TestUsagePlanNameIsTheSubscriptionsPlan(t *testing.T) {
 		require.Equal(t, tc.want, response["planName"])
 	}
 }
+
+// languagePlanNamesStub answers with the plan's name in the language the context carries (TASK-82).
+type languagePlanNamesStub struct{}
+
+func (languagePlanNamesStub) PlanName(ctx context.Context, _ int64) (string, error) {
+	if service.PlanLocaleFromContext(ctx) == "en" {
+		return "Standard", nil
+	}
+	return "标准版", nil
+}
+
+// TASK-82: /v1/usage asks for the plan's name in the request's language when it carries one; otherwise the
+// name is as before.
+func TestUsagePlanNameFollowsTheRequestsLanguage(t *testing.T) {
+	planID := int64(1)
+	for header, want := range map[string]string{"en": "Standard", "": "标准版", "zh-CN": "标准版"} {
+		gin.SetMode(gin.TestMode)
+		rec := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(rec)
+		c.Request = httptest.NewRequest(http.MethodGet, "/v1/usage", nil)
+		if header != "" {
+			c.Request.Header.Set("Accept-Language", header)
+		}
+		start := time.Now().Add(-24 * time.Hour)
+		c.Set(string(middleware.ContextKeySubscription), &service.UserSubscription{StartsAt: start, ExpiresAt: start.Add(30 * 24 * time.Hour), MonthlyWindowStart: &start, PlanID: &planID})
+		c.Set(string(middleware.ContextKeyAPIKey), &service.APIKey{ID: 31, Status: service.StatusActive, Group: &service.Group{
+			ID: 5, Name: "Otoha", SubscriptionType: service.SubscriptionTypeSubscription, BalanceFallbackEnabled: true,
+		}})
+		c.Set(string(middleware.ContextKeyUser), middleware.AuthSubject{UserID: 9})
+		h := &GatewayHandler{
+			userService:  service.NewUserService(usageUserRepoStub{balance: 3}, nil, nil, nil),
+			usageService: service.NewUsageService(&otohaUsageRepoStub{}, nil, nil, nil),
+		}
+		h.SetPlanNames(languagePlanNamesStub{})
+		h.Usage(c)
+		require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+		var response map[string]any
+		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &response))
+		require.Equal(t, want, response["planName"], "Accept-Language %q", header)
+	}
+}

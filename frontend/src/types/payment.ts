@@ -152,6 +152,8 @@ export interface SubscriptionPlan {
   validity_unit: string
   /** Stored as JSON string in backend; API layer should parse before use */
   features: string[]
+  /** Admin only: name, description and features per language; {} when the plan has none. */
+  translations?: Record<string, { name?: string; description?: string; features?: string }>
   for_sale: boolean
   sort_order: number
 }

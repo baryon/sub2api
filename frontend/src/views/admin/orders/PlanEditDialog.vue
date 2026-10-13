@@ -84,6 +84,38 @@
         <textarea v-model="planFeaturesText" rows="3" class="input" :placeholder="t('payment.admin.featuresPlaceholder')"></textarea>
         <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('payment.admin.featuresHint') }}</p>
       </div>
+      <!-- The plan's text in other languages; whatever is left empty shows the text above -->
+      <div class="space-y-3 rounded-lg border border-gray-200 p-3 dark:border-dark-600">
+        <div>
+          <p class="input-label mb-0">{{ t('payment.admin.translationsTitle') }}</p>
+          <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('payment.admin.translationsHint') }}</p>
+        </div>
+        <div v-for="language in PLAN_TEXT_LANGUAGES" :key="language.code" class="space-y-2">
+          <p class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ language.label }}</p>
+          <input
+            v-model="translationsForm[language.code].name"
+            type="text"
+            maxlength="100"
+            class="input"
+            :aria-label="`${language.label} ${t('payment.admin.planName')}`"
+            :placeholder="t('payment.admin.planName')"
+          />
+          <textarea
+            v-model="translationsForm[language.code].description"
+            rows="2"
+            class="input"
+            :aria-label="`${language.label} ${t('payment.admin.planDescription')}`"
+            :placeholder="t('payment.admin.planDescription')"
+          ></textarea>
+          <textarea
+            v-model="translationsForm[language.code].features"
+            rows="3"
+            class="input"
+            :aria-label="`${language.label} ${t('payment.admin.features')}`"
+            :placeholder="t('payment.admin.featuresHint')"
+          ></textarea>
+        </div>
+      </div>
       <div class="flex items-center gap-3">
         <label class="text-sm text-gray-700 dark:text-gray-300">{{ t('payment.admin.forSale') }}</label>
         <button
@@ -126,6 +158,7 @@ import Icon from '@/components/icons/Icon.vue'
 import GroupBadge from '@/components/common/GroupBadge.vue'
 import { platformTextClass } from '@/utils/platformColors'
 import { planAllowanceInput, planAllowancePayload } from '@/utils/subscriptionLimits'
+import { PLAN_TEXT_LANGUAGES, planTranslationsForm, planTranslationsPayload } from '@/utils/planTranslations'
 
 const props = defineProps<{
   show: boolean
@@ -149,6 +182,7 @@ const planForm = reactive({
 })
 type AllowanceKey = 'plan_daily_limit_usd' | 'plan_weekly_limit_usd' | 'plan_monthly_limit_usd'
 const planFeaturesText = ref('')
+const translationsForm = reactive(planTranslationsForm(null))
 
 const validityUnitOptions = computed(() => [
   { value: 'days', label: t('payment.admin.days') },
@@ -215,10 +249,12 @@ watch(() => props.show, (visible) => {
     Object.assign(planForm, { name: props.plan.name, group_id: props.plan.group_id, description: props.plan.description, price: props.plan.price, original_price: props.plan.original_price || 0, currency: props.plan.currency || '', validity_days: props.plan.validity_days, validity_unit: props.plan.validity_unit || 'days', sort_order: props.plan.sort_order || 0, for_sale: props.plan.for_sale,
       plan_daily_limit_usd: planAllowanceInput(props.plan.plan_daily_limit_usd), plan_weekly_limit_usd: planAllowanceInput(props.plan.plan_weekly_limit_usd), plan_monthly_limit_usd: planAllowanceInput(props.plan.plan_monthly_limit_usd) })
     planFeaturesText.value = (props.plan.features || []).join('\n')
+    Object.assign(translationsForm, planTranslationsForm(props.plan.translations))
   } else {
     Object.assign(planForm, { name: '', group_id: null, description: '', price: 0, original_price: 0, currency: '', validity_days: 30, validity_unit: 'days', sort_order: 0, for_sale: true,
       plan_daily_limit_usd: '', plan_weekly_limit_usd: '', plan_monthly_limit_usd: '' })
     planFeaturesText.value = ''
+    Object.assign(translationsForm, planTranslationsForm(null))
   }
 })
 
@@ -237,6 +273,7 @@ function buildPlanPayload() {
     sort_order: planForm.sort_order,
     for_sale: planForm.for_sale,
     features,
+    translations: planTranslationsPayload(translationsForm, props.plan?.translations),
     // 0 = no allowance of its own: the group's limit applies
     plan_daily_limit_usd: planAllowancePayload(planForm.plan_daily_limit_usd),
     plan_weekly_limit_usd: planAllowancePayload(planForm.plan_weekly_limit_usd),

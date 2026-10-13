@@ -299,23 +299,25 @@ type AdminSubscriptionPlanResult struct {
 	WeeklyLimitUSD  *float64 `json:"weekly_limit_usd,omitempty"`
 	MonthlyLimitUSD *float64 `json:"monthly_limit_usd,omitempty"`
 	// The plan's own allowance (TASK-57); null when the plan follows the group's limit.
-	PlanDailyLimitUSD   *float64  `json:"plan_daily_limit_usd"`
-	PlanWeeklyLimitUSD  *float64  `json:"plan_weekly_limit_usd"`
-	PlanMonthlyLimitUSD *float64  `json:"plan_monthly_limit_usd"`
-	ModelScopes         []string  `json:"supported_model_scopes,omitempty"`
-	Name                string    `json:"name"`
-	Description         string    `json:"description"`
-	Price               float64   `json:"price"`
-	OriginalPrice       *float64  `json:"original_price,omitempty"`
-	Currency            string    `json:"currency,omitempty"`
-	ValidityDays        int       `json:"validity_days"`
-	ValidityUnit        string    `json:"validity_unit"`
-	Features            string    `json:"features"`
-	ProductName         string    `json:"product_name"`
-	ForSale             bool      `json:"for_sale"`
-	SortOrder           int       `json:"sort_order"`
-	CreatedAt           time.Time `json:"created_at,omitempty"`
-	UpdatedAt           time.Time `json:"updated_at,omitempty"`
+	PlanDailyLimitUSD   *float64 `json:"plan_daily_limit_usd"`
+	PlanWeeklyLimitUSD  *float64 `json:"plan_weekly_limit_usd"`
+	PlanMonthlyLimitUSD *float64 `json:"plan_monthly_limit_usd"`
+	ModelScopes         []string `json:"supported_model_scopes,omitempty"`
+	Name                string   `json:"name"`
+	Description         string   `json:"description"`
+	Price               float64  `json:"price"`
+	OriginalPrice       *float64 `json:"original_price,omitempty"`
+	Currency            string   `json:"currency,omitempty"`
+	ValidityDays        int      `json:"validity_days"`
+	ValidityUnit        string   `json:"validity_unit"`
+	Features            string   `json:"features"`
+	ProductName         string   `json:"product_name"`
+	// Name, description and features per language, keyed by language tag; {} when the plan has none (TASK-82).
+	Translations map[string]map[string]string `json:"translations"`
+	ForSale      bool                         `json:"for_sale"`
+	SortOrder    int                          `json:"sort_order"`
+	CreatedAt    time.Time                    `json:"created_at,omitempty"`
+	UpdatedAt    time.Time                    `json:"updated_at,omitempty"`
 }
 
 func adminSubscriptionPlansForResponse(plans []*dbent.SubscriptionPlan, groupInfo map[int64]service.PlanGroupInfo) []AdminSubscriptionPlanResult {
@@ -347,6 +349,7 @@ func adminSubscriptionPlansForResponse(plans []*dbent.SubscriptionPlan, groupInf
 			ValidityUnit:        p.ValidityUnit,
 			Features:            p.Features,
 			ProductName:         p.ProductName,
+			Translations:        planTranslationsForResponse(p.Translations),
 			ForSale:             p.ForSale,
 			SortOrder:           p.SortOrder,
 			CreatedAt:           p.CreatedAt,
@@ -354,6 +357,13 @@ func adminSubscriptionPlansForResponse(plans []*dbent.SubscriptionPlan, groupInf
 		})
 	}
 	return result
+}
+
+func planTranslationsForResponse(t map[string]map[string]string) map[string]map[string]string {
+	if t == nil {
+		return map[string]map[string]string{}
+	}
+	return t
 }
 
 // CreatePlan creates a new subscription plan.

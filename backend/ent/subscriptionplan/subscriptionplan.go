@@ -33,6 +33,8 @@ const (
 	FieldFeatures = "features"
 	// FieldProductName holds the string denoting the product_name field in the database.
 	FieldProductName = "product_name"
+	// FieldTranslations holds the string denoting the translations field in the database.
+	FieldTranslations = "translations"
 	// FieldDailyLimitUsd holds the string denoting the daily_limit_usd field in the database.
 	FieldDailyLimitUsd = "daily_limit_usd"
 	// FieldWeeklyLimitUsd holds the string denoting the weekly_limit_usd field in the database.
@@ -64,6 +66,7 @@ var Columns = []string{
 	FieldValidityUnit,
 	FieldFeatures,
 	FieldProductName,
+	FieldTranslations,
 	FieldDailyLimitUsd,
 	FieldWeeklyLimitUsd,
 	FieldMonthlyLimitUsd,

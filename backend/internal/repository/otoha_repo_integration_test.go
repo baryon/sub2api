@@ -201,6 +201,30 @@ func TestOtohaRepoLatestPlanOrderNamesTheLastCompletedPlan(t *testing.T) {
 	require.Equal(t, fmt.Sprintf("otoha-pro-%d", f.user.ID), order.Reference)
 }
 
+// TASK-82: the latest plan order carries the plan's per-language texts, so the account page can name the plan in
+// the buyer's language; a plan without any has none.
+func TestOtohaRepoLatestPlanOrderCarriesThePlansTranslations(t *testing.T) {
+	ctx := context.Background()
+	f := newOtohaRepoFixture(t)
+
+	plan, err := integrationEntClient.SubscriptionPlan.Create().SetGroupID(f.group.ID).SetName("标准版").SetPrice(20).SetValidityDays(30).
+		SetTranslations(map[string]map[string]string{"en": {"name": "Standard"}}).Save(ctx)
+	require.NoError(t, err)
+	mustCreateOtohaOrder(t, f, plan.ID, f.group.ID, payment.OrderStatusCompleted, time.Now().Add(-time.Hour), "otoha-translated")
+
+	order, err := f.repo.LatestPlanOrder(ctx, f.user.ID, f.group.ID)
+	require.NoError(t, err)
+	require.NotNil(t, order)
+	require.Equal(t, map[string]map[string]string{"en": {"name": "Standard"}}, order.PlanTranslations)
+
+	plain, err := integrationEntClient.SubscriptionPlan.Create().SetGroupID(f.group.ID).SetName("旧版").SetPrice(10).SetValidityDays(30).Save(ctx)
+	require.NoError(t, err)
+	mustCreateOtohaOrder(t, f, plain.ID, f.group.ID, payment.OrderStatusCompleted, time.Now(), "otoha-plain")
+	order, err = f.repo.LatestPlanOrder(ctx, f.user.ID, f.group.ID)
+	require.NoError(t, err)
+	require.Empty(t, order.PlanTranslations)
+}
+
 func mustCreateOtohaOrder(t *testing.T, f *otohaRepoFixture, planID, groupID int64, status string, completedAt time.Time, ref string) *dbent.PaymentOrder {
 	t.Helper()
 	create := integrationEntClient.PaymentOrder.Create().

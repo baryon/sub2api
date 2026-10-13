@@ -44775,6 +44775,7 @@ type SubscriptionPlanMutation struct {
 	validity_unit        *string
 	features             *string
 	product_name         *string
+	translations         *map[string]map[string]string
 	daily_limit_usd      *float64
 	adddaily_limit_usd   *float64
 	weekly_limit_usd     *float64
@@ -45344,6 +45345,55 @@ func (m *SubscriptionPlanMutation) ResetProductName() {
 	m.product_name = nil
 }
 
+// SetTranslations sets the "translations" field.
+func (m *SubscriptionPlanMutation) SetTranslations(value map[string]map[string]string) {
+	m.translations = &value
+}
+
+// Translations returns the value of the "translations" field in the mutation.
+func (m *SubscriptionPlanMutation) Translations() (r map[string]map[string]string, exists bool) {
+	v := m.translations
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTranslations returns the old "translations" field's value of the SubscriptionPlan entity.
+// If the SubscriptionPlan object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SubscriptionPlanMutation) OldTranslations(ctx context.Context) (v map[string]map[string]string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTranslations is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTranslations requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTranslations: %w", err)
+	}
+	return oldValue.Translations, nil
+}
+
+// ClearTranslations clears the value of the "translations" field.
+func (m *SubscriptionPlanMutation) ClearTranslations() {
+	m.translations = nil
+	m.clearedFields[subscriptionplan.FieldTranslations] = struct{}{}
+}
+
+// TranslationsCleared returns if the "translations" field was cleared in this mutation.
+func (m *SubscriptionPlanMutation) TranslationsCleared() bool {
+	_, ok := m.clearedFields[subscriptionplan.FieldTranslations]
+	return ok
+}
+
+// ResetTranslations resets all changes to the "translations" field.
+func (m *SubscriptionPlanMutation) ResetTranslations() {
+	m.translations = nil
+	delete(m.clearedFields, subscriptionplan.FieldTranslations)
+}
+
 // SetDailyLimitUsd sets the "daily_limit_usd" field.
 func (m *SubscriptionPlanMutation) SetDailyLimitUsd(f float64) {
 	m.daily_limit_usd = &f
@@ -45752,7 +45802,7 @@ func (m *SubscriptionPlanMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *SubscriptionPlanMutation) Fields() []string {
-	fields := make([]string, 0, 17)
+	fields := make([]string, 0, 18)
 	if m.group_id != nil {
 		fields = append(fields, subscriptionplan.FieldGroupID)
 	}
@@ -45782,6 +45832,9 @@ func (m *SubscriptionPlanMutation) Fields() []string {
 	}
 	if m.product_name != nil {
 		fields = append(fields, subscriptionplan.FieldProductName)
+	}
+	if m.translations != nil {
+		fields = append(fields, subscriptionplan.FieldTranslations)
 	}
 	if m.daily_limit_usd != nil {
 		fields = append(fields, subscriptionplan.FieldDailyLimitUsd)
@@ -45832,6 +45885,8 @@ func (m *SubscriptionPlanMutation) Field(name string) (ent.Value, bool) {
 		return m.Features()
 	case subscriptionplan.FieldProductName:
 		return m.ProductName()
+	case subscriptionplan.FieldTranslations:
+		return m.Translations()
 	case subscriptionplan.FieldDailyLimitUsd:
 		return m.DailyLimitUsd()
 	case subscriptionplan.FieldWeeklyLimitUsd:
@@ -45875,6 +45930,8 @@ func (m *SubscriptionPlanMutation) OldField(ctx context.Context, name string) (e
 		return m.OldFeatures(ctx)
 	case subscriptionplan.FieldProductName:
 		return m.OldProductName(ctx)
+	case subscriptionplan.FieldTranslations:
+		return m.OldTranslations(ctx)
 	case subscriptionplan.FieldDailyLimitUsd:
 		return m.OldDailyLimitUsd(ctx)
 	case subscriptionplan.FieldWeeklyLimitUsd:
@@ -45967,6 +46024,13 @@ func (m *SubscriptionPlanMutation) SetField(name string, value ent.Value) error 
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetProductName(v)
+		return nil
+	case subscriptionplan.FieldTranslations:
+		v, ok := value.(map[string]map[string]string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTranslations(v)
 		return nil
 	case subscriptionplan.FieldDailyLimitUsd:
 		v, ok := value.(float64)
@@ -46149,6 +46213,9 @@ func (m *SubscriptionPlanMutation) ClearedFields() []string {
 	if m.FieldCleared(subscriptionplan.FieldOriginalPrice) {
 		fields = append(fields, subscriptionplan.FieldOriginalPrice)
 	}
+	if m.FieldCleared(subscriptionplan.FieldTranslations) {
+		fields = append(fields, subscriptionplan.FieldTranslations)
+	}
 	if m.FieldCleared(subscriptionplan.FieldDailyLimitUsd) {
 		fields = append(fields, subscriptionplan.FieldDailyLimitUsd)
 	}
@@ -46174,6 +46241,9 @@ func (m *SubscriptionPlanMutation) ClearField(name string) error {
 	switch name {
 	case subscriptionplan.FieldOriginalPrice:
 		m.ClearOriginalPrice()
+		return nil
+	case subscriptionplan.FieldTranslations:
+		m.ClearTranslations()
 		return nil
 	case subscriptionplan.FieldDailyLimitUsd:
 		m.ClearDailyLimitUsd()
@@ -46221,6 +46291,9 @@ func (m *SubscriptionPlanMutation) ResetField(name string) error {
 		return nil
 	case subscriptionplan.FieldProductName:
 		m.ResetProductName()
+		return nil
+	case subscriptionplan.FieldTranslations:
+		m.ResetTranslations()
 		return nil
 	case subscriptionplan.FieldDailyLimitUsd:
 		m.ResetDailyLimitUsd()

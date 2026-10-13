@@ -185,6 +185,8 @@ type CreatePlanRequest struct {
 	ProductName   string   `json:"product_name"`
 	ForSale       bool     `json:"for_sale"`
 	SortOrder     int      `json:"sort_order"`
+	// Name, description and features per language, keyed by language tag (TASK-82).
+	Translations map[string]map[string]string `json:"translations"`
 	// The plan's own allowance per window (USD); empty or 0 follows the group's limit (TASK-57).
 	DailyLimitUSD   *float64 `json:"plan_daily_limit_usd"`
 	WeeklyLimitUSD  *float64 `json:"plan_weekly_limit_usd"`
@@ -204,6 +206,8 @@ type UpdatePlanRequest struct {
 	ProductName   *string  `json:"product_name"`
 	ForSale       *bool    `json:"for_sale"`
 	SortOrder     *int     `json:"sort_order"`
+	// Translations: nil leaves the languages unchanged; what is sent replaces all of them, {} removes them (TASK-82).
+	Translations *map[string]map[string]string `json:"translations"`
 	// Allowances: nil leaves the plan's allowance unchanged, 0 clears it (the group's limit applies), > 0 sets it.
 	DailyLimitUSD   *float64 `json:"plan_daily_limit_usd"`
 	WeeklyLimitUSD  *float64 `json:"plan_weekly_limit_usd"`

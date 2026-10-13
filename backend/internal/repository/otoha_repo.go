@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strconv"
@@ -129,11 +130,12 @@ func (r *otohaRepository) DeleteExpiredClaims(ctx context.Context, before time.T
 
 func (r *otohaRepository) LatestPlanOrder(ctx context.Context, userID, groupID int64) (*service.OtohaPlanOrder, error) {
 	var (
-		reference string
-		planName  sql.NullString
+		reference    string
+		planName     sql.NullString
+		translations []byte
 	)
 	err := r.db.QueryRowContext(ctx, `
-		SELECT o.out_trade_no, p.name
+		SELECT o.out_trade_no, p.name, p.translations
 		FROM payment_orders o
 		LEFT JOIN subscription_plans p ON p.id = o.plan_id
 		WHERE o.user_id = $1
@@ -143,12 +145,19 @@ func (r *otohaRepository) LatestPlanOrder(ctx context.Context, userID, groupID i
 		ORDER BY o.completed_at DESC NULLS LAST, o.id DESC
 		LIMIT 1`,
 		userID, payment.OrderTypeSubscription, groupID, payment.OrderStatusCompleted,
-	).Scan(&reference, &planName)
+	).Scan(&reference, &planName, &translations)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
 	if err != nil {
 		return nil, err
 	}
-	return &service.OtohaPlanOrder{PlanName: planName.String, Reference: reference}, nil
+	order := &service.OtohaPlanOrder{PlanName: planName.String, Reference: reference}
+	if len(translations) > 0 {
+		// A text that cannot be read only costs the translation: the plan's own name is shown.
+		if err := json.Unmarshal(translations, &order.PlanTranslations); err != nil {
+			order.PlanTranslations = nil
+		}
+	}
+	return order, nil
 }

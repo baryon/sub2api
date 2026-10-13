@@ -699,6 +699,16 @@ func ProductNameContainsFold(v string) predicate.SubscriptionPlan {
 	return predicate.SubscriptionPlan(sql.FieldContainsFold(FieldProductName, v))
 }
 
+// TranslationsIsNil applies the IsNil predicate on the "translations" field.
+func TranslationsIsNil() predicate.SubscriptionPlan {
+	return predicate.SubscriptionPlan(sql.FieldIsNull(FieldTranslations))
+}
+
+// TranslationsNotNil applies the NotNil predicate on the "translations" field.
+func TranslationsNotNil() predicate.SubscriptionPlan {
+	return predicate.SubscriptionPlan(sql.FieldNotNull(FieldTranslations))
+}
+
 // DailyLimitUsdEQ applies the EQ predicate on the "daily_limit_usd" field.
 func DailyLimitUsdEQ(v float64) predicate.SubscriptionPlan {
 	return predicate.SubscriptionPlan(sql.FieldEQ(FieldDailyLimitUsd, v))

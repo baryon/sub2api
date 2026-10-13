@@ -610,6 +610,8 @@ export default {
       groupId: '分组 ID',
       features: '功能特性',
       featuresHint: '每行一个特性',
+      translationsTitle: '其他语言的文字',
+      translationsHint: '使用该语言的用户看到这里的文字；留空的部分显示上面的原文字。',
       featuresPlaceholder: '输入套餐特性...',
       providerManagement: '服务商管理',
       providerManagementDesc: '管理支付服务商实例',

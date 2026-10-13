@@ -138,6 +138,12 @@ func (_c *SubscriptionPlanCreate) SetNillableProductName(v *string) *Subscriptio
 	return _c
 }
 
+// SetTranslations sets the "translations" field.
+func (_c *SubscriptionPlanCreate) SetTranslations(v map[string]map[string]string) *SubscriptionPlanCreate {
+	_c.mutation.SetTranslations(v)
+	return _c
+}
+
 // SetDailyLimitUsd sets the "daily_limit_usd" field.
 func (_c *SubscriptionPlanCreate) SetDailyLimitUsd(v float64) *SubscriptionPlanCreate {
 	_c.mutation.SetDailyLimitUsd(v)
@@ -441,6 +447,10 @@ func (_c *SubscriptionPlanCreate) createSpec() (*SubscriptionPlan, *sqlgraph.Cre
 		_spec.SetField(subscriptionplan.FieldProductName, field.TypeString, value)
 		_node.ProductName = value
 	}
+	if value, ok := _c.mutation.Translations(); ok {
+		_spec.SetField(subscriptionplan.FieldTranslations, field.TypeJSON, value)
+		_node.Translations = value
+	}
 	if value, ok := _c.mutation.DailyLimitUsd(); ok {
 		_spec.SetField(subscriptionplan.FieldDailyLimitUsd, field.TypeFloat64, value)
 		_node.DailyLimitUsd = &value
@@ -668,6 +678,24 @@ func (u *SubscriptionPlanUpsert) SetProductName(v string) *SubscriptionPlanUpser
 // UpdateProductName sets the "product_name" field to the value that was provided on create.
 func (u *SubscriptionPlanUpsert) UpdateProductName() *SubscriptionPlanUpsert {
 	u.SetExcluded(subscriptionplan.FieldProductName)
+	return u
+}
+
+// SetTranslations sets the "translations" field.
+func (u *SubscriptionPlanUpsert) SetTranslations(v map[string]map[string]string) *SubscriptionPlanUpsert {
+	u.Set(subscriptionplan.FieldTranslations, v)
+	return u
+}
+
+// UpdateTranslations sets the "translations" field to the value that was provided on create.
+func (u *SubscriptionPlanUpsert) UpdateTranslations() *SubscriptionPlanUpsert {
+	u.SetExcluded(subscriptionplan.FieldTranslations)
+	return u
+}
+
+// ClearTranslations clears the value of the "translations" field.
+func (u *SubscriptionPlanUpsert) ClearTranslations() *SubscriptionPlanUpsert {
+	u.SetNull(subscriptionplan.FieldTranslations)
 	return u
 }
 
@@ -1002,6 +1030,27 @@ func (u *SubscriptionPlanUpsertOne) SetProductName(v string) *SubscriptionPlanUp
 func (u *SubscriptionPlanUpsertOne) UpdateProductName() *SubscriptionPlanUpsertOne {
 	return u.Update(func(s *SubscriptionPlanUpsert) {
 		s.UpdateProductName()
+	})
+}
+
+// SetTranslations sets the "translations" field.
+func (u *SubscriptionPlanUpsertOne) SetTranslations(v map[string]map[string]string) *SubscriptionPlanUpsertOne {
+	return u.Update(func(s *SubscriptionPlanUpsert) {
+		s.SetTranslations(v)
+	})
+}
+
+// UpdateTranslations sets the "translations" field to the value that was provided on create.
+func (u *SubscriptionPlanUpsertOne) UpdateTranslations() *SubscriptionPlanUpsertOne {
+	return u.Update(func(s *SubscriptionPlanUpsert) {
+		s.UpdateTranslations()
+	})
+}
+
+// ClearTranslations clears the value of the "translations" field.
+func (u *SubscriptionPlanUpsertOne) ClearTranslations() *SubscriptionPlanUpsertOne {
+	return u.Update(func(s *SubscriptionPlanUpsert) {
+		s.ClearTranslations()
 	})
 }
 
@@ -1521,6 +1570,27 @@ func (u *SubscriptionPlanUpsertBulk) SetProductName(v string) *SubscriptionPlanU
 func (u *SubscriptionPlanUpsertBulk) UpdateProductName() *SubscriptionPlanUpsertBulk {
 	return u.Update(func(s *SubscriptionPlanUpsert) {
 		s.UpdateProductName()
+	})
+}
+
+// SetTranslations sets the "translations" field.
+func (u *SubscriptionPlanUpsertBulk) SetTranslations(v map[string]map[string]string) *SubscriptionPlanUpsertBulk {
+	return u.Update(func(s *SubscriptionPlanUpsert) {
+		s.SetTranslations(v)
+	})
+}
+
+// UpdateTranslations sets the "translations" field to the value that was provided on create.
+func (u *SubscriptionPlanUpsertBulk) UpdateTranslations() *SubscriptionPlanUpsertBulk {
+	return u.Update(func(s *SubscriptionPlanUpsert) {
+		s.UpdateTranslations()
+	})
+}
+
+// ClearTranslations clears the value of the "translations" field.
+func (u *SubscriptionPlanUpsertBulk) ClearTranslations() *SubscriptionPlanUpsertBulk {
+	return u.Update(func(s *SubscriptionPlanUpsert) {
+		s.ClearTranslations()
 	})
 }
 

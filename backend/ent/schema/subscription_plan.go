@@ -57,6 +57,11 @@ func (SubscriptionPlan) Fields() []ent.Field {
 		field.String("product_name").
 			MaxLen(100).
 			Default(""),
+		// 各语言的名称、介绍、要点：{"en": {"name": "...", "description": "...", "features": "..."}}。
+		// 缺少的语言或字段回退到上面的原文字（TASK-82）。
+		field.JSON("translations", map[string]map[string]string{}).
+			Optional().
+			SchemaType(map[string]string{dialect.Postgres: "jsonb"}),
 		// 套餐自己的日、周、月额度（美元）；为空时按分组的额度。购买时记入用户订阅。
 		field.Float("daily_limit_usd").
 			Optional().

@@ -49,45 +49,53 @@ func (h *PaymentHandler) GetPlans(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
-	// Enrich plans with group platform for frontend color coding
-	type planWithPlatform struct {
-		ID                 int64    `json:"id"`
-		GroupID            int64    `json:"group_id"`
-		GroupPlatform      string   `json:"group_platform"`
-		GroupName          string   `json:"group_name"`
-		RateMultiplier     float64  `json:"rate_multiplier"`
-		PeakRateEnabled    bool     `json:"peak_rate_enabled"`
-		PeakStart          string   `json:"peak_start"`
-		PeakEnd            string   `json:"peak_end"`
-		PeakRateMultiplier float64  `json:"peak_rate_multiplier"`
-		Name               string   `json:"name"`
-		Description        string   `json:"description"`
-		Price              float64  `json:"price"`
-		OriginalPrice      *float64 `json:"original_price,omitempty"`
-		Currency           string   `json:"currency,omitempty"`
-		ValidityDays       int      `json:"validity_days"`
-		ValidityUnit       string   `json:"validity_unit"`
-		Features           string   `json:"features"`
-		ProductName        string   `json:"product_name"`
-		ForSale            bool     `json:"for_sale"`
-		SortOrder          int      `json:"sort_order"`
-	}
 	groupInfo := h.configService.GetGroupInfoMap(c.Request.Context(), plans)
-	result := make([]planWithPlatform, 0, len(plans))
+	locale := c.GetHeader("Accept-Language")
+	result := make([]planListItem, 0, len(plans))
 	for _, p := range plans {
-		gi := groupInfo[p.GroupID]
-		result = append(result, planWithPlatform{
-			ID: int64(p.ID), GroupID: p.GroupID,
-			GroupPlatform: gi.Platform, GroupName: gi.Name,
-			RateMultiplier: gi.RateMultiplier, PeakRateEnabled: gi.PeakRateEnabled,
-			PeakStart: gi.PeakStart, PeakEnd: gi.PeakEnd, PeakRateMultiplier: gi.PeakRateMultiplier,
-			Name: p.Name, Description: p.Description, Price: p.Price, OriginalPrice: p.OriginalPrice,
-			Currency:     p.Currency,
-			ValidityDays: p.ValidityDays, ValidityUnit: p.ValidityUnit, Features: p.Features,
-			ProductName: p.ProductName, ForSale: p.ForSale, SortOrder: p.SortOrder,
-		})
+		result = append(result, planListItemFromPlan(p, groupInfo[p.GroupID], locale))
 	}
 	response.Success(c, result)
+}
+
+// planListItem is a plan as the plan list shows it, enriched with its group's platform for frontend color coding.
+type planListItem struct {
+	ID                 int64    `json:"id"`
+	GroupID            int64    `json:"group_id"`
+	GroupPlatform      string   `json:"group_platform"`
+	GroupName          string   `json:"group_name"`
+	RateMultiplier     float64  `json:"rate_multiplier"`
+	PeakRateEnabled    bool     `json:"peak_rate_enabled"`
+	PeakStart          string   `json:"peak_start"`
+	PeakEnd            string   `json:"peak_end"`
+	PeakRateMultiplier float64  `json:"peak_rate_multiplier"`
+	Name               string   `json:"name"`
+	Description        string   `json:"description"`
+	Price              float64  `json:"price"`
+	OriginalPrice      *float64 `json:"original_price,omitempty"`
+	Currency           string   `json:"currency,omitempty"`
+	ValidityDays       int      `json:"validity_days"`
+	ValidityUnit       string   `json:"validity_unit"`
+	Features           string   `json:"features"`
+	ProductName        string   `json:"product_name"`
+	ForSale            bool     `json:"for_sale"`
+	SortOrder          int      `json:"sort_order"`
+}
+
+// planListItemFromPlan shows the plan's name, description and features in the language the request prefers
+// (Accept-Language), falling back to the plan's own text (TASK-82).
+func planListItemFromPlan(p *dbent.SubscriptionPlan, gi service.PlanGroupInfo, acceptLanguage string) planListItem {
+	text := service.LocalizedPlanText(p, acceptLanguage)
+	return planListItem{
+		ID: int64(p.ID), GroupID: p.GroupID,
+		GroupPlatform: gi.Platform, GroupName: gi.Name,
+		RateMultiplier: gi.RateMultiplier, PeakRateEnabled: gi.PeakRateEnabled,
+		PeakStart: gi.PeakStart, PeakEnd: gi.PeakEnd, PeakRateMultiplier: gi.PeakRateMultiplier,
+		Name: text.Name, Description: text.Description, Price: p.Price, OriginalPrice: p.OriginalPrice,
+		Currency:     p.Currency,
+		ValidityDays: p.ValidityDays, ValidityUnit: p.ValidityUnit, Features: text.Features,
+		ProductName: p.ProductName, ForSale: p.ForSale, SortOrder: p.SortOrder,
+	}
 }
 
 // GetCheckoutInfo returns all data the payment page needs in a single call:
@@ -123,7 +131,7 @@ func (h *PaymentHandler) GetCheckoutInfo(c *gin.Context) {
 	groupInfo := h.configService.GetGroupInfoMap(ctx, plans)
 	planList := make([]checkoutPlan, 0, len(plans))
 	for _, p := range plans {
-		planList = append(planList, checkoutPlanFromPlan(p, groupInfo[p.GroupID]))
+		planList = append(planList, checkoutPlanFromPlan(p, groupInfo[p.GroupID], c.GetHeader("Accept-Language")))
 	}
 
 	response.Success(c, checkoutInfoResponse{
@@ -194,7 +202,11 @@ type checkoutPlan struct {
 
 // checkoutPlanFromPlan is a plan as the checkout page shows it. Its limits are what the buyer gets: the plan's
 // own allowance where it has one, the group's limit otherwise (TASK-57).
-func checkoutPlanFromPlan(p *dbent.SubscriptionPlan, gi service.PlanGroupInfo) checkoutPlan {
+//
+// Its name, description and features are in the language the request prefers (Accept-Language), falling back to
+// the plan's own text (TASK-82).
+func checkoutPlanFromPlan(p *dbent.SubscriptionPlan, gi service.PlanGroupInfo, acceptLanguage string) checkoutPlan {
+	text := service.LocalizedPlanText(p, acceptLanguage)
 	limits := service.PlanEffectiveLimits(p.DailyLimitUsd, p.WeeklyLimitUsd, p.MonthlyLimitUsd, gi)
 	return checkoutPlan{
 		ID: int64(p.ID), GroupID: p.GroupID,
@@ -206,9 +218,9 @@ func checkoutPlanFromPlan(p *dbent.SubscriptionPlan, gi service.PlanGroupInfo) c
 		WeeklyLimitUSD: limits.WeeklyUSD, MonthlyLimitUSD: limits.MonthlyUSD,
 		HasOwnAllowance: service.PlanHasOwnAllowance(p.DailyLimitUsd, p.WeeklyLimitUsd, p.MonthlyLimitUsd),
 		ModelScopes:     gi.ModelScopes,
-		Name:            p.Name, Description: p.Description, Price: p.Price, OriginalPrice: p.OriginalPrice,
+		Name:            text.Name, Description: text.Description, Price: p.Price, OriginalPrice: p.OriginalPrice,
 		Currency:     p.Currency,
-		ValidityDays: p.ValidityDays, ValidityUnit: p.ValidityUnit, Features: parseFeatures(p.Features),
+		ValidityDays: p.ValidityDays, ValidityUnit: p.ValidityUnit, Features: parseFeatures(text.Features),
 		ProductName: p.ProductName,
 	}
 }

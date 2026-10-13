@@ -168,6 +168,10 @@ func (s *PaymentConfigService) CreatePlan(ctx context.Context, req CreatePlanReq
 	if err != nil {
 		return nil, err
 	}
+	translations, err := NormalizePlanTranslations(req.Translations)
+	if err != nil {
+		return nil, err
+	}
 	b := s.entClient.SubscriptionPlan.Create().
 		SetGroupID(req.GroupID).SetName(req.Name).SetDescription(req.Description).
 		SetPrice(req.Price).SetCurrency(currency).SetValidityDays(req.ValidityDays).SetValidityUnit(req.ValidityUnit).
@@ -175,6 +179,9 @@ func (s *PaymentConfigService) CreatePlan(ctx context.Context, req CreatePlanReq
 		SetForSale(req.ForSale).SetSortOrder(req.SortOrder)
 	if req.OriginalPrice != nil {
 		b.SetOriginalPrice(*req.OriginalPrice)
+	}
+	if len(translations) > 0 {
+		b.SetTranslations(translations)
 	}
 	b.SetNillableDailyLimitUsd(copyPositiveLimit(req.DailyLimitUSD)).
 		SetNillableWeeklyLimitUsd(copyPositiveLimit(req.WeeklyLimitUSD)).
@@ -193,6 +200,13 @@ func (s *PaymentConfigService) UpdatePlan(ctx context.Context, id int64, req Upd
 		return nil, err
 	}
 	u := s.entClient.SubscriptionPlan.UpdateOneID(id)
+	if req.Translations != nil {
+		translations, err := NormalizePlanTranslations(*req.Translations)
+		if err != nil {
+			return nil, err
+		}
+		u.SetTranslations(translations)
+	}
 	if req.DailyLimitUSD != nil {
 		if v := copyPositiveLimit(req.DailyLimitUSD); v != nil {
 			u.SetDailyLimitUsd(*v)
@@ -269,16 +283,17 @@ func (s *PaymentConfigService) DeletePlan(ctx context.Context, id int64) error {
 	return s.entClient.SubscriptionPlan.DeleteOneID(id).Exec(ctx)
 }
 
-// GetPlan returns a subscription plan by ID.
-// PlanName is a plan's name by its id (TASK-60).
+// PlanName is a plan's name by its id (TASK-60), in the language the context carries (WithPlanLocale) where
+// the plan has it (TASK-82).
 func (s *PaymentConfigService) PlanName(ctx context.Context, id int64) (string, error) {
 	plan, err := s.GetPlan(ctx, id)
 	if err != nil {
 		return "", err
 	}
-	return plan.Name, nil
+	return LocalizedPlanText(plan, PlanLocaleFromContext(ctx)).Name, nil
 }
 
+// GetPlan returns a subscription plan by ID.
 func (s *PaymentConfigService) GetPlan(ctx context.Context, id int64) (*dbent.SubscriptionPlan, error) {
 	plan, err := s.entClient.SubscriptionPlan.Get(ctx, id)
 	if err != nil {
