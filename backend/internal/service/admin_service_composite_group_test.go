@@ -206,14 +206,16 @@ func TestAdminService_CompositeModelsListCandidatesIncludeConcreteAccountMapping
 	require.Contains(t, candidates, "gemini-2.5-flash")
 }
 
-// 独立 CN 分组的模型列表候选沿用 default 分支的 Claude 默认列表；
-// composite 支持不得改变独立分组的候选语义。
+// 独立 CN 分组的模型列表候选：DeepSeek、Kimi、智谱列出各自的内置模型（本 fork 的取舍，
+// 网关 /v1/models 对这三类分组也用同一批默认模型），其余 CN 分组沿用 default 分支的
+// Claude 默认列表；composite 支持不得改变独立分组的候选语义。
 func TestAdminService_CNProviderModelsListCandidatesKeepClaudeDefaults(t *testing.T) {
-	want := make([]string, 0, len(claude.DefaultModels))
+	claudeDefaults := make([]string, 0, len(claude.DefaultModels))
 	for _, model := range claude.DefaultModels {
-		want = append(want, model.ID)
+		claudeDefaults = append(claudeDefaults, model.ID)
 	}
-	for _, platform := range []string{PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformMiniMax} {
-		require.Equal(t, want, defaultModelsListCandidateIDs(platform), "platform=%s", platform)
-	}
+	require.Equal(t, DeepSeekDefaultModelIDs(), defaultModelsListCandidateIDs(PlatformDeepseek))
+	require.Equal(t, KimiDefaultModelIDs(), defaultModelsListCandidateIDs(PlatformKimi))
+	require.Equal(t, ZhipuDefaultModelIDs(), defaultModelsListCandidateIDs(PlatformZhipu))
+	require.Equal(t, claudeDefaults, defaultModelsListCandidateIDs(PlatformMiniMax))
 }
