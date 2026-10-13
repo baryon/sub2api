@@ -38,11 +38,7 @@ func validateResponsesWebSocketTurnPlatform(
 	}
 	_, targetPlatform, err := resolveResponsesWebSocketTarget(c, apiKey, ctx, model)
 	if err != nil {
-		return service.NewOpenAIWSClientCloseError(
-			coderws.StatusPolicyViolation,
-			"Responses WebSocket model route could not be resolved",
-			err,
-		)
+		return responsesWebSocketTurnRouteError(model, err)
 	}
 	if targetPlatform == connectionPlatform {
 		return nil
@@ -55,6 +51,17 @@ func validateResponsesWebSocketTurnPlatform(
 		strings.TrimSpace(model),
 	)
 	return service.NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "model switch requires reconnect", cause)
+}
+
+// responsesWebSocketTurnRouteError maps a failed route resolution of a later turn: a model with no matching route
+// would need another connection (the same close as a switch to a model of another platform), a failing route lookup
+// is a server-side error.
+func responsesWebSocketTurnRouteError(model string, err error) error {
+	if errors.Is(err, errResponsesWebSocketCompositeTargetUnresolved) {
+		cause := fmt.Errorf("%w: model %q has no route in this Composite group", errOpenAIWSUnsupportedModelSwitch, strings.TrimSpace(model))
+		return service.NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "model switch requires reconnect", cause)
+	}
+	return service.NewOpenAIWSClientCloseError(coderws.StatusInternalError, "Failed to resolve composite model route", err)
 }
 
 func shouldRecordDeepSeekPartialUsage(account *service.Account, result *service.OpenAIForwardResult, forwardErr error) bool {
