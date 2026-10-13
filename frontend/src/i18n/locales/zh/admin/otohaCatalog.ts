@@ -77,8 +77,8 @@ export default {
       no_account_at: '分组里没有能处理这个模型的 {provider} 账号。',
       no_route: '分组不知道该把这个模型交给哪家服务商。请在分组的「Composite 路由」里为它指定服务商。',
       channel_restricted: '分组所在的渠道只允许它定了价的模型，这个模型不在其中。请在渠道定价里加上它。',
-      no_native_api: 'App 不支持这家服务商自己的格式，所以没有上架。有的服务商可以由网关转换（例如 Gemini 可用 Claude 格式）：在编辑里选择调用方式，确认能用后再上架。',
-      no_native_api_at: 'App 不支持 {provider} 自己的格式，所以没有上架。有的服务商可以由网关转换（例如 Gemini 可用 Claude 格式）：在编辑里选择调用方式，确认能用后再上架。',
+      no_native_api: 'App 不支持这家服务商自己的格式，所以没有上架。有的服务商可以由网关转换 Claude 格式：在编辑里选择调用方式，确认能用后再上架。',
+      no_native_api_at: 'App 不支持 {provider} 自己的格式，所以没有上架。有的服务商可以由网关转换 Claude 格式：在编辑里选择调用方式，确认能用后再上架。',
       api_unreachable: '给这个模型选的调用方式到不了这家服务商的账号。请改回自动或换一种方式。',
       api_unreachable_at: '给这个模型选的调用方式到不了 {provider} 的账号。请改回自动或换一种方式。',
       no_price: '价格表里没有这个模型的价格。请在分组设置的「分组逐模型定价」里为它设价格。'
@@ -101,7 +101,7 @@ export default {
       },
       discovery: {
         title: '上游发现',
-        intro: '系统会查看分组里的 Grok 和 TypeSafe 账号，把能用的视频、语音和快速判断模型加进目录，价格按分组的计费规则配好。账号不再提供的模型会暂时下架。',
+        intro: '系统会查看分组里的 Grok、Gemini 和 TypeSafe 账号，把网关能提供的视频、语音和快速判断模型加进目录（Gemini 的 Veo 会列出但不会加入：网关没有对应的调用），价格按分组的计费规则配好。账号不再提供的模型会暂时下架。',
         never: '还没检查过。',
         checked: '上次检查：{time}',
         checkedAuto: '上次检查：{time}（自动）',
@@ -230,7 +230,8 @@ export default {
           blockedByGroupModels: '分组的模型白名单不包含它',
           noAccount: '分组里没有账号开放这个模型',
           channelRestricted: '渠道限制了这个模型',
-          noRoute: '分组到不了这个模型'
+          noRoute: '分组到不了这个模型',
+          noPrice: '计费里没有这个模型自己的价格，会按内置的默认价收费。请先在分组的按模型定价里设置价格。'
         },
         accountError: {
           listFailed: '取不到这个账号的模型列表',
@@ -254,6 +255,8 @@ export default {
       perPicture: '每张图',
       perPictureShort: '每张',
       canEdit: '可以修改图片',
+      appUnsupported: 'Otoha App 暂不支持',
+      appUnsupportedHint: '网关只在 Gemini 原生调用上提供这个模型，Otoha App 不使用这种调用。用户可以用 API key 直接调用，调用方式显示在账户页。',
       qualitiesLine: '清晰度：{qualities}',
       setHere: '在此设置',
       tierNames: {

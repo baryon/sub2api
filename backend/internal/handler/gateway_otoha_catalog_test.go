@@ -59,8 +59,8 @@ func TestOtohaModelsListsImageModelsApartFromTheChatModels(t *testing.T) {
 		Schema: 1, Revision: "img1",
 		Models: []service.OtohaCatalogModel{{ID: "gpt-6-luna", Name: "Luna"}},
 		ImageModels: []service.OtohaImageModel{{
-			ID: "gpt-image-2", Name: "GPT Image 2", API: service.OtohaImageAPI, Edits: true, Qualities: []string{"low", "high"},
-			Currency: "USD", Per: "image",
+			ID: "gpt-image-2", Name: "GPT Image 2", API: service.OtohaImageAPI, Endpoint: "POST /v1/images/generations", App: true,
+			Edits: true, Qualities: []string{"low", "high"}, Currency: "USD", Per: "image",
 			Sizes: []service.OtohaImageSize{{Size: "1024x1024", Tier: "1K", Price: 0.06}, {Size: "1536x1024", Tier: "2K", Price: 0.09}},
 		}},
 	}})
@@ -76,7 +76,7 @@ func TestOtohaModelsListsImageModelsApartFromTheChatModels(t *testing.T) {
 	require.Equal(t, "gpt-6-luna", body.Models[0]["id"], "an older app, which reads only models, sees no image model")
 	require.Len(t, body.ImageModels, 1)
 	require.Equal(t, map[string]any{
-		"id": "gpt-image-2", "name": "GPT Image 2", "api": "openai-images", "edits": true,
+		"id": "gpt-image-2", "name": "GPT Image 2", "api": "openai-images", "endpoint": "POST /v1/images/generations", "app": true, "edits": true,
 		"qualities": []any{"low", "high"}, "currency": "USD", "per": "image",
 		"sizes": []any{
 			map[string]any{"size": "1024x1024", "tier": "1K", "price": 0.06},

@@ -290,6 +290,7 @@ describe('image model discovery', () => {
     expect(discoveryReasonKey('no_account')).toBe('reason.noAccount')
     expect(discoveryReasonKey('channel_restricted')).toBe('reason.channelRestricted')
     expect(discoveryReasonKey('no_route')).toBe('reason.noRoute')
+    expect(discoveryReasonKey('no_price')).toBe('reason.noPrice')
     expect(discoveryReasonKey('')).toBe('')
     expect(discoveryAccountErrorKey('list_failed')).toBe('accountError.listFailed')
     expect(discoveryAccountErrorKey('unsupported')).toBe('accountError.unsupported')

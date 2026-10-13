@@ -48,7 +48,7 @@ const (
 	// A composite group cannot tell which provider serves the model on the endpoint the app calls it through (no
 	// route, and its name does not say, or accounts of two providers claim it); the request would be refused.
 	OtohaCatalogProblemNoRoute = "no_route"
-	// The model goes to a provider whose own format the app does not speak (Gemini, TypeSafe), and the admin has not
+	// The model goes to a provider whose own format the app does not speak (TypeSafe), and the admin has not
 	// chosen one.
 	OtohaCatalogProblemNoNativeAPI = "no_native_api"
 	// The admin chose a format whose endpoint does not reach the provider the model goes to.
@@ -338,12 +338,13 @@ func (r OtohaModelRoute) routedContext(ctx context.Context, modelID string) cont
 }
 
 // OtohaNativeAPIForPlatform is the format the app calls a provider's models in: Anthropic Messages for Claude
-// (Anthropic, and Antigravity, which serves Claude through Messages), DeepSeek's own Responses for DeepSeek, OpenAI
-// Responses for OpenAI, Grok and the other providers the OpenAI gateway serves. Empty for a provider whose format the
-// app does not speak (Gemini, TypeSafe).
+// (Anthropic, and Antigravity, which serves Claude through Messages) and for Gemini (the gateway converts Messages to
+// Gemini's generateContent; of the inbound endpoints only /v1/messages is used, TASK-85), DeepSeek's own Responses for
+// DeepSeek, OpenAI Responses for OpenAI, Grok and the other providers the OpenAI gateway serves. Empty for a provider
+// whose format the app does not speak (TypeSafe).
 func OtohaNativeAPIForPlatform(platform string) string {
 	switch platform {
-	case PlatformAnthropic, PlatformAntigravity:
+	case PlatformAnthropic, PlatformAntigravity, PlatformGemini:
 		return OtohaAPIAnthropicMessages
 	case PlatformDeepseek:
 		return OtohaAPIDeepSeekResponses

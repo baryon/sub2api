@@ -80,6 +80,10 @@ export interface ImageModelRow {
   id: string
   name: string
   edits: boolean
+  /** Whether the Otoha app can use the model (a catalog that does not say means it can). */
+  app: boolean
+  /** The call an API key makes; empty when the catalog does not say. */
+  endpoint: string
   sizes: { size: string; price: string }[]
 }
 
@@ -90,7 +94,9 @@ export function imageModelRows(models: OtohaImageModel[] | undefined): ImageMode
     const sizes = model.sizes
       .filter((entry) => Number.isFinite(entry.price))
       .map((entry) => ({ size: entry.size.replace('x', '×'), price: formatPerMillion(entry.price) }))
-    return sizes.length ? [{ id: model.id, name: model.name || model.id, edits: model.edits, sizes }] : []
+    return sizes.length
+      ? [{ id: model.id, name: model.name || model.id, edits: model.edits, app: model.app !== false, endpoint: model.endpoint ?? '', sizes }]
+      : []
   })
 }
 

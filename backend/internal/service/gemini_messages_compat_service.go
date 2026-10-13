@@ -821,7 +821,7 @@ func (s *GeminiMessagesCompatService) Forward(ctx context.Context, c *gin.Contex
 			}
 			if resp.StatusCode == 429 {
 				// Mark as rate-limited early so concurrent requests avoid this account.
-				s.handleGeminiUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody)
+				s.handleGeminiUpstreamErrorForModel(ctx, account, originalModel, resp.StatusCode, resp.Header, respBody)
 			}
 			if attempt < geminiMaxRetries {
 				upstreamReqID := resp.Header.Get(requestIDHeader)
@@ -891,7 +891,7 @@ func (s *GeminiMessagesCompatService) Forward(ctx context.Context, c *gin.Contex
 				return nil, s.writeGeminiMappedError(c, account, resp.StatusCode, upstreamReqID, respBody)
 			case ErrorPolicyMatched, ErrorPolicyTempUnscheduled:
 				if policy == ErrorPolicyMatched {
-					s.handleGeminiUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody)
+					s.handleGeminiUpstreamErrorForModel(ctx, account, originalModel, resp.StatusCode, resp.Header, respBody)
 				}
 				upstreamReqID := resp.Header.Get(requestIDHeader)
 				if upstreamReqID == "" {
@@ -924,7 +924,7 @@ func (s *GeminiMessagesCompatService) Forward(ctx context.Context, c *gin.Contex
 		}
 
 		// ErrorPolicyNone → 原有逻辑
-		s.handleGeminiUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody)
+		s.handleGeminiUpstreamErrorForModel(ctx, account, originalModel, resp.StatusCode, resp.Header, respBody)
 		// 精确匹配服务端配置类 400 错误，触发 failover + 临时封禁
 		if resp.StatusCode == http.StatusBadRequest {
 			msg400 := strings.ToLower(strings.TrimSpace(extractUpstreamErrorMessage(respBody)))
@@ -1304,7 +1304,7 @@ func (s *GeminiMessagesCompatService) ForwardNative(ctx context.Context, c *gin.
 				break
 			}
 			if resp.StatusCode == 429 {
-				s.handleGeminiUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody)
+				s.handleGeminiUpstreamErrorForModel(ctx, account, originalModel, resp.StatusCode, resp.Header, respBody)
 			}
 			if attempt < geminiMaxRetries {
 				upstreamReqID := resp.Header.Get(requestIDHeader)
@@ -1419,7 +1419,7 @@ func (s *GeminiMessagesCompatService) ForwardNative(ctx context.Context, c *gin.
 				return nil, s.writeGeminiNativeUpstreamError(c, account, resp, respBody, requestID, isOAuth)
 			case ErrorPolicyMatched, ErrorPolicyTempUnscheduled:
 				if policy == ErrorPolicyMatched {
-					s.handleGeminiUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody)
+					s.handleGeminiUpstreamErrorForModel(ctx, account, originalModel, resp.StatusCode, resp.Header, respBody)
 				}
 				evBody := unwrapIfNeeded(isOAuth, respBody)
 				upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(evBody))
@@ -1449,7 +1449,7 @@ func (s *GeminiMessagesCompatService) ForwardNative(ctx context.Context, c *gin.
 		}
 
 		// ErrorPolicyNone → 原有逻辑
-		s.handleGeminiUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody)
+		s.handleGeminiUpstreamErrorForModel(ctx, account, originalModel, resp.StatusCode, resp.Header, respBody)
 		// 精确匹配服务端配置类 400 错误，触发 failover + 临时封禁
 		if resp.StatusCode == http.StatusBadRequest {
 			msg400 := strings.ToLower(strings.TrimSpace(extractUpstreamErrorMessage(respBody)))
@@ -2983,6 +2983,46 @@ func asInt(v any) (int, bool) {
 }
 
 func (s *GeminiMessagesCompatService) handleGeminiUpstreamError(ctx context.Context, account *Account, statusCode int, headers http.Header, body []byte) {
+	s.handleGeminiUpstreamErrorForModel(ctx, account, "", statusCode, headers, body)
+}
+
+// geminiModelRateLimitReason marks a model-level cooldown written for an upstream 429 (TASK-85).
+const geminiModelRateLimitReason = "gemini_upstream_429"
+
+// geminiRateLimitModelKey is the model a 429 on this account cools down alone, or "" when the whole account cools
+// down. The Gemini API's quotas are per model (a free key has none for a Pro model while Flash still answers), so a
+// 429 of an API key account (AI Studio, or a third-party relay) belongs to the requested model, under the name the
+// scheduler looks the cooldown up by (the account's mapping of it). Google One, Code Assist and Vertex accounts keep
+// the account-level cooldown, and so does a failure whose model is not known.
+func geminiRateLimitModelKey(account *Account, requestedModel string) string {
+	if account == nil || account.Platform != PlatformGemini || account.Type != AccountTypeAPIKey {
+		return ""
+	}
+	requestedModel = strings.TrimSpace(requestedModel)
+	if requestedModel == "" {
+		return ""
+	}
+	return strings.TrimSpace(account.GetMappedModel(requestedModel))
+}
+
+// markGeminiRateLimited cools the account down until resetAt, or only modelKey on it when one is given. The cooldown
+// is also set on the account in hand so the retry of the same request sees it.
+func (s *GeminiMessagesCompatService) markGeminiRateLimited(ctx context.Context, account *Account, modelKey string, resetAt time.Time) {
+	if modelKey == "" {
+		_ = s.accountRepo.SetRateLimited(ctx, account.ID, resetAt)
+		return
+	}
+	setAccountModelRateLimitSnapshot(account, modelKey, resetAt, geminiModelRateLimitReason, time.Now())
+	if err := s.accountRepo.SetModelRateLimit(ctx, account.ID, modelKey, resetAt, geminiModelRateLimitReason); err != nil {
+		logger.LegacyPrintf("service.gemini_messages_compat", "[Gemini 429] Account %d model %s rate limit not saved: %v", account.ID, modelKey, err)
+		return
+	}
+	logger.LegacyPrintf("service.gemini_messages_compat", "[Gemini 429] Account %d model %s rate limited until %v (other models stay available)", account.ID, modelKey, resetAt)
+}
+
+// handleGeminiUpstreamErrorForModel handles an upstream error of a request for requestedModel (the name the client
+// asked for; empty when not known).
+func (s *GeminiMessagesCompatService) handleGeminiUpstreamErrorForModel(ctx context.Context, account *Account, requestedModel string, statusCode int, headers http.Header, body []byte) {
 	// 遵守自定义错误码策略：未命中则跳过所有限流处理
 	if !account.ShouldHandleErrorCode(statusCode) {
 		return
@@ -2999,8 +3039,9 @@ func (s *GeminiMessagesCompatService) handleGeminiUpstreamError(ctx context.Cont
 	if account.IsPoolMode() && !account.IsCustomErrorCodesEnabled() {
 		return
 	}
+	modelKey := geminiRateLimitModelKey(account, requestedModel)
 	if account.IsGeminiThirdPartyAPIKey() {
-		s.handleGeminiThirdParty429(ctx, account, body)
+		s.handleGeminiThirdParty429(ctx, account, modelKey, body)
 		return
 	}
 
@@ -3040,24 +3081,36 @@ func (s *GeminiMessagesCompatService) handleGeminiUpstreamError(ctx context.Cont
 				logger.LegacyPrintf("service.gemini_messages_compat", "[Gemini 429] Account %d rate limited, fallback to 5min", account.ID)
 			}
 		}
-		_ = s.accountRepo.SetRateLimited(ctx, account.ID, ra)
+		s.markGeminiRateLimited(ctx, account, modelKey, ra)
 		return
 	}
 
 	// 使用解析到的重置时间
 	resetTime := time.Unix(*resetAt, 0)
-	_ = s.accountRepo.SetRateLimited(ctx, account.ID, resetTime)
+	s.markGeminiRateLimited(ctx, account, modelKey, resetTime)
 	logger.LegacyPrintf("service.gemini_messages_compat", "[Gemini 429] Account %d rate limited until %v (oauth_type=%s, tier=%s)",
 		account.ID, resetTime, oauthType, tierID)
 }
 
 // handleGeminiThirdParty429 处理第三方上游的 429：不套用 AI Studio 每日配额语义，
 // 只认响应里显式给出的重试时间，否则走全局 429 兜底冷却。
-func (s *GeminiMessagesCompatService) handleGeminiThirdParty429(ctx context.Context, account *Account, body []byte) {
+func (s *GeminiMessagesCompatService) handleGeminiThirdParty429(ctx context.Context, account *Account, modelKey string, body []byte) {
 	if resetAt := parseGeminiRetryDelayResetTime(body); resetAt != nil {
 		resetTime := time.Unix(*resetAt, 0)
-		_ = s.accountRepo.SetRateLimited(ctx, account.ID, resetTime)
+		s.markGeminiRateLimited(ctx, account, modelKey, resetTime)
 		logger.LegacyPrintf("service.gemini_messages_compat", "[Gemini 429] Account %d (third-party API Key) rate limited until %v", account.ID, resetTime)
+		return
+	}
+	if modelKey != "" {
+		// The global fallback cools the whole account; a 429 that belongs to one model cools that model for the same time.
+		cooldown := time.Duration(defaultRateLimit429CooldownSeconds) * time.Second
+		if s.rateLimitService != nil {
+			var enabled bool
+			if cooldown, enabled = s.rateLimitService.get429FallbackCooldown(ctx, account); !enabled {
+				return
+			}
+		}
+		s.markGeminiRateLimited(ctx, account, modelKey, time.Now().Add(cooldown))
 		return
 	}
 	if s.rateLimitService != nil {

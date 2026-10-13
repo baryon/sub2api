@@ -2326,6 +2326,16 @@ func (s *BillingService) getVideoUnitPrice(model string, resolution string, grou
 	return s.getDefaultVideoPrice(model, resolution)
 }
 
+// HasOwnImagePrice reports whether the price table prices the model per picture by itself. A model it does not know
+// is still charged (getDefaultImagePrice falls back to a built-in price), but that price is not the model's own.
+func (s *BillingService) HasOwnImagePrice(model string) bool {
+	if s == nil || s.pricingService == nil {
+		return false
+	}
+	pricing := s.pricingService.GetIdentifiedModelPricing(model)
+	return pricing != nil && pricing.OutputCostPerImage > 0
+}
+
 // getDefaultImagePrice 获取 LiteLLM 默认图片价格
 func (s *BillingService) getDefaultImagePrice(model string, imageSize string) float64 {
 	if price, ok := getDefaultGrokImagineImagePrice(model, imageSize); ok {

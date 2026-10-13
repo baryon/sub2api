@@ -170,6 +170,8 @@ export interface OtohaImageAdminEntry extends OtohaImageEntryInput {
   in_catalog: boolean
   problem: OtohaCatalogProblem | 'images_not_allowed'
   route_platform: string
+  /** The format the model is reached in when it is not the OpenAI images one the Otoha app draws with; empty otherwise. */
+  route_api: string
   /** 'auto' entries were found from the group's accounts; 'manual' ones were added by an admin. */
   source: 'manual' | 'auto'
   /** On an auto entry: the fields an admin changed, which later checks leave alone. */
@@ -187,6 +189,7 @@ export type OtohaImageDeclaredBy =
   | 'image_price'
   | 'type'
   | 'capabilities'
+  | 'supported_generation_methods'
 export type OtohaImageDiscoveryResult = 'added' | 'updated' | 'unchanged' | 'manual_kept' | 'restored' | 'not_added'
 export type OtohaImageDiscoveryReason =
   | ''
@@ -195,6 +198,7 @@ export type OtohaImageDiscoveryReason =
   | 'no_account'
   | 'channel_restricted'
   | 'no_route'
+  | 'no_price'
 
 export interface OtohaImageDiscoveryAccount {
   id: number
@@ -236,6 +240,10 @@ export interface OtohaImageModel {
   name: string
   description?: string
   api: string
+  /** The call an API key makes, such as "POST /v1/images/generations". */
+  endpoint: string
+  /** Whether the Otoha app can use the model. */
+  app: boolean
   edits: boolean
   qualities: string[]
   currency: string

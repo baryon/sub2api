@@ -120,7 +120,8 @@
               <div class="font-medium text-gray-900 dark:text-white">{{ entry.name || entry.model_id }}</div>
               <div class="font-mono text-xs text-gray-500 dark:text-gray-400">{{ entry.model_id }}</div>
               <div v-if="entry.edits" class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.otohaCatalog.images.canEdit') }}</div>
-              <div v-if="entry.source === 'auto' || imageUpstreamMissing(entry)" class="mt-1 flex flex-wrap gap-1">
+              <div v-if="entry.source === 'auto' || imageUpstreamMissing(entry) || entry.route_api" class="mt-1 flex flex-wrap gap-1">
+                <span v-if="entry.route_api" class="badge badge-gray whitespace-nowrap" :title="t('admin.otohaCatalog.images.appUnsupportedHint')" data-testid="otoha-catalog-image-app-unsupported">{{ t('admin.otohaCatalog.images.appUnsupported') }}</span>
                 <span v-if="entry.source === 'auto'" class="badge badge-primary whitespace-nowrap" :title="t('admin.otohaCatalog.images.autoHint')">{{ t('admin.otohaCatalog.images.auto') }}</span>
                 <span v-if="imageUpstreamMissing(entry)" class="badge badge-warning whitespace-nowrap" :title="t('admin.otohaCatalog.images.statusHint.upstream_missing')">{{ t('admin.otohaCatalog.status.upstream_missing') }}</span>
               </div>

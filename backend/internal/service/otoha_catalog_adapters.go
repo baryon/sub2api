@@ -48,10 +48,18 @@ func NewOtohaCatalogService(
 		routing,
 	)
 	if imageRepo != nil {
-		svc.WithImages(imageRepo, otohaOpenAIImagePricer{openai: openAIGatewayService}, routing)
+		imagePricer := otohaImagePricerByPlatform{
+			openai: otohaOpenAIImagePricer{openai: openAIGatewayService},
+			gemini: otohaGeminiImagePricer{gateway: gatewayService},
+		}
+		svc.WithImages(imageRepo, imagePricer, routing)
 		if openAIGatewayService != nil {
 			// Billing charges the prices the admin set on image models, so they are what the app is shown (TASK-73).
 			openAIGatewayService.SetOtohaImagePriceOverrides(svc)
+		}
+		if gatewayService != nil {
+			// The Anthropic gateway bills the Gemini picture models and reads the same prices (TASK-85).
+			gatewayService.SetOtohaImagePriceOverrides(svc)
 		}
 		if accountTestService != nil && settingRepo != nil {
 			// The image entries are made from what the group's accounts list (TASK-76).
@@ -471,16 +479,28 @@ func (r otohaDiagnoserRouting) Route(ctx context.Context, group *Group, modelID,
 	return route
 }
 
-// ImageRoute tells where the group sends a request for an image model on the images endpoints, and whether an
-// account serves it there. Only the OpenAI and Grok gateways serve them.
+// ImageRoute tells where the group sends a request for an image model and in which format, and whether an account
+// serves it there. The OpenAI and Grok gateways serve the OpenAI images endpoints. A Gemini account serves a picture
+// model on the native generateContent call only (the images endpoints answer 404 for it), which the Otoha app does
+// not use (TASK-85).
 func (r otohaDiagnoserRouting) ImageRoute(ctx context.Context, group *Group, modelID string) OtohaModelRoute {
 	if group == nil {
 		return OtohaModelRoute{}
 	}
 	route := OtohaModelRoute{}
 	platform, model := group.Platform, modelID
+	endpoint := CompositeRouteEndpointImages
 	if group.Platform == PlatformComposite {
 		target := r.resolveComposite(ctx, group, modelID, CompositeRouteEndpointImages)
+		if target.failed {
+			return OtohaModelRoute{Problem: target.problem, Platform: target.platform, Failed: true}
+		}
+		if target.platform != PlatformOpenAI && target.platform != PlatformGrok {
+			// A model the images endpoints do not route may be one the native Gemini call does.
+			if native := r.resolveComposite(ctx, group, modelID, CompositeRouteEndpointGemini); native.problem == "" && native.platform == PlatformGemini {
+				target, endpoint = native, CompositeRouteEndpointGemini
+			}
+		}
 		if target.problem != "" {
 			return OtohaModelRoute{Problem: target.problem, Platform: target.platform, Failed: target.failed}
 		}
@@ -490,7 +510,15 @@ func (r otohaDiagnoserRouting) ImageRoute(ctx context.Context, group *Group, mod
 			route.UpstreamModel = model
 		}
 	}
-	if platform != PlatformOpenAI && platform != PlatformGrok {
+	diagnoser := r.openai
+	switch platform {
+	case PlatformOpenAI, PlatformGrok:
+		route.API = OtohaImageAPI
+	case PlatformGemini:
+		route.API = OtohaImageAPIGemini
+		endpoint = CompositeRouteEndpointGemini
+		diagnoser = r.gateway
+	default:
 		route.Problem = OtohaCatalogProblemNoRoute
 		return route
 	}
@@ -501,7 +529,7 @@ func (r otohaDiagnoserRouting) ImageRoute(ctx context.Context, group *Group, mod
 			PublicModel:    modelID,
 			TargetPlatform: platform,
 			UpstreamModel:  model,
-			Endpoint:       CompositeRouteEndpointImages,
+			Endpoint:       endpoint,
 		})
 	}
 	if r.restricted != nil && r.restricted(routedCtx, group.ID, model) {
@@ -509,7 +537,7 @@ func (r otohaDiagnoserRouting) ImageRoute(ctx context.Context, group *Group, mod
 		return route
 	}
 	groupID := group.ID
-	if r.openai != nil && !r.openai.DiagnoseModelAvailabilityForPlatform(ctx, &groupID, model, platform).HasModelSupport {
+	if diagnoser != nil && !diagnoser.DiagnoseModelAvailabilityForPlatform(ctx, &groupID, model, platform).HasModelSupport {
 		route.Problem = OtohaCatalogProblemNoAccount
 	}
 	return route

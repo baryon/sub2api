@@ -29,8 +29,8 @@ type otohaAccountModelLister interface {
 	ListOtohaModels(ctx context.Context, account *Account) ([]OtohaListedModel, string)
 }
 
-// otohaAccountListingSource lists, for each active OpenAI and Grok account of a group, what its upstream offers.
-// Accounts of other providers cannot serve the images endpoints and are left out.
+// otohaAccountListingSource lists, for each active OpenAI, Grok and Gemini account of a group, what its upstream
+// offers. Accounts of other providers draw nothing the gateway serves and are left out.
 type otohaAccountListingSource struct {
 	accounts AccountRepository
 	lister   otohaAccountModelLister
@@ -48,7 +48,7 @@ func (s *otohaAccountListingSource) ListGroupAccountModels(ctx context.Context, 
 	}
 	var drawing []*Account
 	for i := range accounts {
-		if accounts[i].Platform == PlatformOpenAI || accounts[i].Platform == PlatformGrok {
+		if accounts[i].Platform == PlatformOpenAI || accounts[i].Platform == PlatformGrok || accounts[i].Platform == PlatformGemini {
 			drawing = append(drawing, &accounts[i])
 		}
 	}
@@ -75,17 +75,23 @@ func (s *otohaAccountListingSource) ListGroupAccountModels(ctx context.Context, 
 // account's list of image generation models (xAI keeps it apart from /v1/models) is read as well. The second result
 // is empty when the list was read, else OtohaImageListUnsupported or OtohaImageListFailed. Nothing is saved.
 func (s *AccountTestService) ListOtohaModels(ctx context.Context, account *Account) ([]OtohaListedModel, string) {
-	_, body, err := s.fetchUpstreamModelList(ctx, account)
+	ids, body, err := s.fetchUpstreamModelList(ctx, account)
 	failure := ""
 	var models []OtohaListedModel
-	if err != nil {
+	switch {
+	case err != nil:
 		failure = OtohaImageListFailed
 		var syncErr *UpstreamModelSyncError
 		if errors.As(err, &syncErr) && syncErr.Kind == UpstreamModelSyncErrorUnsupported {
 			failure = OtohaImageListUnsupported
 		}
-	} else {
+	case len(body) > 0:
 		models = parseOtohaListedModels(body, false)
+	default:
+		// A list read without its body (a Vertex service account's) still names the models.
+		for _, id := range ids {
+			models = append(models, OtohaListedModel{ID: strings.TrimPrefix(id, "models/")})
+		}
 	}
 	if account.IsGrok() {
 		if imageBody := s.fetchGrokImageGenerationModels(ctx, account); len(imageBody) > 0 {

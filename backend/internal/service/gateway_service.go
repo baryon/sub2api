@@ -783,6 +783,7 @@ type GatewayService struct {
 	cfg                   *config.Config
 	schedulerSnapshot     *SchedulerSnapshotService
 	billingService        *BillingService
+	otohaImagePrices      OtohaImagePriceOverrides // Otoha catalog image prices the admin set; nil without a catalog (TASK-85)
 	rateLimitService      *RateLimitService
 	billingCacheService   *BillingCacheService
 	identityService       *IdentityService

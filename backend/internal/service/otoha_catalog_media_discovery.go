@@ -25,6 +25,9 @@ import (
 //     text to speech and speech to text (OtohaImageEvidenceBuiltinCatalog).
 //   - Quick judgement: a TypeSafe account has no model list; the gateway accepts exactly typesafe.JevLatestModel
 //     (OtohaImageEvidenceBuiltinCatalog).
+//   - Gemini video (Veo): a Gemini list names the models that take predictLongRunning (OtohaImageEvidenceDeclared).
+//     The gateway forwards no such call and billing has no price for a second of Veo, so they are reported, never
+//     added (TASK-85).
 
 const (
 	otohaGrokVideoFamily = "grok-imagine-video"
@@ -123,6 +126,12 @@ func otohaMediaCandidatesFrom(listings []OtohaAccountListing) []otohaMediaCandid
 			}
 			add(account, OtohaMediaKindVoice, OtohaVoiceModeTTS, otohaVoiceNameTTS, OtohaImageEvidenceBuiltinCatalog, "", true)
 			add(account, OtohaMediaKindVoice, OtohaVoiceModeSTT, otohaVoiceNameSTT, OtohaImageEvidenceBuiltinCatalog, "", true)
+		case account.IsGemini():
+			for _, m := range listing.Models {
+				if m.Video {
+					add(account, OtohaMediaKindVideo, m.ID, m.Name, OtohaImageEvidenceDeclared, m.VideoDeclaredBy, account.IsModelSupported(m.ID))
+				}
+			}
 		case account.IsTypeSafe():
 			for _, id := range otohaQuickModelIDs {
 				add(account, OtohaMediaKindQuick, id, otohaQuickNameJev, OtohaImageEvidenceBuiltinCatalog, "", true)
@@ -350,7 +359,7 @@ func (s *OtohaCatalogService) DiscoverMedia(ctx context.Context, groupID int64, 
 	}
 
 	switch group.Platform {
-	case PlatformGrok, PlatformTypeSafe, PlatformComposite:
+	case PlatformGrok, PlatformTypeSafe, PlatformGemini, PlatformComposite:
 	default:
 		report.SkippedReason = OtohaImageSkippedGroupPlatform
 		return save()
@@ -428,8 +437,8 @@ func (s *OtohaCatalogService) mediaCandidateReason(ctx context.Context, group *G
 
 // ---- reading the group's accounts ----
 
-// otohaMediaAccountSource lists, for each active Grok and TypeSafe account of a group, what it offers. A Grok
-// account's model list is read; a TypeSafe account has none.
+// otohaMediaAccountSource lists, for each active Grok, Gemini and TypeSafe account of a group, what it offers. A Grok
+// or Gemini account's model list is read; a TypeSafe account has none.
 type otohaMediaAccountSource struct {
 	accounts AccountRepository
 	lister   otohaAccountModelLister
@@ -448,7 +457,7 @@ func (s *otohaMediaAccountSource) ListGroupMediaAccounts(ctx context.Context, gr
 	}
 	var asked []*Account
 	for i := range accounts {
-		if accounts[i].Platform == PlatformGrok || accounts[i].Platform == PlatformTypeSafe {
+		if accounts[i].Platform == PlatformGrok || accounts[i].Platform == PlatformGemini || accounts[i].Platform == PlatformTypeSafe {
 			asked = append(asked, &accounts[i])
 		}
 	}
@@ -457,7 +466,7 @@ func (s *otohaMediaAccountSource) ListGroupMediaAccounts(ctx context.Context, gr
 	slots := make(chan struct{}, otohaImageListConcurrency)
 	for i, account := range asked {
 		listings[i] = OtohaAccountListing{Account: account}
-		if !account.IsGrok() {
+		if account.IsTypeSafe() {
 			continue
 		}
 		if s.lister == nil {

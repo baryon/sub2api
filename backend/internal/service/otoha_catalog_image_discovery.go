@@ -45,6 +45,9 @@ const (
 	OtohaListedKindImage = "image"
 	OtohaListedKindOther = "other"
 
+	// otohaGenerationMethodsField is the field of a Gemini list that declares what a model does.
+	otohaGenerationMethodsField = "supported_generation_methods"
+
 	OtohaImageEvidenceDeclared       = "declared"
 	OtohaImageEvidenceKnownFamily    = "known_family"
 	OtohaImageEvidenceBuiltinCatalog = "builtin_catalog"
@@ -92,6 +95,9 @@ var otohaKnownImageFamilies = []struct{ Platform, Prefix string }{
 }
 
 func otohaKnownImageFamily(platform, modelID string) bool {
+	if platform == PlatformGemini {
+		return geminiGenerateContentImageModel(modelID)
+	}
 	id := strings.ToLower(strings.TrimSpace(modelID))
 	for _, family := range otohaKnownImageFamilies {
 		if family.Platform == platform && strings.HasPrefix(id, family.Prefix) {
@@ -99,6 +105,16 @@ func otohaKnownImageFamily(platform, modelID string) bool {
 		}
 	}
 	return false
+}
+
+// geminiGenerateContentImageModel is a Gemini model that draws through generateContent, the one picture call the
+// gateway forwards for Gemini accounts (/v1beta/models/<model>:generateContent): the "-image" models of the Gemini
+// family and the "nano-banana" names Google gives them. A Gemini list says nothing about what a model draws (only the
+// calls it takes), so the names decide. Imagen models (the predict call) are not among them: the gateway does not
+// forward that call.
+func geminiGenerateContentImageModel(modelID string) bool {
+	id := strings.TrimPrefix(strings.ToLower(strings.TrimSpace(modelID)), "models/")
+	return strings.HasPrefix(id, "nano-banana") || (strings.HasPrefix(id, "gemini-") && strings.Contains(id, "-image"))
 }
 
 // otohaImageDefaults are the sizes, qualities and edit support offered for a model whose list does not say. They are
@@ -110,6 +126,8 @@ var otohaImageDefaults = map[string]struct {
 }{
 	PlatformOpenAI: {Sizes: []string{"1024x1024", "1536x1024", "1024x1536"}, Qualities: []string{"low", "medium", "high"}, Edits: true},
 	PlatformGrok:   {Sizes: []string{"1024x1024"}},
+	// Gemini documents 1K for every picture model (2K and 4K only for some), and takes reference pictures in the call.
+	PlatformGemini: {Sizes: []string{"1024x1024"}, Edits: true},
 }
 
 // otohaImageResolutionSizes turns the resolutions an xAI list names into sizes the gateway bills in that tier.
@@ -185,6 +203,12 @@ func parseOtohaListedEntry(entry gjson.Result, imageList bool) (OtohaListedModel
 			break
 		}
 	}
+	if id == "" {
+		// The Gemini API names a model "models/<id>".
+		if v := strings.TrimSpace(entry.Get("name").String()); strings.HasPrefix(v, "models/") {
+			id = v
+		}
+	}
 	id = strings.TrimPrefix(id, "models/")
 	if id == "" {
 		return OtohaListedModel{}, false
@@ -192,7 +216,9 @@ func parseOtohaListedEntry(entry gjson.Result, imageList bool) (OtohaListedModel
 	model := OtohaListedModel{ID: id}
 	if name := strings.TrimSpace(entry.Get("display_name").String()); name != "" {
 		model.Name = name
-	} else if name := strings.TrimSpace(entry.Get("name").String()); name != "" && name != id {
+	} else if name := strings.TrimSpace(entry.Get("displayName").String()); name != "" {
+		model.Name = name
+	} else if name := strings.TrimSpace(entry.Get("name").String()); name != "" && name != id && name != "models/"+id {
 		model.Name = name
 	}
 
@@ -223,6 +249,17 @@ func parseOtohaListedEntry(entry gjson.Result, imageList bool) (OtohaListedModel
 			model.Kind = OtohaListedKindOther
 		case entry.Get("image_price").Exists() && entry.Get("image_price").Type != gjson.Null:
 			model.Kind, model.DeclaredBy = OtohaListedKindImage, "image_price"
+		}
+	}
+	// The Gemini API lists the calls a model takes. predictLongRunning is how Veo makes a video; predict without
+	// generateContent is Imagen, which only draws. A model that takes generateContent may draw or not: the list does
+	// not say.
+	if methods := otohaStringList(entry, "supportedGenerationMethods"); len(methods) > 0 {
+		if otohaContains(methods, "predictlongrunning") && !model.Video {
+			model.Video, model.VideoDeclaredBy = true, otohaGenerationMethodsField
+		}
+		if model.Kind == "" && otohaContains(methods, "predict") && !otohaContains(methods, "generatecontent") {
+			model.Kind, model.DeclaredBy = OtohaListedKindImage, otohaGenerationMethodsField
 		}
 	}
 	if imageList && model.Kind != OtohaListedKindOther {
@@ -755,6 +792,33 @@ func (s *OtohaCatalogService) lastImageDiscovery(ctx context.Context, groupID in
 	return report
 }
 
+// imageCandidateReason says why a candidate cannot be made an entry: the gateway has no call for it, the group's model
+// list blocks it, the group has no route for it, or (for a Gemini model, whose name billing may not know) billing has
+// no price of its own for it.
+func (s *OtohaCatalogService) imageCandidateReason(ctx context.Context, group *Group, c otohaImageCandidate) string {
+	gemini := c.Platform == PlatformGemini
+	if gemini && !geminiGenerateContentImageModel(c.ModelID) || !gemini && !isOpenAIImageGenerationModel(c.ModelID) {
+		return OtohaImageReasonGatewayNotSupported
+	}
+	if group.ModelAllowlistEnabled() && !group.ModelAllowlist.Allows(c.ModelID) {
+		return OtohaImageReasonBlockedByGroupModels
+	}
+	route := OtohaModelRoute{}
+	if s.imageRouting != nil {
+		if route = s.imageRouting.ImageRoute(ctx, group, c.ModelID); route.Problem != "" {
+			return route.Problem
+		}
+	}
+	if gemini {
+		// An unknown name would be charged billing's built-in default, which is nobody's price of this model.
+		defaultTier, _ := ClassifyImageBillingTier(otohaImageDefaults[PlatformGemini].Sizes[0])
+		if _, ok := s.imageTierPrice(ctx, group, OtohaImageEntry{ModelID: c.ModelID}, route, defaultTier); !ok {
+			return OtohaCatalogProblemNoPrice
+		}
+	}
+	return ""
+}
+
 // DiscoverImages asks the group's accounts what they offer, makes the group's image entries from the image models
 // among it, refreshes the ones it made (leaving what the admin changed), marks those the upstream no longer lists,
 // and keeps a report of what it found and why something was not added. It never changes the group's own switch for
@@ -786,7 +850,7 @@ func (s *OtohaCatalogService) DiscoverImages(ctx context.Context, groupID int64,
 	}
 
 	switch group.Platform {
-	case PlatformOpenAI, PlatformGrok, PlatformComposite:
+	case PlatformOpenAI, PlatformGrok, PlatformGemini, PlatformComposite:
 	default:
 		report.SkippedReason = OtohaImageSkippedGroupPlatform
 		return save()
@@ -813,20 +877,7 @@ func (s *OtohaCatalogService) DiscoverImages(ctx context.Context, groupID int64,
 	}
 	plan := planOtohaImageDiscovery(otohaImagePlanInput{
 		Candidates: candidates, Existing: existing, AllListed: allListed, Now: now,
-		Reason: func(c otohaImageCandidate) string {
-			if !isOpenAIImageGenerationModel(c.ModelID) {
-				return OtohaImageReasonGatewayNotSupported
-			}
-			if group.ModelAllowlistEnabled() && !group.ModelAllowlist.Allows(c.ModelID) {
-				return OtohaImageReasonBlockedByGroupModels
-			}
-			if s.imageRouting != nil {
-				if route := s.imageRouting.ImageRoute(ctx, group, c.ModelID); route.Problem != "" {
-					return route.Problem
-				}
-			}
-			return ""
-		},
+		Reason: func(c otohaImageCandidate) string { return s.imageCandidateReason(ctx, group, c) },
 	})
 	for _, entry := range plan.Create {
 		entry.GroupID = groupID

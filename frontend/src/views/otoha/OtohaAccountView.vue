@@ -121,8 +121,13 @@
               <tr v-for="model in imageModels" :key="model.id" class="align-top">
                 <td class="py-3 pr-4">
                   <p class="font-medium text-gray-900 dark:text-white">{{ model.name }}</p>
-                  <div v-if="model.edits" class="mt-1 flex flex-wrap gap-1">
-                    <span class="rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-600 dark:bg-dark-800 dark:text-dark-300">{{ t('otoha.account.imageEdits') }}</span>
+                  <div v-if="model.edits || !model.app" class="mt-1 flex flex-wrap items-center gap-1">
+                    <span v-if="model.edits" class="rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-600 dark:bg-dark-800 dark:text-dark-300">{{ t('otoha.account.imageEdits') }}</span>
+                    <span v-if="!model.app" class="rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-600 dark:bg-dark-800 dark:text-dark-300">{{ t('otoha.account.media.appUnsupported') }}</span>
+                  </div>
+                  <div v-if="!model.app && model.endpoint" class="mt-1 flex flex-wrap items-center gap-1">
+                    <span class="text-xs text-gray-500 dark:text-dark-400">{{ t('otoha.account.media.endpointLabel') }}</span>
+                    <code class="rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-700 dark:bg-dark-800 dark:text-dark-200">{{ model.endpoint }}</code>
                   </div>
                 </td>
                 <td class="whitespace-nowrap py-3 text-gray-700 dark:text-dark-200">

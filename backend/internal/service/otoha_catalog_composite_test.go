@@ -181,7 +181,7 @@ func TestOtohaCompositeCatalogListsEachProvidersModelsAtWhatBillingCharges(t *te
 	catalog, err := f.svc.CatalogForGroup(context.Background(), otohaCompositeGroupID)
 	require.NoError(t, err)
 	require.Equal(t, []string{"gpt-6-luna", "claude-sonnet-4-5"}, otohaModelIDs(catalog),
-		"one key gets the openai and the anthropic model; the others cannot be served through /v1/responses")
+		"one key gets the openai and the anthropic model; the Gemini one has no account here, the others cannot be routed")
 
 	luna, sonnet := catalog.Models[0], catalog.Models[1]
 	require.Equal(t, 2.0, luna.Price.Input, "the openai price for the GPT model, times the rate 2, not the anthropic one")
@@ -204,8 +204,8 @@ func TestOtohaCompositeCatalogListsEachProvidersModelsAtWhatBillingCharges(t *te
 	require.Equal(t, 30.0, opus.SalePrice.Input)
 
 	gemini := byModel["gemini-2.5-pro"]
-	require.Equal(t, OtohaCatalogProblemNoNativeAPI, gemini.Problem,
-		"the app speaks no Gemini format of its own (TASK-64)")
+	require.Equal(t, OtohaCatalogProblemNoAccount, gemini.Problem,
+		"routed to Gemini in Anthropic Messages (TASK-85), but no Gemini account of the group serves it")
 	require.Equal(t, PlatformGemini, gemini.RoutePlatform)
 
 	mystery := byModel["mystery-model"]
@@ -215,7 +215,7 @@ func TestOtohaCompositeCatalogListsEachProvidersModelsAtWhatBillingCharges(t *te
 	require.Equal(t, catalog, view.Preview)
 	require.Contains(t, f.diagnoser.calls, "openai:gpt-6-luna")
 	require.Contains(t, f.diagnoser.calls, "anthropic:claude-sonnet-4-5")
-	require.NotContains(t, f.diagnoser.calls, "gemini:gemini-2.5-pro", "a provider the app cannot reach is not asked")
+	require.Contains(t, f.diagnoser.calls, "gemini:gemini-2.5-pro", "Gemini accounts are asked, as the app reaches them through Messages")
 }
 
 func TestOtohaCompositeExplicitRoutePricesAndChecksTheModelItForwards(t *testing.T) {
@@ -237,7 +237,7 @@ func TestOtohaCompositeExplicitRoutePricesAndChecksTheModelItForwards(t *testing
 	require.Equal(t, "claude-sonnet-4-5", byModel["otoha-smart"].RouteModel)
 }
 
-func TestOtohaCompositeRouteToAProviderWithoutResponsesIsHidden(t *testing.T) {
+func TestOtohaCompositeRouteToGeminiIsServedInAnthropicMessages(t *testing.T) {
 	f := newOtohaCompositeFixture(t)
 	f.routes = []CompositeModelRoute{{
 		ID: 1, GroupID: otohaCompositeGroupID, PublicModel: "otoha-gemini", MatchType: CompositeRouteMatchExact,
@@ -247,8 +247,8 @@ func TestOtohaCompositeRouteToAProviderWithoutResponsesIsHidden(t *testing.T) {
 	f.add(t, "otoha-gemini")
 
 	_, byModel := f.view(t)
-	require.Equal(t, OtohaCatalogProblemNoNativeAPI, byModel["otoha-gemini"].Problem,
-		"a Gemini model has no format the app speaks natively, even when the group has a Gemini account")
+	require.Empty(t, byModel["otoha-gemini"].Problem, "an alias routed to a Gemini account is called in Anthropic Messages")
+	require.True(t, byModel["otoha-gemini"].InCatalog)
 	require.Equal(t, 2.5, byModel["otoha-gemini"].SalePrice.Input)
 }
 
@@ -352,8 +352,8 @@ func TestOtohaCompositePrefillReadsTheRoutedProvider(t *testing.T) {
 	require.Nil(t, draft.UpstreamPrice)
 }
 
-// A group of one provider whose accounts /v1/responses does not reach lists nothing the app could not call.
-func TestOtohaCatalogOfAGeminiGroupHidesWhatResponsesCannotReach(t *testing.T) {
+// A group of one provider lists its models in the format the gateway converts for it: Gemini's in Anthropic Messages.
+func TestOtohaCatalogOfAGeminiGroupListsItsModelsInAnthropicMessages(t *testing.T) {
 	f := newOtohaCatalogFixture()
 	f.groups[otohaGroupID].Platform = PlatformGemini
 	f.pricer["gemini-2.5-pro"] = OtohaModelPrice{Input: 1.25, Output: 10}
@@ -363,9 +363,10 @@ func TestOtohaCatalogOfAGeminiGroupHidesWhatResponsesCannotReach(t *testing.T) {
 
 	view, err := f.svc.AdminView(context.Background(), otohaGroupID)
 	require.NoError(t, err)
-	require.Equal(t, OtohaCatalogProblemNoNativeAPI, view.Entries[0].Problem)
+	require.Empty(t, view.Entries[0].Problem)
 	require.Empty(t, view.Entries[0].RoutePlatform, "a single-provider group needs no provider column")
-	require.Empty(t, view.Preview.Models)
+	require.Len(t, view.Preview.Models, 1)
+	require.Equal(t, OtohaAPIAnthropicMessages, view.Preview.Models[0].API)
 }
 
 func TestOtohaSyncedMetadataComesFromTheRoutedProvidersAccounts(t *testing.T) {

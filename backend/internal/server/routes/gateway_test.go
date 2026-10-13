@@ -787,3 +787,35 @@ func TestGatewayRoutesOpenAICountTokensPathIsRegistered(t *testing.T) {
 	router.ServeHTTP(w, req)
 	require.NotEqual(t, http.StatusNotFound, w.Code)
 }
+
+// TASK-85: which inbound endpoints of a composite group reach a Gemini account. The Otoha catalog names only an
+// endpoint that is verified here: /v1/messages goes to the Anthropic-gateway handler, which converts for Gemini
+// accounts; the images endpoints answer 404 for a Gemini model, so a Gemini image model is not an `openai-images` one.
+func TestGatewayRoutesCompositeGeminiImagesAreNotServedOnTheImagesEndpoints(t *testing.T) {
+	router := newGatewayRoutesTestRouter(service.PlatformComposite)
+
+	for _, path := range []string{"/v1/images/generations", "/v1/images/edits", "/images/generations"} {
+		req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(`{"model":"gemini-3.1-flash-image","prompt":"a cat"}`))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		router.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusNotFound, w.Code, "path=%s", path)
+		require.Contains(t, w.Body.String(), "Images API is not supported for this platform", "path=%s", path)
+	}
+}
+
+func TestGatewayRoutesCompositeMessagesWithGeminiModelUsesTheAnthropicGateway(t *testing.T) {
+	router := newGatewayRoutesTestRouter(service.PlatformComposite)
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(`{"model":"gemini-3.5-flash","messages":[{"role":"user","content":"hi"}]}`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	require.NotPanics(t, func() { router.ServeHTTP(w, req) })
+
+	require.NotEqual(t, http.StatusNotFound, w.Code)
+	require.NotContains(t, w.Body.String(), "not supported")
+	require.NotContains(t, w.Body.String(), "composite groups")
+}

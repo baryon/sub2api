@@ -38,6 +38,10 @@ export interface OtohaImageModel {
   id: string
   name: string
   api: string
+  /** The call an API key makes. Absent in catalogs published before Gemini picture models were listed. */
+  endpoint?: string
+  /** Whether the Otoha app can use the model; absent (older catalogs) means it can. */
+  app?: boolean
   edits: boolean
   qualities: string[]
   currency: string

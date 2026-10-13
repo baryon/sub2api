@@ -158,6 +158,8 @@ func TestOtohaImageModelJSONShape(t *testing.T) {
 		"id": "gpt-image-2",
 		"name": "GPT Image 2",
 		"api": "openai-images",
+		"endpoint": "POST /v1/images/generations",
+		"app": true,
 		"edits": true,
 		"qualities": ["low", "medium", "high"],
 		"currency": "USD",

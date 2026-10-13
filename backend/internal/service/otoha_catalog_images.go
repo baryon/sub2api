@@ -24,6 +24,11 @@ const (
 	// OtohaImageAPI is the format the app calls an image model in: the OpenAI images endpoints, which the gateway
 	// serves for OpenAI and Grok models alike.
 	OtohaImageAPI = "openai-images"
+	// OtohaImageAPIGemini is the format a Gemini picture model is reached in: the native generateContent call on
+	// /v1beta/models/<model>:generateContent. The gateway's images endpoints answer 404 for a Gemini model, so the
+	// OpenAI images format is not available for it, and the Otoha app, which draws with openai-images, cannot use it
+	// (TASK-85).
+	OtohaImageAPIGemini = "gemini-generate-content"
 
 	// OtohaCatalogProblemImagesNotAllowed: the group does not allow image generation (allow_image_generation).
 	OtohaCatalogProblemImagesNotAllowed = "images_not_allowed"
@@ -218,6 +223,9 @@ type OtohaImageAdminEntry struct {
 	InCatalog     bool                  `json:"in_catalog"`
 	Problem       string                `json:"problem"`
 	RoutePlatform string                `json:"route_platform"`
+	// RouteAPI is the format the route names when it is not the OpenAI images one (OtohaImageAPIGemini); empty
+	// otherwise.
+	RouteAPI string `json:"route_api"`
 
 	lookupFailed bool
 }
@@ -226,15 +234,19 @@ type OtohaImageAdminEntry struct {
 // price of one image (after the group's image rate, in Currency), the qualities, and whether the model edits images
 // or takes reference images (`/v1/images/edits`).
 type OtohaImageModel struct {
-	ID          string           `json:"id"`
-	Name        string           `json:"name"`
-	Description string           `json:"description,omitempty"`
-	API         string           `json:"api"`
-	Edits       bool             `json:"edits"`
-	Qualities   []string         `json:"qualities"`
-	Currency    string           `json:"currency"`
-	Per         string           `json:"per"`
-	Sizes       []OtohaImageSize `json:"sizes"`
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
+	API         string `json:"api"`
+	// Endpoint is the call an API key makes, and App whether the Otoha app can use the model (it draws with
+	// openai-images only).
+	Endpoint  string           `json:"endpoint"`
+	App       bool             `json:"app"`
+	Edits     bool             `json:"edits"`
+	Qualities []string         `json:"qualities"`
+	Currency  string           `json:"currency"`
+	Per       string           `json:"per"`
+	Sizes     []OtohaImageSize `json:"sizes"`
 }
 
 // OtohaImageSize is a size the app may ask for, the billing tier it falls in and the price of one image.
@@ -302,6 +314,8 @@ type otohaImageItem struct {
 	upstream map[string]float64
 	// tiers is the tier each size is priced at (OtohaImageSizeBasis.BilledTier).
 	tiers map[string]string
+	// api is the format the model is reached in (OtohaImageAPI when the route does not say).
+	api string
 }
 
 type otohaImageOverrideCacheEntry struct {
@@ -455,6 +469,9 @@ func (s *OtohaCatalogService) evaluateImages(ctx context.Context, group *Group, 
 			route = s.imageRouting.ImageRoute(ctx, group, entry.ModelID)
 		}
 		item.RoutePlatform = route.Platform
+		if route.API != OtohaImageAPI {
+			item.RouteAPI = route.API
+		}
 		item.lookupFailed = route.Failed || !observationsRead
 
 		upstream := map[string]float64{}
@@ -498,7 +515,7 @@ func (s *OtohaCatalogService) evaluateImages(ctx context.Context, group *Group, 
 			item.Problem = OtohaCatalogProblemNoPrice
 		default:
 			item.InCatalog = true
-			items = append(items, otohaImageItem{entry: entry, upstream: upstream, tiers: tiers})
+			items = append(items, otohaImageItem{entry: entry, upstream: upstream, tiers: tiers, api: route.API})
 		}
 		out = append(out, item)
 	}
@@ -559,11 +576,18 @@ func buildOtohaImageModels(items []otohaImageItem, rate float64) []OtohaImageMod
 	models := make([]OtohaImageModel, 0, len(items))
 	for _, item := range items {
 		entry := item.entry
+		api := item.api
+		if api == "" {
+			api = OtohaImageAPI
+		}
+		endpoint, app := otohaImageAPIEndpoint(api, entry.ModelID)
 		model := OtohaImageModel{
 			ID:          entry.ModelID,
 			Name:        entry.Name,
 			Description: entry.Description,
-			API:         OtohaImageAPI,
+			API:         api,
+			Endpoint:    endpoint,
+			App:         app,
 			Edits:       entry.Edits,
 			Qualities:   append([]string{}, entry.Qualities...),
 			Currency:    otohaPriceCurrency,
@@ -580,6 +604,15 @@ func buildOtohaImageModels(items []otohaImageItem, rate float64) []OtohaImageMod
 		models = append(models, model)
 	}
 	return models
+}
+
+// otohaImageAPIEndpoint is the call an API key makes for a picture model in a format, and whether the Otoha app can
+// use it.
+func otohaImageAPIEndpoint(api, modelID string) (string, bool) {
+	if api == OtohaImageAPIGemini {
+		return "POST /v1beta/models/" + modelID + ":generateContent", false
+	}
+	return "POST /v1/images/generations", true
 }
 
 func roundOtohaImagePrice(v float64) float64 {

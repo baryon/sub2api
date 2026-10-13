@@ -77,8 +77,8 @@ export default {
       no_account_at: 'No {provider} account in the group can serve this model.',
       no_route: 'The group cannot tell which provider should serve this model. Set its provider in the group\'s Composite Routes.',
       channel_restricted: 'The group\'s channel allows only the models it prices, and this is not one of them. Add it to the channel pricing.',
-      no_native_api: 'The app does not speak this provider\'s own format, so the model is not shown. For some providers the gateway converts (Gemini, for example, takes the Claude format): choose the format in the editor, and show the model once you have checked that it works.',
-      no_native_api_at: 'The app does not speak the format of {provider}, so the model is not shown. For some providers the gateway converts (Gemini, for example, takes the Claude format): choose the format in the editor, and show the model once you have checked that it works.',
+      no_native_api: 'The app does not speak this provider\'s own format, so the model is not shown. For some providers the gateway may convert the Claude format: choose the format in the editor, and show the model once you have checked that it works.',
+      no_native_api_at: 'The app does not speak the format of {provider}, so the model is not shown. For some providers the gateway may convert the Claude format: choose the format in the editor, and show the model once you have checked that it works.',
       api_unreachable: 'The format chosen for this model does not reach the provider\'s accounts. Set it back to automatic or choose another.',
       api_unreachable_at: 'The format chosen for this model does not reach the {provider} accounts. Set it back to automatic or choose another.',
       no_price: 'The price table has no price for this model. Set one in the group\'s per-model pricing.'
@@ -101,7 +101,7 @@ export default {
       },
       discovery: {
         title: 'Found from upstream',
-        intro: "Looks at the Grok and TypeSafe accounts in the group, adds the video, voice and quick-judgement models they offer, and prices them by the group's billing rules. A model the accounts no longer offer is taken down for now.",
+        intro: "Looks at the Grok, Gemini and TypeSafe accounts in the group, adds the video, voice and quick-judgement models they offer that the gateway serves (Gemini's Veo is listed here but not added: the gateway has no call for it), and prices them by the group's billing rules. A model the accounts no longer offer is taken down for now.",
         never: 'Not checked yet.',
         checked: 'Last checked: {time}',
         checkedAuto: 'Last checked: {time} (automatic)',
@@ -230,7 +230,8 @@ export default {
           blockedByGroupModels: 'The group\'s model allowlist does not include it',
           noAccount: 'No account in the group offers this model',
           channelRestricted: 'The channel restricts this model',
-          noRoute: 'The group cannot reach this model'
+          noRoute: 'The group cannot reach this model',
+          noPrice: "Billing has no price of its own for this model, so it would be charged a built-in default. Set a price in the group's per-model pricing first."
         },
         accountError: {
           listFailed: 'Could not get this account\'s model list',
@@ -254,6 +255,8 @@ export default {
       perPicture: 'per picture',
       perPictureShort: 'per picture',
       canEdit: 'Can edit pictures',
+      appUnsupported: 'Not in the Otoha app yet',
+      appUnsupportedHint: 'The gateway serves this model only on the native Gemini call, which the Otoha app does not use. An API key can call it directly; the call is shown on the account page.',
       qualitiesLine: 'Quality: {qualities}',
       setHere: 'set here',
       tierNames: {

@@ -395,6 +395,8 @@ export function discoveryReasonKey(reason: string): string {
       return 'reason.channelRestricted'
     case 'no_route':
       return 'reason.noRoute'
+    case 'no_price':
+      return 'reason.noPrice'
     default:
       return ''
   }

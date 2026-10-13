@@ -1015,6 +1015,10 @@ func (s *GatewayService) calculateRecordUsageCost(
 ) *CostBreakdown {
 	// 图片生成：渠道定价为 token 计费时走 token 路径，否则走图片计费
 	if result.ImageCount > 0 {
+		// A price the admin set on the model in the group's Otoha catalog is the price the app was shown (TASK-85).
+		if cost, ok := otohaImageOverrideCostFor(ctx, s.otohaImagePrices, s.billingService, []string{billingModel, result.Model, result.UpstreamModel}, apiKey, result.ImageSize, result.ImageCount, imageMultiplier); ok {
+			return cost
+		}
 		if resolved := s.resolveChannelPricing(ctx, billingModel, apiKey); resolved != nil && resolved.Mode == BillingModeToken {
 			return s.calculateTokenCost(ctx, result, apiKey, billingModel, multiplier, pricingAt)
 		}
