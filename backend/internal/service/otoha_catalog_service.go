@@ -225,8 +225,14 @@ type OtohaCatalogAdminView struct {
 	// ImageDiscovery is what the last check of the group's accounts found; nil before the first check.
 	ImageDiscovery *OtohaImageDiscovery `json:"image_discovery"`
 	// GroupAllowImageGeneration is the group's own switch for image generation, which stays the admin's.
-	GroupAllowImageGeneration bool          `json:"group_allow_image_generation"`
-	Preview                   *OtohaCatalog `json:"preview"`
+	GroupAllowImageGeneration bool `json:"group_allow_image_generation"`
+	// MediaEntries are the group's video, voice and quick-judgement models with their prices and problems (TASK-81);
+	// MediaDiscovery is what the last check of the group's accounts found for them, nil before the first check.
+	MediaEntries   []OtohaMediaAdminEntry `json:"media_entries"`
+	MediaDiscovery *OtohaMediaDiscovery   `json:"media_discovery"`
+	// GroupModelAllowlist is the group's own model list, which stays the admin's; it can hold back a model.
+	GroupModelAllowlist GroupModelAllowlist `json:"group_model_allowlist"`
+	Preview             *OtohaCatalog       `json:"preview"`
 }
 
 // OtohaCatalogPrefill is a draft entry filled from upstream metadata, with the prices it would sell at.
@@ -375,6 +381,8 @@ type OtohaCatalogService struct {
 	imageRouting OtohaImageRouting
 	// discovery makes the image entries from the group's accounts (TASK-76); set with WithDiscovery.
 	discovery *otohaImageDiscoveryState
+	// media carries the video, voice and quick-judgement models (TASK-81); set with WithMedia.
+	media *otohaMediaState
 
 	cacheMu sync.Mutex
 	cache   map[int64]otohaCatalogCacheEntry
@@ -407,6 +415,8 @@ type otohaCatalogSnapshot struct {
 	// imageItems are the image models that pass into the catalog; imageRate says which rate prices them.
 	imageItems []otohaImageItem
 	imageRate  otohaImageRate
+	// media are the video, voice and quick-judgement models that pass into the catalog (TASK-81).
+	media otohaMediaItems
 }
 
 type otohaCatalogCacheEntry struct {
@@ -453,7 +463,7 @@ func (s *OtohaCatalogService) CatalogForGroup(ctx context.Context, groupID int64
 	if err != nil || !snapshot.hasCatalog {
 		return nil, err
 	}
-	return buildOtohaCatalog(snapshot.items, snapshot.imageItems, snapshot.groupRate, snapshot.imageRate), nil
+	return buildOtohaCatalogWithMedia(snapshot.items, snapshot.imageItems, snapshot.media, snapshot.groupRate, snapshot.imageRate), nil
 }
 
 // CatalogForGroupAtRate gives the group's catalog priced at a key owner's own rate in the group (a user-specific
@@ -463,7 +473,7 @@ func (s *OtohaCatalogService) CatalogForGroupAtRate(ctx context.Context, groupID
 	if err != nil || !snapshot.hasCatalog {
 		return nil, err
 	}
-	return buildOtohaCatalog(snapshot.items, snapshot.imageItems, rate, snapshot.imageRate), nil
+	return buildOtohaCatalogWithMedia(snapshot.items, snapshot.imageItems, snapshot.media, rate, snapshot.imageRate), nil
 }
 
 // snapshot reads the group's evaluated catalog from the cache, or evaluates it once for concurrent callers. A
@@ -517,7 +527,11 @@ func (s *OtohaCatalogService) evaluateGroup(ctx context.Context, groupID int64) 
 	if err != nil {
 		return otohaCatalogSnapshot{}, err
 	}
-	if len(entries) == 0 && len(imageEntries) == 0 {
+	mediaEntries, err := s.listMedia(ctx, groupID)
+	if err != nil {
+		return otohaCatalogSnapshot{}, err
+	}
+	if len(entries) == 0 && len(imageEntries) == 0 && len(mediaEntries) == 0 {
 		return otohaCatalogSnapshot{}, nil
 	}
 	evaluated, items := s.evaluate(ctx, group, entries)
@@ -530,6 +544,13 @@ func (s *OtohaCatalogService) evaluateGroup(ctx context.Context, groupID int64) 
 	evaluatedImages, imageItems := s.evaluateImages(ctx, group, imageEntries)
 	snapshot.imageItems = imageItems
 	for _, e := range evaluatedImages {
+		if e.lookupFailed {
+			snapshot.incomplete = true
+		}
+	}
+	evaluatedMedia, mediaItems := s.evaluateMedia(ctx, group, mediaEntries)
+	snapshot.media = mediaItems
+	for _, e := range evaluatedMedia {
 		if e.lookupFailed {
 			snapshot.incomplete = true
 		}
@@ -568,18 +589,27 @@ func (s *OtohaCatalogService) AdminView(ctx context.Context, groupID int64) (*Ot
 
 		GroupAllowImageGeneration: group.AllowImageGeneration,
 		ImageDiscovery:            s.lastImageDiscovery(ctx, groupID),
+		MediaEntries:              []OtohaMediaAdminEntry{},
+		MediaDiscovery:            s.lastMediaDiscovery(ctx, groupID),
+		GroupModelAllowlist:       otohaAllowlistView(group.ModelAllowlist),
 	}
 	imageEntries, err := s.listImages(ctx, groupID)
 	if err != nil {
 		return nil, err
 	}
+	mediaEntries, err := s.listMedia(ctx, groupID)
+	if err != nil {
+		return nil, err
+	}
 	view.ImageEntries = []OtohaImageAdminEntry{}
-	if len(entries) > 0 || len(imageEntries) > 0 {
+	if len(entries) > 0 || len(imageEntries) > 0 || len(mediaEntries) > 0 {
 		var items []otohaCatalogItem
 		view.Entries, items = s.evaluate(ctx, group, entries)
 		var imageItems []otohaImageItem
 		view.ImageEntries, imageItems = s.evaluateImages(ctx, group, imageEntries)
-		view.Preview = buildOtohaCatalog(items, imageItems, group.RateMultiplier, otohaImageRateOf(group))
+		var mediaItems otohaMediaItems
+		view.MediaEntries, mediaItems = s.evaluateMedia(ctx, group, mediaEntries)
+		view.Preview = buildOtohaCatalogWithMedia(items, imageItems, mediaItems, group.RateMultiplier, otohaImageRateOf(group))
 	}
 	return view, nil
 }
@@ -885,6 +915,11 @@ func (s *OtohaCatalogService) evaluate(ctx context.Context, group *Group, entrie
 // buildOtohaCatalog prices the catalog's models at a rate (and its image models at the image rate); the revision
 // covers every price.
 func buildOtohaCatalog(items []otohaCatalogItem, imageItems []otohaImageItem, rate float64, imageRate otohaImageRate) *OtohaCatalog {
+	return buildOtohaCatalogWithMedia(items, imageItems, otohaMediaItems{}, rate, imageRate)
+}
+
+// buildOtohaCatalogWithMedia also prices the video, voice and quick-judgement models (TASK-81).
+func buildOtohaCatalogWithMedia(items []otohaCatalogItem, imageItems []otohaImageItem, media otohaMediaItems, rate float64, imageRate otohaImageRate) *OtohaCatalog {
 	catalog := &OtohaCatalog{Schema: OtohaCatalogSchemaVersion, Models: make([]OtohaCatalogModel, 0, len(items))}
 	for _, item := range items {
 		sale := otohaSalePrice(item.upstream, rate)
@@ -894,6 +929,7 @@ func buildOtohaCatalog(items []otohaCatalogItem, imageItems []otohaImageItem, ra
 		catalog.Models = append(catalog.Models, model)
 	}
 	catalog.ImageModels = buildOtohaImageModels(imageItems, imageRate.at(rate))
+	buildOtohaMediaModels(catalog, media, rate)
 	catalog.Revision = otohaCatalogRevision(catalog)
 	return catalog
 }
@@ -1003,13 +1039,16 @@ func (s *OtohaCatalogService) routedLongerTiers(ctx context.Context, group *Grou
 }
 
 // otohaCatalogRevision hashes what the app receives, so any change to a model, a price or the order changes it. A
-// catalog without image models hashes as it did before they existed.
+// catalog without image, video, voice or quick-judgement models hashes as it did before they existed.
 func otohaCatalogRevision(catalog *OtohaCatalog) string {
 	body, err := json.Marshal(struct {
 		Schema      int                 `json:"schema"`
 		Models      []OtohaCatalogModel `json:"models"`
 		ImageModels []OtohaImageModel   `json:"imageModels,omitempty"`
-	}{catalog.Schema, catalog.Models, catalog.ImageModels})
+		VideoModels []OtohaVideoModel   `json:"videoModels,omitempty"`
+		VoiceModels []OtohaVoiceModel   `json:"voiceModels,omitempty"`
+		QuickModels []OtohaQuickModel   `json:"quickModels,omitempty"`
+	}{catalog.Schema, catalog.Models, catalog.ImageModels, catalog.VideoModels, catalog.VoiceModels, catalog.QuickModels})
 	if err != nil {
 		return ""
 	}

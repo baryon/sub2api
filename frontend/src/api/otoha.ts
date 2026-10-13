@@ -45,12 +45,62 @@ export interface OtohaImageModel {
   sizes: { size: string; tier: string; price: number }[]
 }
 
+/** A video model and what one second of video costs at each resolution (TASK-81). The Otoha app cannot use it yet. */
+export interface OtohaVideoModel {
+  id: string
+  name: string
+  description?: string
+  api: string
+  /** The call an API key makes, such as "POST /v1/videos/generations". */
+  endpoint: string
+  /** Whether the Otoha app can use the model. */
+  app: boolean
+  currency: string
+  per: string
+  resolutions: { resolution: string; price: number }[]
+}
+
+/** A voice function ("tts" speech from text, "stt" text from speech) and its price per unit (TASK-81). */
+export interface OtohaVoiceModel {
+  id: string
+  name: string
+  description?: string
+  api: string
+  endpoint: string
+  app: boolean
+  mode: string
+  currency: string
+  /** The unit the price is for: "1M characters" for tts, "hour" for stt. */
+  per: string
+  price: number
+}
+
+/** A quick-judgement model, billed on input tokens, price per million (TASK-81). */
+export interface OtohaQuickModel {
+  id: string
+  name: string
+  description?: string
+  api: string
+  endpoint: string
+  app: boolean
+  currency: string
+  per: string
+  billed: string
+  price: number
+  /** Only when output tokens are charged too. */
+  outputPrice?: number
+}
+
 export interface OtohaCatalog {
   schema: number
   revision: string
   models: OtohaCatalogModel[]
   /** Absent in catalogs published before picture models were listed. */
   imageModels?: OtohaImageModel[]
+  /** Absent in catalogs published before video, voice and quick-judgement models were listed. */
+  videoModels?: OtohaVideoModel[]
+  voiceModels?: OtohaVoiceModel[]
+  quickModels?: OtohaQuickModel[]
 }
 
 export interface OtohaAccountPlan {

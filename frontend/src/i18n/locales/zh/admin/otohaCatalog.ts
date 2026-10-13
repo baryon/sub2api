@@ -83,6 +83,101 @@ export default {
       api_unreachable_at: '给这个模型选的调用方式到不了 {provider} 的账号。请改回自动或换一种方式。',
       no_price: '价格表里没有这个模型的价格。请在分组设置的「分组逐模型定价」里为它设价格。'
     },
+    media: {
+      title: '视频、语音和快速判断模型',
+      intro: 'Otoha App 暂时不能使用这些模型，用户可以用 API key 直接调用。系统根据分组里的账号自动加入，价格与实际计费一致。可以停用、改名或补充说明，改过的内容不会被覆盖。',
+      kinds: {
+        video: '视频',
+        voice: '语音',
+        quick: '快速判断'
+      },
+      allowNotice: {
+        title: '分组的模型白名单挡住了 {count} 个模型',
+        body: '加入白名单后，用户才能调用，目录里也才会显示。',
+        allow: '加入白名单',
+        allowing: '正在加入…',
+        done: '已加入分组的模型白名单。',
+        failed: '没能加入白名单，请稍后重试。'
+      },
+      discovery: {
+        title: '上游发现',
+        intro: '系统会查看分组里的 Grok 和 TypeSafe 账号，把能用的视频、语音和快速判断模型加进目录，价格按分组的计费规则配好。账号不再提供的模型会暂时下架。',
+        never: '还没检查过。',
+        checked: '上次检查：{time}',
+        checkedAuto: '上次检查：{time}（自动）',
+        check: '重新检查上游',
+        checking: '正在检查…',
+        failed: '检查失败，请稍后重试。',
+        nothingFound: '账号里没有发现可用的视频、语音或快速判断模型。',
+        accountCounts: '可提供 {count} 个',
+        missing: '账号不再提供，已暂时下架：{models}',
+        columns: {
+          accounts: '来自账号',
+          how: '怎么认出的',
+          result: '结果'
+        },
+        evidence: {
+          declared: '上游列表标明是这类模型',
+          knownFamily: '上游列表没写种类，按已知的视频模型系列判断',
+          builtinCatalog: '这类账号不提供对应的模型列表，按网关内置清单判断',
+          unknown: '未知'
+        },
+        result: {
+          added: '已加入',
+          updated: '已更新',
+          unchanged: '没有变化',
+          manualKept: '保留了管理员的设置',
+          restored: '重新可用',
+          notAdded: '没有加入',
+          unknown: '未知'
+        },
+        reason: {
+          gatewayNotSupported: '网关暂不支持这个模型',
+          blockedByGroupModels: '分组的模型白名单不包含这个模型',
+          noAccount: '分组里没有账号开放这个模型',
+          channelRestricted: '渠道限制了这个模型',
+          noRoute: '分组调用不到这个模型（语音只对 Grok 类型的分组开放，混合分组不行）'
+        },
+        accountError: {
+          listFailed: '取不到这个账号的模型列表',
+          unsupported: '这类账号不提供模型列表'
+        },
+        skipped: {
+          groupPlatform: '这个分组的类型不包含这些账号，没有检查。',
+          noAccounts: '分组里还没有账号，没有检查。'
+        }
+      },
+      empty: '还没有视频、语音或快速判断模型',
+      emptyHint: '分组里有 Grok 或 TypeSafe 账号时，点「重新检查上游」即可加入。',
+      columns: {
+        price: '售价'
+      },
+      billingPrice: '（倍率前 {price}）',
+      per: {
+        second: '每秒视频',
+        millionCharacters: '每百万字符',
+        hour: '每小时音频',
+        millionTokens: '每百万 token'
+      },
+      priceLabels: {
+        tts: '语音合成',
+        stt: '语音转文字',
+        input: '输入',
+        output: '输出'
+      },
+      statusHint: {
+        not_allowed: '把这个模型加入分组的模型白名单后才会显示。',
+        no_price: '计费里没有这个模型的价格，或渠道不是按这种方式计费。请检查分组和渠道的定价。',
+        upstream_missing: '账号里已经没有这个模型，目录里暂时不提供。',
+        channel_restricted: '分组的渠道只允许它定过价的模型，而这个模型不在其中。请把它加入渠道定价。',
+        no_route: '分组无法把这个模型交给对应的服务商。请检查分组的混合路由。',
+        no_route_voice: '语音接口只对 Grok 类型的分组开放，混合分组暂时不能用。',
+        no_account: '分组里没有能处理这个模型的账号。'
+      },
+      editTitle: '编辑 {model}',
+      editNote: '名称、说明和是否显示可以修改，改过的内容之后再检查上游时不会被覆盖。价格来自计费，不能在这里改。',
+      gone: '这个模型已不在目录里，请刷新。'
+    },
     images: {
       billedAsObserved: '{size} · 按 {tier} 计费（上游实际输出 {output}）',
       billedAsRequested: '{size} · 按 {tier} 计费（近期没有实际出图记录，按尺寸本身分档）',

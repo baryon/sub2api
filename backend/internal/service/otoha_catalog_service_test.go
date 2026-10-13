@@ -395,11 +395,15 @@ func TestOtohaCatalogJSONCarriesNoInternalFields(t *testing.T) {
 	}
 	var top map[string]json.RawMessage
 	require.NoError(t, json.Unmarshal(body, &top))
-	require.Len(t, top, 4)
+	require.Len(t, top, 7)
 	require.Contains(t, top, "schema")
 	require.Contains(t, top, "revision")
 	require.Contains(t, top, "models")
 	require.Contains(t, top, "imageModels")
+	// TASK-81: the video, voice and quick-judgement lists, apart from the chat and image models.
+	require.Contains(t, top, "videoModels")
+	require.Contains(t, top, "voiceModels")
+	require.Contains(t, top, "quickModels")
 }
 
 func TestOtohaCatalogRevisionChangesWhenTheCatalogOrAPriceChanges(t *testing.T) {

@@ -1,7 +1,7 @@
 import type { MethodLimit, SubscriptionPlan } from '@/types/payment'
 import type { PaymentMethodOption } from '@/components/payment/PaymentMethodSelector.vue'
 import { getVisibleMethods } from '@/components/payment/paymentFlow'
-import type { OtohaAccountPlan, OtohaImageModel } from '@/api/otoha'
+import type { OtohaAccountPlan, OtohaImageModel, OtohaQuickModel, OtohaVideoModel, OtohaVoiceModel } from '@/api/otoha'
 
 /**
  * The Otoha group's plans on sale, in the admin's order, cheapest first among equals. Plans from the checkout
@@ -91,6 +91,53 @@ export function imageModelRows(models: OtohaImageModel[] | undefined): ImageMode
       .filter((entry) => Number.isFinite(entry.price))
       .map((entry) => ({ size: entry.size.replace('x', '×'), price: formatPerMillion(entry.price) }))
     return sizes.length ? [{ id: model.id, name: model.name || model.id, edits: model.edits, sizes }] : []
+  })
+}
+
+export interface MediaModelRow {
+  id: string
+  name: string
+  description: string
+  /** The call an API key makes. */
+  endpoint: string
+  /** Whether the Otoha app can use the model. */
+  app: boolean
+  /** Each price with what it is for: a resolution (video), "tts" or "stt" (voice), "input" or "output" (quick). */
+  prices: { key: string; price: string }[]
+}
+
+function mediaRow(model: { id: string; name: string; description?: string; endpoint: string; app: boolean }, prices: { key: string; price: string }[]): MediaModelRow[] {
+  return prices.length
+    ? [{ id: model.id, name: model.name || model.id, description: model.description ?? '', endpoint: model.endpoint, app: model.app, prices }]
+    : []
+}
+
+/** The catalog's video models as the account page lists them: each priced resolution with the price of one second. */
+export function videoModelRows(models: OtohaVideoModel[] | undefined): MediaModelRow[] {
+  return (models ?? []).flatMap((model) =>
+    mediaRow(
+      model,
+      model.resolutions.filter((entry) => Number.isFinite(entry.price)).map((entry) => ({ key: entry.resolution, price: formatPerMillion(entry.price) })),
+    ),
+  )
+}
+
+/** The catalog's voice functions: each with its price per unit, keyed by the function. */
+export function voiceModelRows(models: OtohaVoiceModel[] | undefined): MediaModelRow[] {
+  return (models ?? []).flatMap((model) =>
+    mediaRow(model, Number.isFinite(model.price) ? [{ key: model.mode, price: formatPerMillion(model.price) }] : []),
+  )
+}
+
+/** The catalog's quick-judgement models: the price per million input tokens, and for output tokens when charged. */
+export function quickModelRows(models: OtohaQuickModel[] | undefined): MediaModelRow[] {
+  return (models ?? []).flatMap((model) => {
+    const prices: { key: string; price: string }[] = []
+    if (Number.isFinite(model.price)) prices.push({ key: 'input', price: formatPerMillion(model.price) })
+    if (prices.length && model.outputPrice != null && Number.isFinite(model.outputPrice) && model.outputPrice > 0) {
+      prices.push({ key: 'output', price: formatPerMillion(model.outputPrice) })
+    }
+    return mediaRow(model, prices)
   })
 }
 

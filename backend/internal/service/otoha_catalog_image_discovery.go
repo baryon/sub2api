@@ -135,6 +135,10 @@ type OtohaListedModel struct {
 	Qualities   []string
 	// ImageInput is whether the list says the model takes an image as input; nil when it does not say.
 	ImageInput *bool
+	// Video is set when the list says the model makes video (TASK-81), VideoDeclaredBy being the field that says so:
+	// output_modalities or type.
+	Video           bool
+	VideoDeclaredBy string
 }
 
 var (
@@ -193,6 +197,11 @@ func parseOtohaListedEntry(entry gjson.Result, imageList bool) (OtohaListedModel
 	}
 
 	outputs := otohaStringList(entry, "output_modalities", "modalities.output", "architecture.output_modalities")
+	if otohaContains(outputs, "video") {
+		model.Video, model.VideoDeclaredBy = true, "output_modalities"
+	} else if kind := strings.ToLower(strings.TrimSpace(entry.Get("type").String())); kind == "video" {
+		model.Video, model.VideoDeclaredBy = true, "type"
+	}
 	switch {
 	case len(outputs) > 0:
 		if otohaContains(outputs, "image") {

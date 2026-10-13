@@ -22,6 +22,8 @@ type otohaCatalogAdmin interface {
 	UpdateImageEntry(ctx context.Context, groupID, entryID int64, input service.OtohaImageEntryInput) (*service.OtohaImageEntry, error)
 	DeleteImageEntry(ctx context.Context, groupID, entryID int64) error
 	DiscoverImages(ctx context.Context, groupID int64, trigger string) (*service.OtohaImageDiscovery, error)
+	UpdateMediaEntry(ctx context.Context, groupID int64, input service.OtohaMediaEntryInput) (*service.OtohaMediaEntry, error)
+	DiscoverMedia(ctx context.Context, groupID int64, trigger string) (*service.OtohaMediaDiscovery, error)
 }
 
 // OtohaCatalogHandler serves the admin API for a group's Otoha model catalog.
@@ -340,6 +342,68 @@ func (h *OtohaCatalogHandler) DiscoverImages(c *gin.Context) {
 		return
 	}
 	report, err := h.catalog.DiscoverImages(c.Request.Context(), groupID, service.OtohaImageTriggerAdmin)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, report)
+}
+
+// OtohaMediaEntryRequest is a video, voice or quick-judgement model as the admin page submits it (TASK-81): which one
+// (kind and model), and the fields the admin can change. Entries are made by the check of the group's accounts, so
+// there is no create or delete.
+type OtohaMediaEntryRequest struct {
+	Kind        string `json:"kind"`
+	ModelID     string `json:"model_id"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Enabled     *bool  `json:"enabled"`
+}
+
+// UpdateMediaEntry changes the name, description and switch of one media model of the group's catalog.
+// PUT /api/v1/admin/groups/:id/otoha-catalog/media-entries
+func (h *OtohaCatalogHandler) UpdateMediaEntry(c *gin.Context) {
+	groupID, ok := parsePositiveIDParam(c, "id")
+	if !ok {
+		return
+	}
+	var req OtohaMediaEntryRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request body: "+err.Error())
+		return
+	}
+	switch req.Kind {
+	case service.OtohaMediaKindVideo, service.OtohaMediaKindVoice, service.OtohaMediaKindQuick:
+	default:
+		response.BadRequest(c, "kind must be video, voice or quick")
+		return
+	}
+	if strings.TrimSpace(req.ModelID) == "" {
+		response.BadRequest(c, "model_id is required")
+		return
+	}
+	enabled := true
+	if req.Enabled != nil {
+		enabled = *req.Enabled
+	}
+	entry, err := h.catalog.UpdateMediaEntry(c.Request.Context(), groupID, service.OtohaMediaEntryInput{
+		Kind: req.Kind, ModelID: strings.TrimSpace(req.ModelID), Name: req.Name, Description: req.Description, Enabled: enabled,
+	})
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, entry)
+}
+
+// DiscoverMedia checks the group's accounts for video, voice and quick-judgement models now and returns what it found.
+// POST /api/v1/admin/groups/:id/otoha-catalog/media-discovery
+func (h *OtohaCatalogHandler) DiscoverMedia(c *gin.Context) {
+	groupID, ok := parsePositiveIDParam(c, "id")
+	if !ok {
+		return
+	}
+	report, err := h.catalog.DiscoverMedia(c.Request.Context(), groupID, service.OtohaImageTriggerAdmin)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return

@@ -353,6 +353,8 @@ func registerGroupRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		groups.PUT("/:id/otoha-catalog/image-entries/:entry_id", h.Admin.OtohaCatalog.UpdateImageEntry)
 		groups.DELETE("/:id/otoha-catalog/image-entries/:entry_id", h.Admin.OtohaCatalog.DeleteImageEntry)
 		groups.POST("/:id/otoha-catalog/image-discovery", h.Admin.OtohaCatalog.DiscoverImages)
+		groups.PUT("/:id/otoha-catalog/media-entries", h.Admin.OtohaCatalog.UpdateMediaEntry)
+		groups.POST("/:id/otoha-catalog/media-discovery", h.Admin.OtohaCatalog.DiscoverMedia)
 		groups.GET("/:id", h.Admin.Group.GetByID)
 		groups.POST("", h.Admin.Group.Create)
 		groups.POST("/:id/duplicate", h.Admin.Group.Duplicate)

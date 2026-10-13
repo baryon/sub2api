@@ -192,6 +192,15 @@
       @changed="load"
     />
 
+    <OtohaCatalogMediaPanel
+      v-if="view"
+      :group-id="group.id"
+      :entries="view.media_entries ?? []"
+      :discovery="view.media_discovery ?? null"
+      :group-allowlist="view.group_model_allowlist ?? { enabled: false, models: [] }"
+      @changed="load"
+    />
+
     <section v-if="view" class="rounded-lg border border-gray-200 p-4 dark:border-dark-600" data-testid="otoha-catalog-preview">
       <div class="mb-2 flex flex-wrap items-baseline gap-2">
         <h4 class="text-sm font-medium text-gray-800 dark:text-gray-100">{{ t('admin.otohaCatalog.preview.title') }}</h4>
@@ -200,7 +209,7 @@
         </span>
       </div>
       <p v-if="!view.preview" class="text-sm text-gray-500 dark:text-gray-400">{{ t('admin.otohaCatalog.preview.none') }}</p>
-      <p v-else-if="view.preview.models.length === 0 && !previewImageModels.length" class="text-sm text-gray-500 dark:text-gray-400">
+      <p v-else-if="view.preview.models.length === 0 && !previewImageModels.length && !previewMediaModels.length" class="text-sm text-gray-500 dark:text-gray-400">
         {{ t('admin.otohaCatalog.preview.noModels') }}
       </p>
       <ol v-if="view.preview && previewModels.length" class="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
@@ -234,6 +243,21 @@
             <span class="ml-1 text-gray-500">{{ t('admin.otohaCatalog.images.perPictureShort') }}</span>
           </div>
           <div v-if="model.edits">{{ t('admin.otohaCatalog.images.canEdit') }}</div>
+        </li>
+      </ol>
+      <ol v-if="previewMediaModels.length" class="mt-2 grid gap-2 sm:grid-cols-2 xl:grid-cols-3" data-testid="otoha-catalog-preview-media">
+        <li
+          v-for="model in previewMediaModels"
+          :key="model.kind + '/' + model.id"
+          class="rounded-md bg-gray-50 px-3 py-2 text-xs text-gray-600 dark:bg-dark-700 dark:text-gray-300"
+        >
+          <div class="text-sm font-medium text-gray-900 dark:text-white">{{ model.name }}</div>
+          <div class="text-gray-500">{{ t('admin.otohaCatalog.media.kinds.' + model.kind) }} · <span class="font-mono">{{ model.id }}</span></div>
+          <div v-for="price in model.prices" :key="price.label" class="mt-0.5">
+            <span>{{ price.label }}</span>
+            <span class="ml-2 font-medium text-gray-900 dark:text-white">{{ formatAmount(price.price) }}</span>
+          </div>
+          <div class="font-mono text-gray-500">{{ model.endpoint }}</div>
         </li>
       </ol>
     </section>
@@ -572,6 +596,7 @@ import Toggle from '@/components/common/Toggle.vue'
 import Icon from '@/components/icons/Icon.vue'
 import OtohaCatalogTierLines from './OtohaCatalogTierLines.vue'
 import OtohaCatalogImagePanel from './OtohaCatalogImagePanel.vue'
+import OtohaCatalogMediaPanel from './OtohaCatalogMediaPanel.vue'
 import { extractApiErrorCode, extractApiErrorMessage } from '@/utils/apiError'
 import { platformLabel } from '@/utils/platformColors'
 import {
@@ -709,6 +734,26 @@ const addableCandidates = computed(() => {
 const reasoningLevels = computed(() => parseList(reasoningText.value))
 
 const previewImageModels = computed(() => view.value?.preview?.imageModels ?? [])
+
+// The video, voice and quick-judgement models in the preview, each with its price lines.
+const previewMediaModels = computed(() => {
+  const preview = view.value?.preview
+  if (!preview) return []
+  return [
+    ...(preview.videoModels ?? []).map((model) => ({
+      kind: 'video', id: model.id, name: model.name || model.id, endpoint: model.endpoint,
+      prices: model.resolutions.map((r) => ({ label: r.resolution, price: r.price }))
+    })),
+    ...(preview.voiceModels ?? []).map((model) => ({
+      kind: 'voice', id: model.id, name: model.name || model.id, endpoint: model.endpoint,
+      prices: [{ label: t('admin.otohaCatalog.media.priceLabels.' + model.mode), price: model.price }]
+    })),
+    ...(preview.quickModels ?? []).map((model) => ({
+      kind: 'quick', id: model.id, name: model.name || model.id, endpoint: model.endpoint,
+      prices: [{ label: t('admin.otohaCatalog.media.priceLabels.input'), price: model.price }]
+    }))
+  ]
+})
 
 const previewModels = computed(() =>
   (view.value?.preview?.models ?? []).map((model) => {

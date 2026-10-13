@@ -214,7 +214,8 @@ const (
 	otohaImageDiscoveryRunTimeout = 2 * time.Minute
 )
 
-// OtohaImageDiscoveryRunner checks the Otoha group's accounts for image models now and then, so the catalog follows
+// OtohaImageDiscoveryRunner checks the Otoha group's accounts for image (and video, voice and quick-judgement) models
+// now and then, so the catalog follows
 // what the upstream offers without the admin pressing a button.
 type OtohaImageDiscoveryRunner struct {
 	catalog  *OtohaCatalogService
@@ -268,6 +269,10 @@ func (r *OtohaImageDiscoveryRunner) runOnce() {
 	}()
 	if _, err := r.catalog.DiscoverImages(ctx, r.groupID, OtohaImageTriggerSchedule); err != nil {
 		logger.L().Warn("otoha_catalog.image_discovery_failed", zap.Int64("group_id", r.groupID), zap.Error(err))
+	}
+	// The video, voice and quick-judgement models follow the same accounts (TASK-81).
+	if _, err := r.catalog.DiscoverMedia(ctx, r.groupID, OtohaImageTriggerSchedule); err != nil && !errors.Is(err, ErrOtohaMediaDiscoveryUnavailable) {
+		logger.L().Warn("otoha_catalog.media_discovery_failed", zap.Int64("group_id", r.groupID), zap.Error(err))
 	}
 }
 

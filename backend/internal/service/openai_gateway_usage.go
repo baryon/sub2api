@@ -609,18 +609,7 @@ func (s *OpenAIGatewayService) calculateOpenAIRecordUsageCost(
 		}
 	}
 	if result != nil && result.AudioUsage != nil {
-		if resolved := s.resolveOpenAIChannelPricing(ctx, billingModel, apiKey); resolved != nil &&
-			(resolved.Mode == BillingModePerRequest) {
-			gid := apiKey.Group.ID
-			return s.billingService.CalculateCostUnified(CostInput{
-				Ctx: ctx, Model: billingModel, GroupID: &gid, Group: apiKey.Group,
-				UsageUnits: result.AudioUsage.DurationOrUnits, SizeTier: result.AudioUsage.Mode,
-				RateMultiplier: webSearchMultiplier, Resolver: s.resolver, Resolved: resolved,
-				ReasoningEffort: optionalStringValue(result.ReasoningEffort),
-			})
-		}
-		cfg := groupAudioPriceConfigFromAPIKey(apiKey)
-		return s.billingService.CalculateAudioCost(result.AudioUsage.Mode, result.AudioUsage.DurationOrUnits, cfg, webSearchMultiplier), nil
+		return s.calculateOpenAIAudioCost(ctx, billingModel, apiKey, result.AudioUsage, optionalStringValue(result.ReasoningEffort), webSearchMultiplier)
 	}
 
 	if result != nil && result.ImageCount > 0 {
@@ -704,6 +693,31 @@ func (s *OpenAIGatewayService) calculateOpenAIRecordUsageCost(
 	tokenCost.TotalCost += searchCost.TotalCost
 	tokenCost.ActualCost += searchCost.ActualCost
 	return tokenCost, nil
+}
+
+// calculateOpenAIAudioCost charges Voice usage: the channel's per-request price for the billing model when it has
+// one, else the group's audio prices (defaults where it sets none). The Otoha catalog prices a voice unit with it
+// too (TASK-81), so the price the account page shows is the charge.
+func (s *OpenAIGatewayService) calculateOpenAIAudioCost(
+	ctx context.Context,
+	billingModel string,
+	apiKey *APIKey,
+	audio *AudioUsage,
+	reasoningEffort string,
+	multiplier float64,
+) (*CostBreakdown, error) {
+	if resolved := s.resolveOpenAIChannelPricing(ctx, billingModel, apiKey); resolved != nil &&
+		(resolved.Mode == BillingModePerRequest) {
+		gid := apiKey.Group.ID
+		return s.billingService.CalculateCostUnified(CostInput{
+			Ctx: ctx, Model: billingModel, GroupID: &gid, Group: apiKey.Group,
+			UsageUnits: audio.DurationOrUnits, SizeTier: audio.Mode,
+			RateMultiplier: multiplier, Resolver: s.resolver, Resolved: resolved,
+			ReasoningEffort: reasoningEffort,
+		})
+	}
+	cfg := groupAudioPriceConfigFromAPIKey(apiKey)
+	return s.billingService.CalculateAudioCost(audio.Mode, audio.DurationOrUnits, cfg, multiplier), nil
 }
 
 func isGrokVideoBillingModel(model string) bool {

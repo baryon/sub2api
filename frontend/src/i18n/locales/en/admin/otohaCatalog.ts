@@ -83,6 +83,101 @@ export default {
       api_unreachable_at: 'The format chosen for this model does not reach the {provider} accounts. Set it back to automatic or choose another.',
       no_price: 'The price table has no price for this model. Set one in the group\'s per-model pricing.'
     },
+    media: {
+      title: 'Video, voice and quick-judgement models',
+      intro: 'The Otoha app cannot use these models yet; users can call them directly with an API key. They are added from the accounts in the group, and their prices are what billing charges. You can turn one off, rename it or describe it; what you change is kept.',
+      kinds: {
+        video: 'Video',
+        voice: 'Voice',
+        quick: 'Quick judgement'
+      },
+      allowNotice: {
+        title: "The group's model list holds back {count} model(s)",
+        body: 'Add them to the list so that users can call them and the catalog shows them.',
+        allow: 'Add to the model list',
+        allowing: 'Adding…',
+        done: "Added to the group's model list.",
+        failed: 'Could not add them to the model list. Please try again later.'
+      },
+      discovery: {
+        title: 'Found from upstream',
+        intro: "Looks at the Grok and TypeSafe accounts in the group, adds the video, voice and quick-judgement models they offer, and prices them by the group's billing rules. A model the accounts no longer offer is taken down for now.",
+        never: 'Not checked yet.',
+        checked: 'Last checked: {time}',
+        checkedAuto: 'Last checked: {time} (automatic)',
+        check: 'Check upstream again',
+        checking: 'Checking…',
+        failed: 'The check failed. Please try again later.',
+        nothingFound: 'The accounts offer no video, voice or quick-judgement models.',
+        accountCounts: 'offers {count}',
+        missing: 'No longer offered by the accounts, taken down for now: {models}',
+        columns: {
+          accounts: 'From accounts',
+          how: 'How it was recognised',
+          result: 'Result'
+        },
+        evidence: {
+          declared: 'The upstream list says what kind of model it is',
+          knownFamily: 'The upstream list gives no kind; matched to a known video model family',
+          builtinCatalog: "This kind of account has no matching model list; matched to the gateway's built-in table",
+          unknown: 'Unknown'
+        },
+        result: {
+          added: 'Added',
+          updated: 'Updated',
+          unchanged: 'No change',
+          manualKept: "Kept the admin's settings",
+          restored: 'Available again',
+          notAdded: 'Not added',
+          unknown: 'Unknown'
+        },
+        reason: {
+          gatewayNotSupported: 'The gateway does not support this model yet',
+          blockedByGroupModels: "The group's model list does not include this model",
+          noAccount: 'No account in the group serves this model',
+          channelRestricted: 'The channel restricts this model',
+          noRoute: 'The group cannot reach this model (voice is only open to Grok groups, not mixed groups)'
+        },
+        accountError: {
+          listFailed: "Could not read this account's model list",
+          unsupported: 'This kind of account has no model list'
+        },
+        skipped: {
+          groupPlatform: 'This type of group does not hold these accounts, so nothing was checked.',
+          noAccounts: 'The group has no accounts yet, so nothing was checked.'
+        }
+      },
+      empty: 'No video, voice or quick-judgement models yet',
+      emptyHint: 'With a Grok or TypeSafe account in the group, press "Check upstream again" to add them.',
+      columns: {
+        price: 'Price'
+      },
+      billingPrice: '(before rate {price})',
+      per: {
+        second: 'per second of video',
+        millionCharacters: 'per million characters',
+        hour: 'per hour of audio',
+        millionTokens: 'per million tokens'
+      },
+      priceLabels: {
+        tts: 'Text to speech',
+        stt: 'Speech to text',
+        input: 'Input',
+        output: 'Output'
+      },
+      statusHint: {
+        not_allowed: "Shown once the model is on the group's model list.",
+        no_price: "Billing has no price for this model, or the channel does not bill it this way. Check the group's and the channel's prices.",
+        upstream_missing: 'The accounts no longer offer this model, so the catalog does not list it for now.',
+        channel_restricted: "The group's channel only allows models it prices, and this one is not among them. Add it to the channel prices.",
+        no_route: "The group cannot hand this model to its provider. Check the group's mixed routing.",
+        no_route_voice: 'The voice endpoints are only open to Grok groups; mixed groups cannot use them yet.',
+        no_account: 'No account in the group can serve this model.'
+      },
+      editTitle: 'Edit {model}',
+      editNote: 'You can change the name, the description and whether it is shown; what you change is kept when the upstream is checked again. The price comes from billing and cannot be changed here.',
+      gone: 'This model is no longer in the catalog. Please refresh.'
+    },
     images: {
       billedAsObserved: '{size} · billed as {tier} (the upstream actually returned {output})',
       billedAsRequested: '{size} · billed as {tier} (no recent pictures drawn at this size, so by the size itself)',

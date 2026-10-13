@@ -141,6 +141,26 @@ export default {
       imagePriceColumn: 'Price per picture',
       imageEdits: 'Can edit pictures',
       imageSizePrice: '{size}: {price}',
+      media: {
+        priceColumn: 'Price',
+        appUnsupported: 'Not in the Otoha app yet',
+        endpointLabel: 'Call',
+        video: {
+          title: 'Video models',
+          hint: 'Charged per second of video generated; the price per second depends on the resolution. The Otoha app does not support these yet; call them directly with an API key.',
+          price: '{resolution}: {price} per second',
+        },
+        voice: {
+          title: 'Voice models',
+          hint: 'Text to speech is charged by the amount of text, speech to text by the length of the audio. The Otoha app does not support these yet; call them directly with an API key.',
+          price: { tts: '{price} per million characters', stt: '{price} per hour of audio' },
+        },
+        quick: {
+          title: 'Quick-judgement models',
+          hint: 'For quick judgements on a piece of content, charged on the content sent in only. The Otoha app does not support these yet; call them directly with an API key.',
+          price: { input: 'Input: {price} per million tokens', output: 'Output: {price} per million tokens' },
+        },
+      },
       modelColumn: 'Model',
       priceColumn: 'Price (per million tokens)',
       inputPrice: 'Input {price}',

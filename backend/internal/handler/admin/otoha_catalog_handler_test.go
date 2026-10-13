@@ -23,6 +23,7 @@ type otohaCatalogAdminStub struct {
 	view     *service.OtohaCatalogAdminView
 	lastCall string
 	imageIn  service.OtohaImageEntryInput
+	mediaIn  service.OtohaMediaEntryInput
 	trigger  string
 }
 
@@ -94,6 +95,22 @@ func (s *otohaCatalogAdminStub) DiscoverImages(_ context.Context, groupID int64,
 	return &service.OtohaImageDiscovery{Trigger: trigger, Accounts: []service.OtohaImageDiscoveryAccount{}, Candidates: []service.OtohaImageDiscoveryCandidate{}, Missing: []string{}}, nil
 }
 
+func (s *otohaCatalogAdminStub) UpdateMediaEntry(_ context.Context, groupID int64, input service.OtohaMediaEntryInput) (*service.OtohaMediaEntry, error) {
+	s.groupID, s.mediaIn, s.lastCall = groupID, input, "update-media"
+	if s.err != nil {
+		return nil, s.err
+	}
+	return &service.OtohaMediaEntry{Kind: input.Kind, ModelID: input.ModelID, Name: input.Name, Enabled: input.Enabled, ManualFields: []string{}}, nil
+}
+
+func (s *otohaCatalogAdminStub) DiscoverMedia(_ context.Context, groupID int64, trigger string) (*service.OtohaMediaDiscovery, error) {
+	s.groupID, s.trigger, s.lastCall = groupID, trigger, "discover-media"
+	if s.err != nil {
+		return nil, s.err
+	}
+	return &service.OtohaMediaDiscovery{Trigger: trigger, Accounts: []service.OtohaMediaDiscoveryAccount{}, Candidates: []service.OtohaMediaDiscoveryCandidate{}, Missing: []string{}}, nil
+}
+
 func otohaAdminRouter(stub *otohaCatalogAdminStub) *gin.Engine {
 	return otohaAdminRouterFor(stub, 0)
 }
@@ -114,6 +131,8 @@ func otohaAdminRouterFor(stub *otohaCatalogAdminStub, otohaGroupID int64) *gin.E
 	g.PUT("/image-entries/:entry_id", h.UpdateImageEntry)
 	g.DELETE("/image-entries/:entry_id", h.DeleteImageEntry)
 	g.POST("/image-discovery", h.DiscoverImages)
+	g.PUT("/media-entries", h.UpdateMediaEntry)
+	g.POST("/media-discovery", h.DiscoverMedia)
 	return r
 }
 
@@ -363,4 +382,48 @@ func TestOtohaCatalogAdminImageDiscoveryErrorsAreMappedNotLeaked(t *testing.T) {
 
 	bad := otohaAdminDo(otohaAdminRouter(&otohaCatalogAdminStub{}), http.MethodPost, "/groups/abc/otoha-catalog/image-discovery", "")
 	require.Equal(t, http.StatusBadRequest, bad.Code)
+}
+
+func TestOtohaCatalogAdminUpdatesAMediaEntryByKindAndModel(t *testing.T) {
+	stub := &otohaCatalogAdminStub{}
+	rec := otohaAdminDo(otohaAdminRouter(stub), http.MethodPut, "/groups/7/otoha-catalog/media-entries",
+		`{"kind":"quick","model_id":"jev-latest","name":"Jev","description":"Yes or no answers","enabled":false}`)
+
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	require.Equal(t, "update-media", stub.lastCall)
+	require.Equal(t, int64(7), stub.groupID)
+	require.Equal(t, service.OtohaMediaEntryInput{Kind: "quick", ModelID: "jev-latest", Name: "Jev", Description: "Yes or no answers", Enabled: false}, stub.mediaIn)
+}
+
+func TestOtohaCatalogAdminMediaEntryIsOnUnlessTheAdminTurnsItOff(t *testing.T) {
+	stub := &otohaCatalogAdminStub{}
+	rec := otohaAdminDo(otohaAdminRouter(stub), http.MethodPut, "/groups/7/otoha-catalog/media-entries", `{"kind":"video","model_id":"grok-imagine-video"}`)
+
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	require.True(t, stub.mediaIn.Enabled)
+}
+
+func TestOtohaCatalogAdminMediaEntryRejectsAnUnknownKindOrNoModel(t *testing.T) {
+	stub := &otohaCatalogAdminStub{}
+	for _, body := range []string{`{"kind":"audio","model_id":"x"}`, `{"kind":"video"}`, `{"kind":"video","model_id":"  "}`, `{`} {
+		rec := otohaAdminDo(otohaAdminRouter(stub), http.MethodPut, "/groups/7/otoha-catalog/media-entries", body)
+		require.Equal(t, http.StatusBadRequest, rec.Code, body)
+	}
+	require.Empty(t, stub.lastCall, "nothing reached the service")
+}
+
+func TestOtohaCatalogAdminMediaDiscoveryRunsForTheGroupAsAnAdminCheck(t *testing.T) {
+	stub := &otohaCatalogAdminStub{}
+	rec := otohaAdminDo(otohaAdminRouter(stub), http.MethodPost, "/groups/7/otoha-catalog/media-discovery", "")
+
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	require.Equal(t, "discover-media", stub.lastCall)
+	require.Equal(t, int64(7), stub.groupID)
+	require.Equal(t, service.OtohaImageTriggerAdmin, stub.trigger)
+	require.Contains(t, rec.Body.String(), `"candidates":[]`)
+
+	failing := &otohaCatalogAdminStub{err: service.ErrOtohaMediaDiscoveryUnavailable}
+	bad := otohaAdminDo(otohaAdminRouter(failing), http.MethodPost, "/groups/7/otoha-catalog/media-discovery", "")
+	require.GreaterOrEqual(t, bad.Code, http.StatusBadRequest)
+	require.Equal(t, http.StatusBadRequest, otohaAdminDo(otohaAdminRouter(&otohaCatalogAdminStub{}), http.MethodPost, "/groups/abc/otoha-catalog/media-discovery", "").Code)
 }

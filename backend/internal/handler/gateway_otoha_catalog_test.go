@@ -40,13 +40,14 @@ func otohaModelsRequest(h *GatewayHandler, header map[string]string) *httptest.R
 
 func TestOtohaModelsETagFollowsTheRevision(t *testing.T) {
 	h := &GatewayHandler{}
-	h.SetOtohaCatalog(otohaCatalogReaderStub{catalog: &service.OtohaCatalog{Schema: 1, Revision: "abc", Models: []service.OtohaCatalogModel{}, ImageModels: []service.OtohaImageModel{}}})
+	h.SetOtohaCatalog(otohaCatalogReaderStub{catalog: &service.OtohaCatalog{Schema: 1, Revision: "abc", Models: []service.OtohaCatalogModel{}, ImageModels: []service.OtohaImageModel{},
+		VideoModels: []service.OtohaVideoModel{}, VoiceModels: []service.OtohaVoiceModel{}, QuickModels: []service.OtohaQuickModel{}}})
 
 	rec := otohaModelsRequest(h, nil)
 	require.Equal(t, http.StatusOK, rec.Code)
 	require.Equal(t, `"abc"`, rec.Header().Get("ETag"))
 	require.Equal(t, "no-cache", rec.Header().Get("Cache-Control"))
-	require.JSONEq(t, `{"schema":1,"revision":"abc","models":[],"imageModels":[]}`, rec.Body.String())
+	require.JSONEq(t, `{"schema":1,"revision":"abc","models":[],"imageModels":[],"videoModels":[],"voiceModels":[],"quickModels":[]}`, rec.Body.String())
 
 	require.Equal(t, http.StatusNotModified, otohaModelsRequest(h, map[string]string{"If-None-Match": `"abc"`}).Code)
 	require.Equal(t, http.StatusOK, otohaModelsRequest(h, map[string]string{"If-None-Match": `"older"`}).Code, "a new revision is sent")

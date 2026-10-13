@@ -135,6 +135,38 @@
           </table>
         </div>
       </section>
+
+      <!-- Video, voice and quick-judgement models: the app cannot use them yet, an API key reaches them -->
+      <section v-for="section in mediaSections" :key="section.kind" class="card p-5" :data-testid="`otoha-account-${section.kind}-models`">
+        <h2 class="text-lg font-semibold text-gray-900 dark:text-white">{{ t(`otoha.account.media.${section.kind}.title`) }}</h2>
+        <p class="mt-1 text-sm text-gray-500 dark:text-dark-400">{{ t(`otoha.account.media.${section.kind}.hint`) }}</p>
+        <div class="mt-4 overflow-x-auto">
+          <table class="w-full text-left text-sm">
+            <thead class="text-xs uppercase text-gray-500 dark:text-dark-400">
+              <tr>
+                <th class="py-2 pr-4 font-medium">{{ t('otoha.account.modelColumn') }}</th>
+                <th class="py-2 font-medium">{{ t('otoha.account.media.priceColumn') }}</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-100 dark:divide-dark-800">
+              <tr v-for="row in section.rows" :key="row.id" class="align-top">
+                <td class="py-3 pr-4">
+                  <p class="font-medium text-gray-900 dark:text-white">{{ row.name }}</p>
+                  <p v-if="row.description" class="mt-0.5 text-xs text-gray-500 dark:text-dark-400">{{ row.description }}</p>
+                  <div class="mt-1 flex flex-wrap items-center gap-1">
+                    <span v-if="!row.app" class="rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-600 dark:bg-dark-800 dark:text-dark-300">{{ t('otoha.account.media.appUnsupported') }}</span>
+                    <span class="text-xs text-gray-500 dark:text-dark-400">{{ t('otoha.account.media.endpointLabel') }}</span>
+                    <code class="rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-700 dark:bg-dark-800 dark:text-dark-200">{{ row.endpoint }}</code>
+                  </div>
+                </td>
+                <td class="whitespace-nowrap py-3 text-gray-700 dark:text-dark-200">
+                  <p v-for="entry in row.prices" :key="entry.key">{{ mediaPriceLine(section.kind, entry.key, entry.price) }}</p>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
     </div>
   </OtohaLayout>
 </template>
@@ -148,7 +180,7 @@ import OtohaConnectPanel from '@/components/otoha/OtohaConnectPanel.vue'
 import OtohaAutoTopUpPanel from '@/components/otoha/OtohaAutoTopUpPanel.vue'
 import { formatPaymentAmount } from '@/components/payment/currency'
 import { otohaAPI, type OtohaAccount } from '@/api/otoha'
-import { formatPerMillion, imageModelRows, periodUsage } from './otohaRules'
+import { formatPerMillion, imageModelRows, periodUsage, quickModelRows, videoModelRows, voiceModelRows } from './otohaRules'
 import { otohaErrorMessage } from './otohaErrors'
 
 const { t, te, locale } = useI18n()
@@ -162,6 +194,21 @@ const usage = computed(() => (account.value?.plan ? periodUsage(account.value.pl
 // The catalog comes with the account summary; it is null until the group's catalog is published (TASK-54).
 const models = computed(() => account.value?.catalog?.models ?? [])
 const imageModels = computed(() => imageModelRows(account.value?.catalog?.imageModels))
+
+const mediaSections = computed(() =>
+  [
+    { kind: 'video', rows: videoModelRows(account.value?.catalog?.videoModels) },
+    { kind: 'voice', rows: voiceModelRows(account.value?.catalog?.voiceModels) },
+    { kind: 'quick', rows: quickModelRows(account.value?.catalog?.quickModels) },
+  ].filter((section) => section.rows.length),
+)
+
+// A price line: a video price is per second at a resolution; the others name what the price is for.
+function mediaPriceLine(kind: string, key: string, price: string): string {
+  return kind === 'video'
+    ? t('otoha.account.media.video.price', { resolution: key, price })
+    : t(`otoha.account.media.${kind}.price.${key}`, { price })
+}
 
 async function load() {
   loading.value = true

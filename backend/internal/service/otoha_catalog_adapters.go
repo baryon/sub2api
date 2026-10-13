@@ -58,6 +58,17 @@ func NewOtohaCatalogService(
 			svc.WithDiscovery(NewOtohaImageListingSource(accountRepo, accountTestService), NewOtohaImageDiscoveryStore(settingRepo))
 		}
 	}
+	if settingRepo != nil {
+		// Video, voice and quick-judgement models, kept in the settings and made from the same accounts (TASK-81).
+		svc.WithMedia(NewOtohaMediaStore(settingRepo), otohaOpenAIMediaPricer{openai: openAIGatewayService}, routing)
+		if accountRepo != nil {
+			var lister otohaAccountModelLister
+			if accountTestService != nil {
+				lister = accountTestService
+			}
+			svc.WithMediaDiscovery(NewOtohaMediaAccountSource(accountRepo, lister), NewOtohaMediaDiscoveryStore(settingRepo))
+		}
+	}
 	return svc
 }
 

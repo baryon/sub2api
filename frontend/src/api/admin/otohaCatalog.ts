@@ -243,6 +243,48 @@ export interface OtohaImageModel {
   sizes: { size: string; tier: '1K' | '2K' | '4K'; price: number }[]
 }
 
+/** A video model as the app receives it: the price of one second at each resolution (TASK-81). */
+export interface OtohaVideoModel {
+  id: string
+  name: string
+  description?: string
+  api: string
+  endpoint: string
+  app: boolean
+  currency: string
+  per: string
+  resolutions: { resolution: string; price: number }[]
+}
+
+/** A voice function: mode 'tts' (a million characters of text) or 'stt' (an hour of audio). */
+export interface OtohaVoiceModel {
+  id: string
+  name: string
+  description?: string
+  api: string
+  endpoint: string
+  app: boolean
+  mode: string
+  currency: string
+  per: string
+  price: number
+}
+
+/** A quick-judgement model, billed on input tokens. */
+export interface OtohaQuickModel {
+  id: string
+  name: string
+  description?: string
+  api: string
+  endpoint: string
+  app: boolean
+  currency: string
+  per: string
+  billed: string
+  price: number
+  outputPrice?: number
+}
+
 export interface OtohaCatalogModel {
   id: string
   name: string
@@ -254,6 +296,73 @@ export interface OtohaCatalog {
   revision: string
   models: OtohaCatalogModel[]
   imageModels?: OtohaImageModel[]
+  videoModels?: OtohaVideoModel[]
+  voiceModels?: OtohaVoiceModel[]
+  quickModels?: OtohaQuickModel[]
+}
+
+export type OtohaMediaKind = 'video' | 'voice' | 'quick'
+
+/** A video, voice or quick-judgement model of the group, found from its accounts. The admin may switch it off, rename it and describe it. */
+export interface OtohaMediaAdminEntry {
+  kind: OtohaMediaKind
+  model_id: string
+  name: string
+  description: string
+  enabled: boolean
+  sort_order: number
+  /** The fields an admin changed, which later checks leave alone. */
+  manual_fields: string[]
+  /** Since when the accounts no longer offer the model; null while they do. */
+  unavailable_since: string | null
+  /** The call an API key makes, such as "POST /v1/systemone". */
+  endpoint: string
+  /** What the prices are for: "second", "1M characters", "hour" or "1M tokens". */
+  per: string
+  /** label: a resolution (video), "tts" / "stt" (voice), "input" / "output" (quick). */
+  prices: { label: string; upstream: number; sale: number }[]
+  in_catalog: boolean
+  problem: OtohaCatalogProblem | 'upstream_missing'
+  route_platform: string
+}
+
+export interface OtohaMediaEntryInput {
+  kind: OtohaMediaKind
+  model_id: string
+  name: string
+  description: string
+  enabled: boolean
+}
+
+export interface OtohaMediaDiscoveryAccount {
+  id: number
+  name: string
+  platform: string
+  type: string
+  listed: number
+  media_models: number
+  error: '' | 'list_failed' | 'unsupported'
+}
+
+export interface OtohaMediaDiscoveryCandidate {
+  kind: OtohaMediaKind
+  model_id: string
+  name: string
+  accounts: string[]
+  evidence: OtohaImageEvidence
+  declared_by: string
+  result: OtohaImageDiscoveryResult
+  reason: OtohaImageDiscoveryReason
+}
+
+export interface OtohaMediaDiscovery {
+  ran_at: string | null
+  trigger: 'admin' | 'schedule' | ''
+  skipped_reason: '' | 'group_platform' | 'no_accounts'
+  accounts: OtohaMediaDiscoveryAccount[]
+  candidates: OtohaMediaDiscoveryCandidate[]
+  /** "kind/model" of the entries this check marked unavailable. */
+  missing: string[]
 }
 
 export interface OtohaCatalogAdminView {
@@ -266,6 +375,10 @@ export interface OtohaCatalogAdminView {
   image_discovery: OtohaImageDiscovery | null
   /** The group's own switch for drawing (stays an explicit admin choice). */
   group_allow_image_generation: boolean
+  media_entries: OtohaMediaAdminEntry[]
+  media_discovery: OtohaMediaDiscovery | null
+  /** The group's own model list, which can hold back a model; it stays the admin's. */
+  group_model_allowlist: { enabled: boolean; models: string[] }
   preview: OtohaCatalog | null
 }
 
@@ -348,6 +461,16 @@ export async function discoverImages(groupId: number): Promise<OtohaImageDiscove
   return data
 }
 
+export async function updateMediaEntry(groupId: number, entry: OtohaMediaEntryInput): Promise<OtohaMediaAdminEntry> {
+  const { data } = await apiClient.put<OtohaMediaAdminEntry>(`/admin/groups/${groupId}/otoha-catalog/media-entries`, entry)
+  return data
+}
+
+export async function discoverMedia(groupId: number): Promise<OtohaMediaDiscovery> {
+  const { data } = await apiClient.post<OtohaMediaDiscovery>(`/admin/groups/${groupId}/otoha-catalog/media-discovery`)
+  return data
+}
+
 export async function getSettings(): Promise<OtohaCatalogSettings> {
   const { data } = await apiClient.get<OtohaCatalogSettings>('/admin/otoha-catalog/settings')
   return data
@@ -363,6 +486,8 @@ export const otohaCatalogAPI = {
   updateImageEntry,
   deleteImageEntry,
   discoverImages,
+  updateMediaEntry,
+  discoverMedia,
   reorder,
   prefill
 }

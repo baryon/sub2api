@@ -15,6 +15,12 @@ type OtohaCatalog struct {
 	// ImageModels are the models the app draws with (TASK-73), apart from Models so an older app, which reads only
 	// Models, never lists one as a chat model. Empty when the group has none.
 	ImageModels []OtohaImageModel `json:"imageModels"`
+	// VideoModels, VoiceModels and QuickModels are the video, voice and quick-judgement (Jev) models an API key reaches
+	// (TASK-81), each apart from Models so an app that reads only Models never lists one as a chat model. The Otoha app
+	// cannot use them yet (their App is false). Empty when the group has none.
+	VideoModels []OtohaVideoModel `json:"videoModels"`
+	VoiceModels []OtohaVoiceModel `json:"voiceModels"`
+	QuickModels []OtohaQuickModel `json:"quickModels"`
 }
 
 // OtohaCatalogModel is one model as the app shows and chooses it.

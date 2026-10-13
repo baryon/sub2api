@@ -141,6 +141,26 @@ export default {
       imagePriceColumn: '每张价格',
       imageEdits: '可改图',
       imageSizePrice: '{size}：{price}',
+      media: {
+        priceColumn: '价格',
+        appUnsupported: 'Otoha App 暂不支持',
+        endpointLabel: '调用方式',
+        video: {
+          title: '视频模型',
+          hint: '按生成的视频秒数计费，不同清晰度每秒价格不同。Otoha App 暂不支持，可用 API key 直接调用。',
+          price: '{resolution}：每秒 {price}',
+        },
+        voice: {
+          title: '语音模型',
+          hint: '语音合成按文字数量计费，语音转文字按音频时长计费。Otoha App 暂不支持，可用 API key 直接调用。',
+          price: { tts: '每百万字符 {price}', stt: '每小时音频 {price}' },
+        },
+        quick: {
+          title: '快速判断模型',
+          hint: '用于对一段内容做快速判断，只按输入的内容计费。Otoha App 暂不支持，可用 API key 直接调用。',
+          price: { input: '输入：每百万 token {price}', output: '输出：每百万 token {price}' },
+        },
+      },
       modelColumn: '模型',
       priceColumn: '价格（每百万 token）',
       inputPrice: '输入 {price}',
