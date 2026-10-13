@@ -847,11 +847,13 @@ func mustCreateFallbackSignedToken(t *testing.T, claims any) string {
 func TestCanonicalizeReturnURLAllowsTheOtohaResultPage(t *testing.T) {
 	t.Parallel()
 
+	// Client-supplied query parameters are dropped (issue #7881: they can be smuggled into the payment
+	// provider's signed string); the signed return URL is built from the bare result page.
 	got, err := CanonicalizeReturnURL("https://account.example.com/otoha/result?from=app", "account.example.com", "")
 	if err != nil {
 		t.Fatalf("CanonicalizeReturnURL returned error: %v", err)
 	}
-	if got != "https://account.example.com/otoha/result?from=app" {
+	if got != "https://account.example.com/otoha/result" {
 		t.Fatalf("CanonicalizeReturnURL = %q", got)
 	}
 	if _, err := CanonicalizeReturnURL("https://evil.example/otoha/result", "account.example.com", ""); err == nil {

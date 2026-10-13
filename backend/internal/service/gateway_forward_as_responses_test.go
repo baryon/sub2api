@@ -222,7 +222,7 @@ func TestExtractResponsesReasoningEffortFromBody(t *testing.T) {
 	require.NotNil(t, got)
 	require.Equal(t, "high", *got)
 
-	maxGot := ExtractResponsesReasoningEffortFromBody([]byte(`{"model":"gpt-5.4","reasoning":{"effort":"max"}}`))
+	maxGot := ExtractResponsesReasoningEffortFromBody([]byte(`{"model":"deepseek-v4-pro","reasoning":{"effort":"max"}}`))
 	require.NotNil(t, maxGot)
 	require.Equal(t, "max", *maxGot)
 

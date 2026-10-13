@@ -82,13 +82,15 @@ func (s *openAIRecordUsageBestEffortLogRepoStub) Create(ctx context.Context, log
 
 func TestGatewayServiceRecordUsage_DeepSeekMessagesCacheAndIsolationModeCostInvariant(t *testing.T) {
 	const (
-		model                 = "deepseek-v4-pro"
-		inputTokens           = 600
-		cacheReadTokens       = 400
-		outputTokens          = 200
-		inputPricePerToken    = 4.35e-7
-		cachePricePerToken    = 3.625e-9
-		outputPricePerToken   = 8.7e-7
+		model           = "deepseek-v4-pro"
+		inputTokens     = 600
+		cacheReadTokens = 400
+		outputTokens    = 200
+		// deepseek-v4-pro off-peak card; the request is priced at a fixed moment before pro was routed to
+		// Flash pricing (2026-09-14 04:00 UTC) and outside the peak hours, so the test does not depend on today's date.
+		inputPricePerToken    = 6.6e-7
+		cachePricePerToken    = 2.2e-8
+		outputPricePerToken   = 1.98e-6
 		groupRateMultiplier   = 1.25
 		accountRateMultiplier = 0.8
 	)
@@ -107,10 +109,12 @@ func TestGatewayServiceRecordUsage_DeepSeekMessagesCacheAndIsolationModeCostInva
 			usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
 			userRepo := &openAIRecordUsageUserRepoStub{}
 			svc := newGatewayRecordUsageServiceForTest(usageRepo, userRepo, &openAIRecordUsageSubRepoStub{})
+			svc.resolver = NewModelPricingResolver(nil, svc.billingService)
 			groupID := int64(8200 + index)
 			accountRate := accountRateMultiplier
 
 			err := svc.RecordUsage(context.Background(), &RecordUsageInput{
+				PricingAt: time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC),
 				Result: &ForwardResult{
 					RequestID: "msg_deepseek_billing_" + isolationMode,
 					Model:     model,

@@ -192,7 +192,7 @@ func TestForwardAsAnthropic_ForceChatCompletionsAppliesForcePriorityPolicy(t *te
 	}}
 	svc := newOpenAIGatewayServiceWithSettings(t, &OpenAIFastPolicySettings{
 		Rules: []OpenAIFastPolicyRule{{
-			ServiceTier: OpenAIFastTierPriority,
+			ServiceTier: OpenAIFastTierMissing,
 			Action:      OpenAIFastPolicyActionForcePriority,
 			Scope:       BetaPolicyScopeAll,
 		}},
