@@ -27,6 +27,8 @@ const (
 	NotificationEmailEventSubscriptionExpiryReminder  = "subscription.expiry_reminder"
 	NotificationEmailEventBalanceLow                  = "balance.low"
 	NotificationEmailEventBalanceRechargeSuccess      = "balance.recharge_success"
+	NotificationEmailEventAutoTopUpStopped            = "balance.auto_topup_stopped"
+	NotificationEmailEventAutoTopUpCapReached         = "balance.auto_topup_cap_reached"
 	NotificationEmailEventAccountQuotaAlert           = "account.quota_alert"
 	NotificationEmailEventContentModerationViolation  = "content_moderation.violation_notice"
 	NotificationEmailEventContentModerationDisabled   = "content_moderation.account_disabled"
@@ -1028,6 +1030,8 @@ var notificationEmailEventOrder = []string{
 	NotificationEmailEventSubscriptionExpiryReminder,
 	NotificationEmailEventBalanceLow,
 	NotificationEmailEventBalanceRechargeSuccess,
+	NotificationEmailEventAutoTopUpStopped,
+	NotificationEmailEventAutoTopUpCapReached,
 	NotificationEmailEventAccountQuotaAlert,
 	NotificationEmailEventContentModerationViolation,
 	NotificationEmailEventContentModerationDisabled,
@@ -1092,6 +1096,22 @@ var notificationEmailEventDefinitions = map[string]NotificationEmailEventInfo{
 		Category:     "billing",
 		Optional:     false,
 		Placeholders: append(append([]string{}, notificationEmailCommonPlaceholders...), "recharge_amount", "current_balance", "order_id"),
+	},
+	NotificationEmailEventAutoTopUpStopped: {
+		Event:        NotificationEmailEventAutoTopUpStopped,
+		Label:        "Automatic top-up turned off",
+		Description:  "Sent when a charge of the saved card fails or the bank asks the user to confirm, and automatic top-up is turned off.",
+		Category:     "billing",
+		Optional:     false,
+		Placeholders: append(append([]string{}, notificationEmailCommonPlaceholders...), "reason_text", "card_summary", "attempted_usd", "manage_url"),
+	},
+	NotificationEmailEventAutoTopUpCapReached: {
+		Event:        NotificationEmailEventAutoTopUpCapReached,
+		Label:        "Automatic top-up monthly limit reached",
+		Description:  "Sent once a month when automatic top-up stops because the monthly limit is reached.",
+		Category:     "billing",
+		Optional:     false,
+		Placeholders: append(append([]string{}, notificationEmailCommonPlaceholders...), "monthly_cap", "used_usd", "manage_url"),
 	},
 	NotificationEmailEventAccountQuotaAlert: {
 		Event:       NotificationEmailEventAccountQuotaAlert,
@@ -1290,6 +1310,46 @@ var notificationEmailOfficialTemplates = map[string]map[string]notificationEmail
 <p>您的余额充值 <strong>${{recharge_amount}}</strong> 已完成。</p>
 <p>当前余额：<strong>${{current_balance}}</strong></p>
 			<p>订单号：{{order_id}}</p>`),
+		},
+	},
+	NotificationEmailEventAutoTopUpStopped: {
+		notificationEmailDefaultLocale: {
+			Subject: "[{{site_name}}] Automatic top-up is off",
+			HTML: notificationEmailCard("#d97706", "Automatic top-up is off", `
+<p>Hello {{recipient_name}},</p>
+<p>An automatic top-up of <strong>${{attempted_usd}}</strong> did not go through, so automatic top-up has been turned off.</p>
+<p>{{reason_text}}</p>
+<p>Card: {{card_summary}}</p>
+<p>Your balance is unchanged. Open your account to check the card and turn automatic top-up on again.</p>
+<p><a class="button" href="{{manage_url}}">Open automatic top-up</a></p>`),
+		},
+		notificationEmailLocaleChinese: {
+			Subject: "[{{site_name}}] 自动充值已关闭",
+			HTML: notificationEmailCard("#d97706", "自动充值已关闭", `
+<p>{{recipient_name}}，您好：</p>
+<p>一笔 <strong>${{attempted_usd}}</strong> 的自动充值没有成功，自动充值已关闭。</p>
+<p>{{reason_text}}</p>
+<p>银行卡：{{card_summary}}</p>
+<p>账户余额没有变化。请到账户页检查银行卡，再重新开启自动充值。</p>
+<p><a class="button" href="{{manage_url}}">打开自动充值设置</a></p>`),
+		},
+	},
+	NotificationEmailEventAutoTopUpCapReached: {
+		notificationEmailDefaultLocale: {
+			Subject: "[{{site_name}}] Automatic top-up reached its monthly limit",
+			HTML: notificationEmailCard("#d97706", "Monthly limit reached", `
+<p>Hello {{recipient_name}},</p>
+<p>Automatic top-up has used <strong>${{used_usd}}</strong> this month, and the monthly limit is <strong>${{monthly_cap}}</strong>. It will not add more balance until next month.</p>
+<p>To keep going now, top up by hand or raise the limit.</p>
+<p><a class="button" href="{{manage_url}}">Open automatic top-up</a></p>`),
+		},
+		notificationEmailLocaleChinese: {
+			Subject: "[{{site_name}}] 自动充值已达本月上限",
+			HTML: notificationEmailCard("#d97706", "已达本月上限", `
+<p>{{recipient_name}}，您好：</p>
+<p>本月自动充值已用 <strong>${{used_usd}}</strong>，月度上限为 <strong>${{monthly_cap}}</strong>，下个月之前不会再自动充值。</p>
+<p>需要继续使用，可以手动充值，或调高上限。</p>
+<p><a class="button" href="{{manage_url}}">打开自动充值设置</a></p>`),
 		},
 	},
 	NotificationEmailEventAccountQuotaAlert: {

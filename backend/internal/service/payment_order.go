@@ -483,6 +483,7 @@ func (s *PaymentService) invokeProvider(ctx context.Context, order *dbent.Paymen
 		ReturnURL:   providerReturnURL,
 	}, sel, outTradeNo, payAmountStr, subject)
 	providerReq.AlipayMobilePrecreate = shouldUseAlipayMobilePrecreate(req, cfg, sel)
+	providerReq.SaveCardCustomerID = s.rememberCardForPayment(ctx, req, order, sel, prov)
 	finishProviderCall := servertiming.ObserveDependency(ctx, "payment")
 	pr, err := prov.CreatePayment(ctx, providerReq)
 	finishProviderCall()

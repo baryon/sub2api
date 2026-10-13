@@ -21,18 +21,23 @@ type otohaClaims interface {
 	AccountSummary(ctx context.Context, userID int64) (*service.OtohaAccount, error)
 }
 
-// OtohaHandler serves the Otoha purchase pages and the app's claim exchange (TASK-55).
+// OtohaHandler serves the Otoha purchase pages and the app's claim exchange (TASK-55), and automatic top-up
+// settings (TASK-75).
 type OtohaHandler struct {
-	otoha otohaClaims
+	otoha     otohaClaims
+	autoTopUp otohaAutoTopUp
 }
 
 // NewOtohaHandler creates the Otoha handler.
-func NewOtohaHandler(otohaService *service.OtohaService) *OtohaHandler {
-	return newOtohaHandler(otohaService)
+func NewOtohaHandler(otohaService *service.OtohaService, autoTopUp *service.OtohaAutoTopUpService) *OtohaHandler {
+	if autoTopUp == nil {
+		return newOtohaHandler(otohaService, nil)
+	}
+	return newOtohaHandler(otohaService, autoTopUp)
 }
 
-func newOtohaHandler(claims otohaClaims) *OtohaHandler {
-	return &OtohaHandler{otoha: claims}
+func newOtohaHandler(claims otohaClaims, autoTopUp otohaAutoTopUp) *OtohaHandler {
+	return &OtohaHandler{otoha: claims, autoTopUp: autoTopUp}
 }
 
 // CreateClaim issues a one-time code for the logged-in user.

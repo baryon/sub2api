@@ -43,6 +43,17 @@ type BalanceNotifyService struct {
 	settingRepo              SettingRepository
 	accountRepo              AccountQuotaReader
 	notificationEmailService *NotificationEmailService
+	autoTopUp                balanceAutoTopUp
+}
+
+// balanceAutoTopUp reacts to a balance that was just deducted (Otoha automatic top-up, TASK-75).
+type balanceAutoTopUp interface {
+	OnBalanceDeducted(ctx context.Context, userID int64, newBalance float64)
+}
+
+// SetAutoTopUp attaches automatic top-up, which runs after every balance deduction.
+func (s *BalanceNotifyService) SetAutoTopUp(autoTopUp balanceAutoTopUp) {
+	s.autoTopUp = autoTopUp
 }
 
 // NewBalanceNotifyService creates a new BalanceNotifyService.
@@ -70,6 +81,10 @@ func resolveBalanceThreshold(threshold float64, thresholdType string, totalRecha
 // CheckBalanceAfterDeduction checks if balance crossed below threshold after deduction.
 // Notification is sent only on first crossing: oldBalance >= threshold && newBalance < threshold.
 func (s *BalanceNotifyService) CheckBalanceAfterDeduction(ctx context.Context, user *User, oldBalance, cost float64) {
+	// Automatic top-up acts on any low balance, whether or not the user wants the low-balance email.
+	if s.autoTopUp != nil && user != nil && cost > 0 {
+		s.autoTopUp.OnBalanceDeducted(ctx, user.ID, oldBalance-cost)
+	}
 	if !s.canNotifyBalance(user) {
 		return
 	}

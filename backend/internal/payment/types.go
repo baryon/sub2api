@@ -112,6 +112,9 @@ type CreatePaymentRequest struct {
 	// alipay.trade.precreate instead of alipay.trade.wap.pay.
 	AlipayMobilePrecreate bool
 	InstanceSubMethods    string // Comma-separated sub-methods from instance supported_types (for Stripe)
+	// SaveCardCustomerID asks the provider to keep the card used for this payment for later charges by the
+	// customer's own provider id (Otoha automatic top-up). Empty means the card is not kept.
+	SaveCardCustomerID string
 }
 
 // CreatePaymentResultType describes the shape of the create-payment result.
@@ -176,6 +179,17 @@ type PaymentNotification struct {
 	RawData  string // Raw notification body for audit
 	Metadata map[string]string
 }
+
+// Keys of PaymentNotification.Metadata that only some notifications carry.
+const (
+	// NotificationMetaSaveCard is "1" when the payment asked to keep its card for later charges.
+	NotificationMetaSaveCard = "save_card"
+	// NotificationMetaCustomer and NotificationMetaPaymentMethod are the provider's ids of the customer and card.
+	NotificationMetaCustomer      = "customer"
+	NotificationMetaPaymentMethod = "payment_method"
+	// NotificationMetaFailureCode is the provider's reason when a payment failed.
+	NotificationMetaFailureCode = "failure_code"
+)
 
 // RefundRequest contains the parameters for requesting a refund.
 type RefundRequest struct {

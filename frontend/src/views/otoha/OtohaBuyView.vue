@@ -154,6 +154,10 @@
               <input v-model.number="topUpAmount" type="number" min="0" step="1" class="input mt-1 w-full" />
             </label>
             <p v-if="topUpError" class="text-sm text-red-600 dark:text-red-400">{{ topUpError }}</p>
+            <label v-if="canKeepCard" class="flex items-start gap-2 text-sm text-gray-700 dark:text-dark-200">
+              <input v-model="keepCard" type="checkbox" class="mt-1" />
+              <span>{{ t('otoha.buy.keepCard') }}</span>
+            </label>
             <button
               type="button"
               class="btn btn-primary"
@@ -206,6 +210,9 @@ const payError = ref('')
 const phase = ref<'choose' | 'stripe' | 'qr' | 'redirect'>('choose')
 const payment = ref<PaymentRecoverySnapshot | null>(null)
 const payingLabel = ref('')
+// Keep the card of this top-up for automatic top-up. Off unless the user ticks it.
+const keepCard = ref(false)
+const canKeepCard = computed(() => selectedMethod.value === 'stripe' && !!account.value?.auto_topup)
 
 const plans = computed(() => otohaPlans(checkout.value?.plans, account.value?.group_id ?? 0))
 
@@ -323,6 +330,9 @@ async function startPayment(orderType: OrderType, amount: number, planId?: numbe
     })
     // Providers that send the buyer back land on the Otoha result page (same site).
     payload.return_url = `${origin}/otoha/result`
+    if (orderType === 'balance' && visibleMethod === 'stripe' && keepCard.value && canKeepCard.value) {
+      payload.save_card = true
+    }
     const { data: result } = await paymentAPI.createOrder(payload)
     const decision = decidePaymentLaunch(result, {
       visibleMethod,

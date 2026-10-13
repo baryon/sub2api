@@ -57,6 +57,9 @@
         </section>
       </div>
 
+      <!-- Automatic top-up -->
+      <OtohaAutoTopUpPanel v-if="account.auto_topup" />
+
       <!-- Open the app, or set it up by hand -->
       <section class="card p-5">
         <h2 class="mb-4 text-lg font-semibold text-gray-900 dark:text-white">{{ t('otoha.connect.title') }}</h2>
@@ -106,16 +109,19 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, nextTick, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useRoute } from 'vue-router'
 import OtohaLayout from '@/components/otoha/OtohaLayout.vue'
 import OtohaConnectPanel from '@/components/otoha/OtohaConnectPanel.vue'
+import OtohaAutoTopUpPanel from '@/components/otoha/OtohaAutoTopUpPanel.vue'
 import { formatPaymentAmount } from '@/components/payment/currency'
 import { otohaAPI, type OtohaAccount } from '@/api/otoha'
 import { formatPerMillion, periodUsage } from './otohaRules'
 import { otohaErrorMessage } from './otohaErrors'
 
 const { t, te, locale } = useI18n()
+const route = useRoute()
 
 const loading = ref(false)
 const loadError = ref('')
@@ -135,6 +141,11 @@ async function load() {
     loadError.value = otohaErrorMessage(err, t, 'otoha.account.loadFailed')
   } finally {
     loading.value = false
+  }
+  // Emails about automatic top-up link to this section.
+  if (route.hash === '#auto-topup') {
+    await nextTick()
+    document.getElementById('auto-topup')?.scrollIntoView({ behavior: 'smooth' })
   }
 }
 

@@ -251,6 +251,8 @@ type CreateOrderRequest struct {
 	PaymentSource     string  `json:"payment_source"`
 	OrderType         string  `json:"order_type"`
 	PlanID            int64   `json:"plan_id"`
+	// SaveCard asks Stripe to keep the card of a balance top-up for automatic top-up.
+	SaveCard bool `json:"save_card"`
 	// IsMobile lets the frontend declare its mobile status directly. When
 	// nil we fall back to User-Agent heuristics (which miss iPadOS / some
 	// embedded browsers that strip the "Mobile" keyword).
@@ -300,6 +302,7 @@ func (h *PaymentHandler) CreateOrder(c *gin.Context) {
 		PaymentSource:   req.PaymentSource,
 		OrderType:       req.OrderType,
 		PlanID:          req.PlanID,
+		SaveCard:        req.SaveCard,
 		Locale:          c.GetHeader("Accept-Language"),
 	})
 	if err != nil {

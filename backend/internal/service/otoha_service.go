@@ -130,7 +130,19 @@ type OtohaService struct {
 	groups  otohaGroupReader
 	subs    otohaSubscriptionReader
 	catalog OtohaCatalogReader
-	now     func() time.Time
+	// autoTopUp is read for the account page; nil when automatic top-up is not set up (TASK-75).
+	autoTopUp otohaAutoTopUpReader
+	now       func() time.Time
+}
+
+// otohaAutoTopUpReader gives a user's automatic top-up state for the account page.
+type otohaAutoTopUpReader interface {
+	State(ctx context.Context, userID int64) (*OtohaAutoTopUp, error)
+}
+
+// SetAutoTopUp attaches automatic top-up, whose state the account page shows (TASK-75).
+func (s *OtohaService) SetAutoTopUp(reader otohaAutoTopUpReader) {
+	s.autoTopUp = reader
 }
 
 // NewOtohaService builds the service from the server configuration's otoha section.
@@ -485,6 +497,9 @@ type OtohaAccount struct {
 	Balance float64           `json:"balance"`
 	Plan    *OtohaAccountPlan `json:"plan"`
 	Catalog *OtohaCatalog     `json:"catalog"`
+	// AutoTopUp is automatic top-up: whether it is on, its amounts, this month's use, the last top-up and where
+	// to change it. Null when the server has none or it cannot be read now (TASK-75).
+	AutoTopUp *OtohaAutoTopUp `json:"auto_topup"`
 }
 
 // OtohaAccountPlan is the active plan and this 30-day period's use.
@@ -519,6 +534,7 @@ func (s *OtohaService) AccountSummary(ctx context.Context, userID int64) (*Otoha
 		Balance: user.Balance,
 		Catalog: s.readCatalog(ctx, s.cfg.GroupID),
 	}
+	account.AutoTopUp = s.readAutoTopUp(ctx, userID)
 	sub, err := s.subs.GetActiveSubscription(ctx, userID, s.cfg.GroupID)
 	if err != nil && !errors.Is(err, ErrSubscriptionNotFound) {
 		return nil, fmt.Errorf("load otoha subscription: %w", err)
@@ -543,6 +559,19 @@ func (s *OtohaService) AccountSummary(ctx context.Context, userID int64) (*Otoha
 		account.Plan = plan
 	}
 	return account, nil
+}
+
+// readAutoTopUp reads automatic top-up for the account page. The page opens without it when it cannot be read.
+func (s *OtohaService) readAutoTopUp(ctx context.Context, userID int64) *OtohaAutoTopUp {
+	if s.autoTopUp == nil {
+		return nil
+	}
+	state, err := s.autoTopUp.State(ctx, userID)
+	if err != nil {
+		slog.Warn("otoha account: automatic top-up could not be read", "user_id", userID, "error", err)
+		return nil
+	}
+	return state
 }
 
 func newOtohaClaimCode() (string, error) {

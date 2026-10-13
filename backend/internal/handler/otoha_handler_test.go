@@ -59,7 +59,7 @@ func otohaTestConfig() *service.OtohaConfigFile {
 
 func newOtohaTestRouter(claims otohaClaims, userID int64) *gin.Engine {
 	gin.SetMode(gin.TestMode)
-	h := newOtohaHandler(claims)
+	h := newOtohaHandler(claims, nil)
 	r := gin.New()
 	auth := func(c *gin.Context) {
 		if userID > 0 {

@@ -19,7 +19,7 @@ func newOtohaRoutesTestRouter(redisClient *redis.Client, jwt gin.HandlerFunc) *g
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
 	v1 := router.Group("/api/v1")
-	RegisterOtohaRoutes(v1, handler.NewOtohaHandler(nil), servermiddleware.JWTAuthMiddleware(jwt), nil, nil, redisClient)
+	RegisterOtohaRoutes(v1, handler.NewOtohaHandler(nil, nil), servermiddleware.JWTAuthMiddleware(jwt), nil, nil, redisClient)
 	return router
 }
 

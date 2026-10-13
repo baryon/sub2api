@@ -196,6 +196,8 @@ export interface CreateOrderRequest {
   openid?: string
   wechat_resume_token?: string
   is_mobile?: boolean
+  /** Ask Stripe to keep the card of a balance top-up, for automatic top-up. */
+  save_card?: boolean
 }
 
 export type CreateOrderResultType = 'order_created' | 'oauth_required' | 'jsapi_ready'

@@ -51,6 +51,49 @@ export interface OtohaAccountPlan {
   period_resets_at: string | null
 }
 
+export interface OtohaAutoTopUpCard {
+  brand: string
+  last4: string
+  exp_month: number
+  exp_year: number
+}
+
+export interface OtohaAutoTopUpLast {
+  at: string
+  amount_usd: number
+  /** pending, succeeded, failed or requires_action. */
+  result: string
+}
+
+/** Automatic top-up: never carries a card number, only its brand and last four digits. */
+export interface OtohaAutoTopUp {
+  enabled: boolean
+  threshold_usd: number
+  amount_usd: number
+  monthly_cap_usd: number
+  used_this_month_usd: number
+  card: OtohaAutoTopUpCard | null
+  /** Why the system turned it off (authentication_required, card_declined, payment_error); empty otherwise. */
+  disabled_reason: string
+  disabled_at: string | null
+  last_top_up: OtohaAutoTopUpLast | null
+  manage_url: string
+  /** Only on the settings endpoint: whether paying by bank card works now. */
+  card_payments_available?: boolean
+}
+
+export interface OtohaAutoTopUpSettings {
+  enabled: boolean
+  threshold_usd: number
+  amount_usd: number
+  monthly_cap_usd: number
+}
+
+export interface OtohaCardSetupStart {
+  client_secret: string
+  publishable_key: string
+}
+
 export interface OtohaAccount {
   group_id: number
   email: string
@@ -58,6 +101,8 @@ export interface OtohaAccount {
   plan: OtohaAccountPlan | null
   /** The group's model catalog; null until the catalog is published (TASK-54). */
   catalog: OtohaCatalog | null
+  /** Null when the server has no automatic top-up. */
+  auto_topup: OtohaAutoTopUp | null
 }
 
 export const otohaAPI = {
@@ -67,6 +112,28 @@ export const otohaAPI = {
 
   createClaim() {
     return apiClient.post<OtohaClaimCode>('/otoha/claims')
+  },
+
+  getAutoTopUp() {
+    return apiClient.get<OtohaAutoTopUp>('/otoha/auto-topup')
+  },
+
+  updateAutoTopUp(settings: OtohaAutoTopUpSettings) {
+    return apiClient.put<OtohaAutoTopUp>('/otoha/auto-topup', settings)
+  },
+
+  /** Starts saving a card: what Stripe's card form needs. Nothing is charged. */
+  startAutoTopUpCardSetup() {
+    return apiClient.post<OtohaCardSetupStart>('/otoha/auto-topup/card-setup')
+  },
+
+  /** Keeps the card Stripe just saved. */
+  finishAutoTopUpCardSetup(setupId: string) {
+    return apiClient.post<OtohaAutoTopUp>('/otoha/auto-topup/card', { setup_id: setupId })
+  },
+
+  removeAutoTopUpCard() {
+    return apiClient.delete<OtohaAutoTopUp>('/otoha/auto-topup/card')
   },
 
   /** The configuration file as a blob, for saving as config.json. */

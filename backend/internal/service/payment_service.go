@@ -85,6 +85,8 @@ type CreateOrderRequest struct {
 	OrderType       string
 	PlanID          int64
 	Locale          string
+	// SaveCard asks Stripe to keep the card of a balance top-up for automatic top-up.
+	SaveCard bool
 }
 
 type CreateOrderResponse struct {
@@ -200,6 +202,7 @@ type PaymentService struct {
 	affiliateService         *AffiliateService
 	notificationEmailService *NotificationEmailService
 	fulfillmentHook          PaymentFulfillmentHook
+	autoTopUp                paymentAutoTopUpHook
 }
 
 func NewPaymentService(entClient *dbent.Client, registry *payment.Registry, loadBalancer payment.LoadBalancer, redeemService *RedeemService, subscriptionSvc *SubscriptionService, configService *PaymentConfigService, userRepo UserRepository, groupRepo GroupRepository, affiliateService *AffiliateService) *PaymentService {

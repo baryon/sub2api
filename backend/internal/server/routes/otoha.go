@@ -36,6 +36,11 @@ func RegisterOtohaRoutes(
 		authenticated.POST("/claims", h.CreateClaim)
 		authenticated.GET("/config", h.DownloadConfig)
 		authenticated.GET("/account", h.GetAccount)
+		authenticated.GET("/auto-topup", h.GetAutoTopUp)
+		authenticated.PUT("/auto-topup", h.UpdateAutoTopUp)
+		authenticated.POST("/auto-topup/card-setup", h.StartAutoTopUpCardSetup)
+		authenticated.POST("/auto-topup/card", h.FinishAutoTopUpCardSetup)
+		authenticated.DELETE("/auto-topup/card", h.RemoveAutoTopUpCard)
 	}
 
 	limiter := ratelimit.NewRateLimiter(redisClient)

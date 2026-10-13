@@ -117,6 +117,15 @@ func (s *Stripe) CreatePayment(ctx context.Context, req payment.CreatePaymentReq
 		Metadata:           map[string]string{"orderId": req.OrderID},
 	}
 
+	// Keep the card for later charges (Otoha automatic top-up): only cards can be kept.
+	if customerID := strings.TrimSpace(req.SaveCardCustomerID); customerID != "" {
+		methods = []string{"card"}
+		params.PaymentMethodTypes = []*string{stripe.String("card")}
+		params.Customer = stripe.String(customerID)
+		params.SetupFutureUsage = stripe.String(string(stripe.PaymentIntentSetupFutureUsageOffSession))
+		params.Metadata[stripeMetadataSaveCard] = "1"
+	}
+
 	// WeChat Pay requires payment_method_options with client type
 	if hasStripeMethod(methods, "wechat_pay") {
 		params.PaymentMethodOptions = &stripe.PaymentIntentCreatePaymentMethodOptionsParams{
@@ -204,15 +213,33 @@ func parseStripePaymentIntent(event *stripe.Event, status string, rawBody string
 		return nil, fmt.Errorf("stripe parse payment_intent: %w", err)
 	}
 	currency := stripeIntentCurrency(pi.Currency, payment.DefaultPaymentCurrency)
+	metadata := map[string]string{"currency": currency}
+	// What an automatic top-up needs: the card kept by a payment that asked to keep it, and why a payment failed.
+	if pi.Metadata[stripeMetadataSaveCard] == "1" {
+		metadata[payment.NotificationMetaSaveCard] = "1"
+		if pi.Customer != nil {
+			metadata[payment.NotificationMetaCustomer] = pi.Customer.ID
+		}
+		if pi.PaymentMethod != nil {
+			metadata[payment.NotificationMetaPaymentMethod] = pi.PaymentMethod.ID
+		}
+	}
+	if pi.LastPaymentError != nil {
+		code := string(pi.LastPaymentError.Code)
+		if code == "" {
+			code = string(pi.LastPaymentError.DeclineCode)
+		}
+		if code != "" {
+			metadata[payment.NotificationMetaFailureCode] = code
+		}
+	}
 	return &payment.PaymentNotification{
-		TradeNo: pi.ID,
-		OrderID: pi.Metadata["orderId"],
-		Amount:  payment.MinorUnitToAmount(pi.Amount, currency),
-		Status:  status,
-		RawData: rawBody,
-		Metadata: map[string]string{
-			"currency": currency,
-		},
+		TradeNo:  pi.ID,
+		OrderID:  pi.Metadata["orderId"],
+		Amount:   payment.MinorUnitToAmount(pi.Amount, currency),
+		Status:   status,
+		RawData:  rawBody,
+		Metadata: metadata,
 	}, nil
 }
 

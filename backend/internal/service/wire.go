@@ -987,6 +987,7 @@ var ProviderSet = wire.NewSet(
 	NewOtohaService,
 	ProvidePaymentOrderExpiryService,
 	ProvideBalanceNotifyService,
+	ProvideOtohaAutoTopUpService,
 	ProvideChannelMonitorService,
 	ProvideChannelMonitorRunner,
 	NewChannelMonitorQuotaFetcher,
@@ -1023,6 +1024,24 @@ func ProvidePaymentService(entClient *dbent.Client, registry *payment.Registry, 
 	svc.SetNotificationEmailService(notificationEmailService)
 	if otohaService != nil {
 		svc.SetFulfillmentHook(otohaService)
+	}
+	return svc
+}
+
+// ProvideOtohaAutoTopUpService creates automatic top-up (TASK-75) and attaches it to what it works with: every
+// balance deduction, the payment service's confirmations, and the Otoha account page.
+func ProvideOtohaAutoTopUpService(repo AutoTopUpRepository, paymentService *PaymentService, userRepo UserRepository, notificationEmailService *NotificationEmailService, settingRepo SettingRepository, otohaService *OtohaService, balanceNotifyService *BalanceNotifyService) *OtohaAutoTopUpService {
+	var mail autoTopUpMailer
+	if notificationEmailService != nil {
+		mail = notificationEmailService
+	}
+	svc := NewOtohaAutoTopUpService(repo, paymentService, userRepo, mail, settingRepo)
+	paymentService.SetAutoTopUp(svc)
+	if otohaService != nil {
+		otohaService.SetAutoTopUp(svc)
+	}
+	if balanceNotifyService != nil {
+		balanceNotifyService.SetAutoTopUp(svc)
 	}
 	return svc
 }

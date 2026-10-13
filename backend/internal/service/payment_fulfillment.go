@@ -40,6 +40,7 @@ type paymentFulfillmentLease struct {
 
 func (s *PaymentService) HandlePaymentNotification(ctx context.Context, n *payment.PaymentNotification, pk string) error {
 	if n.Status != payment.NotificationStatusSuccess {
+		s.afterPaymentFailed(ctx, n)
 		return nil
 	}
 	// Look up order by out_trade_no (the external order ID we sent to the provider)
@@ -55,7 +56,11 @@ func (s *PaymentService) HandlePaymentNotification(ctx context.Context, n *payme
 		}
 		return fmt.Errorf("lookup order failed for out_trade_no %s: %w", n.OrderID, err)
 	}
-	return s.confirmPayment(ctx, order.ID, n.TradeNo, n.Amount, pk, n.Metadata)
+	if err := s.confirmPayment(ctx, order.ID, n.TradeNo, n.Amount, pk, n.Metadata); err != nil {
+		return err
+	}
+	s.afterPaymentConfirmed(ctx, order.ID, n.Metadata)
+	return nil
 }
 
 func parseLegacyPaymentOrderID(orderID string, lookupErr error) (int64, bool) {
