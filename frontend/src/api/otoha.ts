@@ -33,10 +33,24 @@ export interface OtohaCatalogModel {
   use?: string[]
 }
 
+/** A picture model and what one picture costs in each size (TASK-73). */
+export interface OtohaImageModel {
+  id: string
+  name: string
+  api: string
+  edits: boolean
+  qualities: string[]
+  currency: string
+  per: string
+  sizes: { size: string; tier: string; price: number }[]
+}
+
 export interface OtohaCatalog {
   schema: number
   revision: string
   models: OtohaCatalogModel[]
+  /** Absent in catalogs published before picture models were listed. */
+  imageModels?: OtohaImageModel[]
 }
 
 export interface OtohaAccountPlan {

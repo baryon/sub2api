@@ -1,7 +1,7 @@
 import type { MethodLimit, SubscriptionPlan } from '@/types/payment'
 import type { PaymentMethodOption } from '@/components/payment/PaymentMethodSelector.vue'
 import { getVisibleMethods } from '@/components/payment/paymentFlow'
-import type { OtohaAccountPlan } from '@/api/otoha'
+import type { OtohaAccountPlan, OtohaImageModel } from '@/api/otoha'
 
 /**
  * The Otoha group's plans on sale, in the admin's order, cheapest first among equals. Plans from the checkout
@@ -74,6 +74,24 @@ export function formatPerMillion(value: number | undefined): string {
   const text = value.toFixed(4).replace(/0+$/, '')
   const [, decimals = ''] = text.split('.')
   return decimals.length < 2 ? `$${value.toFixed(2)}` : `$${text}`
+}
+
+export interface ImageModelRow {
+  id: string
+  name: string
+  edits: boolean
+  sizes: { size: string; price: string }[]
+}
+
+/** The catalog's picture models as the account page lists them: each priced size with what one picture costs,
+ * written like the token prices. */
+export function imageModelRows(models: OtohaImageModel[] | undefined): ImageModelRow[] {
+  return (models ?? []).flatMap((model) => {
+    const sizes = model.sizes
+      .filter((entry) => Number.isFinite(entry.price))
+      .map((entry) => ({ size: entry.size.replace('x', '×'), price: formatPerMillion(entry.price) }))
+    return sizes.length ? [{ id: model.id, name: model.name || model.id, edits: model.edits, sizes }] : []
+  })
 }
 
 export type OrderOutcome = 'done' | 'processing' | 'waiting' | 'failed' | 'cancelled' | 'refunded'

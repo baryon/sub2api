@@ -104,6 +104,37 @@
           </div>
         </template>
       </section>
+
+      <!-- Picture models and their price per picture -->
+      <section v-if="imageModels.length" class="card p-5">
+        <h2 class="text-lg font-semibold text-gray-900 dark:text-white">{{ t('otoha.account.imageModelsTitle') }}</h2>
+        <p class="mt-1 text-sm text-gray-500 dark:text-dark-400">{{ t('otoha.account.imageModelsHint') }}</p>
+        <div class="mt-4 overflow-x-auto">
+          <table class="w-full text-left text-sm">
+            <thead class="text-xs uppercase text-gray-500 dark:text-dark-400">
+              <tr>
+                <th class="py-2 pr-4 font-medium">{{ t('otoha.account.modelColumn') }}</th>
+                <th class="py-2 font-medium">{{ t('otoha.account.imagePriceColumn') }}</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-100 dark:divide-dark-800">
+              <tr v-for="model in imageModels" :key="model.id" class="align-top">
+                <td class="py-3 pr-4">
+                  <p class="font-medium text-gray-900 dark:text-white">{{ model.name }}</p>
+                  <div v-if="model.edits" class="mt-1 flex flex-wrap gap-1">
+                    <span class="rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-600 dark:bg-dark-800 dark:text-dark-300">{{ t('otoha.account.imageEdits') }}</span>
+                  </div>
+                </td>
+                <td class="whitespace-nowrap py-3 text-gray-700 dark:text-dark-200">
+                  <p v-for="entry in model.sizes" :key="entry.size">
+                    {{ t('otoha.account.imageSizePrice', { size: entry.size, price: entry.price }) }}
+                  </p>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
     </div>
   </OtohaLayout>
 </template>
@@ -117,7 +148,7 @@ import OtohaConnectPanel from '@/components/otoha/OtohaConnectPanel.vue'
 import OtohaAutoTopUpPanel from '@/components/otoha/OtohaAutoTopUpPanel.vue'
 import { formatPaymentAmount } from '@/components/payment/currency'
 import { otohaAPI, type OtohaAccount } from '@/api/otoha'
-import { formatPerMillion, periodUsage } from './otohaRules'
+import { formatPerMillion, imageModelRows, periodUsage } from './otohaRules'
 import { otohaErrorMessage } from './otohaErrors'
 
 const { t, te, locale } = useI18n()
@@ -130,6 +161,7 @@ const account = ref<OtohaAccount | null>(null)
 const usage = computed(() => (account.value?.plan ? periodUsage(account.value.plan) : null))
 // The catalog comes with the account summary; it is null until the group's catalog is published (TASK-54).
 const models = computed(() => account.value?.catalog?.models ?? [])
+const imageModels = computed(() => imageModelRows(account.value?.catalog?.imageModels))
 
 async function load() {
   loading.value = true
