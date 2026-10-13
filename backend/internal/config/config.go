@@ -1463,6 +1463,8 @@ type GatewayOpenAISchedulerConfig struct {
 	StickyEscapeTTFTMs int `mapstructure:"sticky_escape_ttft_ms"`
 	// StickyEscapeErrorRate: 错误率 EWMA 超过该阈值时跳过 sticky
 	StickyEscapeErrorRate float64 `mapstructure:"sticky_escape_error_rate"`
+	// StickyEscapeWaitMs: 会话绑定账号并发已满时，先等待空位的最长毫秒数，等不到才换账号（0 = 立即换）
+	StickyEscapeWaitMs int `mapstructure:"sticky_escape_wait_ms"`
 }
 
 // GatewayUsageRecordConfig 使用量记录异步队列配置
@@ -2727,6 +2729,9 @@ func setEnvReachableDefaults() {
 	viper.SetDefault("gateway.openai_scheduler.sticky_escape_enabled", true)
 	viper.SetDefault("gateway.openai_scheduler.sticky_escape_error_rate", 0.0)
 	viper.SetDefault("gateway.openai_scheduler.sticky_escape_ttft_ms", 0)
+	// Waiting a few seconds for a free slot keeps a long conversation on the account
+	// that holds its prompt cache; an explicit 0 moves at once.
+	viper.SetDefault("gateway.openai_scheduler.sticky_escape_wait_ms", 3000)
 
 	// server.trusted_proxies and security.forwarded_client_ip_headers are the
 	// other exception: load() distinguishes explicit configuration from absence
@@ -3692,6 +3697,9 @@ func (c *Config) Validate() error {
 	}
 	if c.Gateway.OpenAIScheduler.StickyEscapeErrorRate < 0 || c.Gateway.OpenAIScheduler.StickyEscapeErrorRate > 1 {
 		return fmt.Errorf("gateway.openai_scheduler.sticky_escape_error_rate must be between 0 and 1")
+	}
+	if c.Gateway.OpenAIScheduler.StickyEscapeWaitMs < 0 {
+		return fmt.Errorf("gateway.openai_scheduler.sticky_escape_wait_ms must be non-negative")
 	}
 	if c.Gateway.MaxLineSize < 0 {
 		return fmt.Errorf("gateway.max_line_size must be non-negative")

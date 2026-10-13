@@ -196,6 +196,10 @@ type openAIAccountRuntimeStats struct {
 type openAIAccountRuntimeStat struct {
 	errorRateEWMABits atomic.Uint64
 	ttftEWMABits      atomic.Uint64
+	// escapeTTFTEWMABits tracks first-token time divided by what the request
+	// itself explains (large input, thinking), with single outliers capped. Only
+	// the sticky-session escape reads it; load balancing keeps the raw ttftEWMABits.
+	escapeTTFTEWMABits atomic.Uint64
 }
 
 func newOpenAIAccountRuntimeStats() *openAIAccountRuntimeStats {
@@ -212,6 +216,7 @@ func (s *openAIAccountRuntimeStats) loadOrCreate(accountID int64) *openAIAccount
 
 	stat := &openAIAccountRuntimeStat{}
 	stat.ttftEWMABits.Store(math.Float64bits(math.NaN()))
+	stat.escapeTTFTEWMABits.Store(math.Float64bits(math.NaN()))
 	actual, loaded := s.accounts.LoadOrStore(accountID, stat)
 	if !loaded {
 		s.accountCount.Add(1)
@@ -236,6 +241,12 @@ func updateEWMAAtomic(target *atomic.Uint64, sample float64, alpha float64) {
 }
 
 func (s *openAIAccountRuntimeStats) report(accountID int64, success bool, firstTokenMs *int) {
+	s.reportWithLoad(accountID, success, firstTokenMs, 0, "")
+}
+
+// reportWithLoad records one finished request. inputTokens (new plus cached) and
+// reasoningEffort describe how much work the first token had to wait for.
+func (s *openAIAccountRuntimeStats) reportWithLoad(accountID int64, success bool, firstTokenMs *int, inputTokens int, reasoningEffort string) {
 	if s == nil || accountID <= 0 {
 		return
 	}
@@ -250,22 +261,83 @@ func (s *openAIAccountRuntimeStats) report(accountID int64, success bool, firstT
 
 	if firstTokenMs != nil && *firstTokenMs > 0 {
 		ttft := float64(*firstTokenMs)
-		ttftBits := math.Float64bits(ttft)
-		for {
-			oldBits := stat.ttftEWMABits.Load()
-			oldValue := math.Float64frombits(oldBits)
-			if math.IsNaN(oldValue) {
-				if stat.ttftEWMABits.CompareAndSwap(oldBits, ttftBits) {
-					break
-				}
-				continue
+		updateEWMAWithNaNSeed(&stat.ttftEWMABits, ttft, alpha)
+		updateEWMAWithNaNSeed(&stat.escapeTTFTEWMABits, normalizedStickyEscapeTTFT(ttft, inputTokens, reasoningEffort), alpha)
+	}
+}
+
+func updateEWMAWithNaNSeed(target *atomic.Uint64, sample float64, alpha float64) {
+	for {
+		oldBits := target.Load()
+		oldValue := math.Float64frombits(oldBits)
+		if math.IsNaN(oldValue) {
+			if target.CompareAndSwap(oldBits, math.Float64bits(sample)) {
+				return
 			}
-			newValue := alpha*ttft + (1-alpha)*oldValue
-			if stat.ttftEWMABits.CompareAndSwap(oldBits, math.Float64bits(newValue)) {
-				break
-			}
+			continue
+		}
+		newValue := alpha*sample + (1-alpha)*oldValue
+		if target.CompareAndSwap(oldBits, math.Float64bits(newValue)) {
+			return
 		}
 	}
+}
+
+const (
+	// stickyEscapeInputTokensPerDoubling: every 100k input tokens add one "base"
+	// first-token time. Measured on the Otoha instance: gpt-6-luna median first token
+	// 1.9 s under 50k input, 2.6 s at 50-100k, 5.8 s above 100k.
+	stickyEscapeInputTokensPerDoubling = 100000.0
+	// stickyEscapeMaxSampleMs caps one normalized sample so a single stalled request
+	// cannot move every conversation of an account (EWMA alpha 0.2 needs a run of them).
+	stickyEscapeMaxSampleMs = 30000.0
+)
+
+// stickyEscapeThinkingFactor is how much longer a first token may take because the
+// model thinks first. A max-effort gpt-6-luna request took 16.7 s at 47k input
+// while the typical one takes about 2 s.
+func stickyEscapeThinkingFactor(reasoningEffort string) float64 {
+	switch strings.ToLower(strings.TrimSpace(reasoningEffort)) {
+	case "xhigh", "max", "maximum":
+		return 4
+	case "high":
+		return 2
+	default:
+		return 1
+	}
+}
+
+func normalizedStickyEscapeTTFT(ttftMs float64, inputTokens int, reasoningEffort string) float64 {
+	if inputTokens < 0 {
+		inputTokens = 0
+	}
+	sizeFactor := 1 + float64(inputTokens)/stickyEscapeInputTokensPerDoubling
+	normalized := ttftMs / sizeFactor / stickyEscapeThinkingFactor(reasoningEffort)
+	if normalized > stickyEscapeMaxSampleMs {
+		return stickyEscapeMaxSampleMs
+	}
+	return normalized
+}
+
+// snapshotForEscape is snapshot with the first-token time the sticky escape judges.
+func (s *openAIAccountRuntimeStats) snapshotForEscape(accountID int64) (errorRate float64, ttft float64, hasTTFT bool) {
+	errorRate, _, _ = s.snapshot(accountID)
+	if s == nil || accountID <= 0 {
+		return 0, 0, false
+	}
+	value, ok := s.accounts.Load(accountID)
+	if !ok {
+		return errorRate, 0, false
+	}
+	stat, _ := value.(*openAIAccountRuntimeStat)
+	if stat == nil {
+		return errorRate, 0, false
+	}
+	v := math.Float64frombits(stat.escapeTTFTEWMABits.Load())
+	if math.IsNaN(v) {
+		return errorRate, 0, false
+	}
+	return errorRate, v, true
 }
 
 func (s *openAIAccountRuntimeStats) snapshot(accountID int64) (errorRate float64, ttft float64, hasTTFT bool) {
@@ -367,6 +439,9 @@ type openAIStickyEscapeConfig struct {
 	enabled   bool
 	ttftMs    float64
 	errorRate float64
+	// wait is how long a conversation whose account has no free slot waits for one
+	// before moving to another account (and losing its prompt cache). 0 moves at once.
+	wait time.Duration
 }
 
 func newDefaultOpenAIAccountScheduler(service *OpenAIGatewayService, stats *openAIAccountRuntimeStats) OpenAIAccountScheduler {
@@ -568,10 +643,15 @@ func (s *defaultOpenAIAccountScheduler) selectBySessionHash(
 			"reason", reason,
 			"error_rate", errorRate,
 			"ttft", ttft,
+			"model", req.RequestedModel,
+			"session_hash", sessionHash,
 		)
 		return nil, true, nil
 	}
 	result, acquireErr := s.service.tryAcquireAccountSlot(ctx, accountID, account.Concurrency)
+	if escapeCfg.enabled && !req.DisableStickyEscape && acquireErr == nil && result != nil && !result.Acquired && escapeCfg.wait > 0 {
+		result, acquireErr = s.waitForStickySlot(ctx, accountID, account.Concurrency, escapeCfg.wait)
+	}
 	if acquireErr != nil && req.DisableStickyEscape {
 		return nil, false, acquireErr
 	}
@@ -590,12 +670,15 @@ func (s *defaultOpenAIAccountScheduler) selectBySessionHash(
 	// WaitPlan.MaxConcurrency 使用 Concurrency（非 EffectiveLoadFactor），因为 WaitPlan 控制的是 Redis 实际并发槽位等待。
 	if s.service.concurrencyService != nil {
 		if escapeCfg.enabled && !req.DisableStickyEscape && acquireErr == nil && result != nil && !result.Acquired {
-			errorRate, ttft, _ := s.stats.snapshot(accountID)
+			errorRate, ttft, _ := s.stats.snapshotForEscape(accountID)
 			slog.Info("sticky_escape_triggered",
 				"account_id", accountID,
 				"reason", "concurrency_full",
 				"error_rate", errorRate,
 				"ttft", ttft,
+				"model", req.RequestedModel,
+				"session_hash", sessionHash,
+				"waited_ms", escapeCfg.wait.Milliseconds(),
 			)
 			return nil, true, nil
 		}
@@ -639,11 +722,38 @@ func openAIAccountSchedulingPriority(account *Account) int {
 	return account.Priority
 }
 
+// waitForStickySlot polls for a free slot on the conversation's own account for up
+// to wait. A slot usually frees within seconds; moving instead throws away the
+// prompt cache the whole conversation has built up there.
+func (s *defaultOpenAIAccountScheduler) waitForStickySlot(ctx context.Context, accountID int64, maxConcurrency int, wait time.Duration) (*AcquireResult, error) {
+	const pollInterval = 100 * time.Millisecond
+	deadline := time.NewTimer(wait)
+	defer deadline.Stop()
+	ticker := time.NewTicker(pollInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return &AcquireResult{Acquired: false}, nil
+		case <-deadline.C:
+			return &AcquireResult{Acquired: false}, nil
+		case <-ticker.C:
+			result, err := s.service.tryAcquireAccountSlot(ctx, accountID, maxConcurrency)
+			if err != nil {
+				return nil, err
+			}
+			if result != nil && result.Acquired {
+				return result, nil
+			}
+		}
+	}
+}
+
 func (s *defaultOpenAIAccountScheduler) shouldEscapeStickyAccount(accountID int64, cfg openAIStickyEscapeConfig) (reason string, errorRate float64, ttft float64, shouldEscape bool) {
 	if !cfg.enabled || s == nil || s.stats == nil || accountID <= 0 {
 		return "", 0, 0, false
 	}
-	errorRate, ttft, hasTTFT := s.stats.snapshot(accountID)
+	errorRate, ttft, hasTTFT := s.stats.snapshotForEscape(accountID)
 	if hasTTFT && ttft > cfg.ttftMs {
 		return "ttft", errorRate, ttft, true
 	}
@@ -1838,6 +1948,16 @@ func (s *defaultOpenAIAccountScheduler) ReportResult(accountID int64, success bo
 	s.stats.report(accountID, success, firstTokenMs)
 }
 
+// ReportResultWithLoad is ReportResult for callers that know the request's input
+// size and reasoning effort, so a slow first token that the request itself explains
+// is not held against the account.
+func (s *defaultOpenAIAccountScheduler) ReportResultWithLoad(accountID int64, success bool, firstTokenMs *int, inputTokens int, reasoningEffort string) {
+	if s == nil || s.stats == nil {
+		return
+	}
+	s.stats.reportWithLoad(accountID, success, firstTokenMs, inputTokens, reasoningEffort)
+}
+
 func (s *defaultOpenAIAccountScheduler) ReportSwitch() {
 	if s == nil {
 		return
@@ -2512,7 +2632,32 @@ func (s *OpenAIGatewayService) isOpenAIAccountTransportCompatible(account *Accou
 	return s.getOpenAIWSProtocolResolver().Resolve(account).Transport == requiredTransport
 }
 
+// openAIAccountLoadAwareReporter is implemented by schedulers that can judge a
+// first-token time against the request's input size and thinking effort.
+type openAIAccountLoadAwareReporter interface {
+	ReportResultWithLoad(accountID int64, success bool, firstTokenMs *int, inputTokens int, reasoningEffort string)
+}
+
+// ReportOpenAIAccountScheduleResultForRequest reports a finished request using its
+// forward result, so the sticky-session escape can tell a slow account from a big
+// or thinking request.
+func (s *OpenAIGatewayService) ReportOpenAIAccountScheduleResultForRequest(account *Account, model string, success bool, result *OpenAIForwardResult, observedErr ...error) bool {
+	if result == nil {
+		return s.ReportOpenAIAccountScheduleResult(account, model, success, nil, observedErr...)
+	}
+	reasoningEffort := ""
+	if result.ReasoningEffort != nil {
+		reasoningEffort = *result.ReasoningEffort
+	}
+	inputTokens := result.Usage.InputTokens + result.Usage.CacheReadInputTokens + result.Usage.CacheCreationInputTokens
+	return s.reportOpenAIAccountScheduleResult(account, model, success, result.FirstTokenMs, inputTokens, reasoningEffort, observedErr)
+}
+
 func (s *OpenAIGatewayService) ReportOpenAIAccountScheduleResult(account *Account, model string, success bool, firstTokenMs *int, observedErr ...error) bool {
+	return s.reportOpenAIAccountScheduleResult(account, model, success, firstTokenMs, 0, "", observedErr)
+}
+
+func (s *OpenAIGatewayService) reportOpenAIAccountScheduleResult(account *Account, model string, success bool, firstTokenMs *int, inputTokens int, reasoningEffort string, observedErr []error) bool {
 	if account == nil {
 		return false
 	}
@@ -2533,7 +2678,11 @@ func (s *OpenAIGatewayService) ReportOpenAIAccountScheduleResult(account *Accoun
 	if scheduler == nil {
 		return healthTripped
 	}
-	scheduler.ReportResult(accountID, success, firstTokenMs)
+	if reporter, ok := scheduler.(openAIAccountLoadAwareReporter); ok {
+		reporter.ReportResultWithLoad(accountID, success, firstTokenMs, inputTokens, reasoningEffort)
+	} else {
+		scheduler.ReportResult(accountID, success, firstTokenMs)
+	}
 	return healthTripped
 }
 
@@ -2608,10 +2757,15 @@ func (s *OpenAIGatewayService) openAIStickyEscapeConfig() openAIStickyEscapeConf
 		if errorRate == 0 && cfg.StickyEscapeTTFTMs == 0 && cfg.StickyEscapeErrorRate == 0 {
 			errorRate = 0.5
 		}
+		wait := time.Duration(cfg.StickyEscapeWaitMs) * time.Millisecond
+		if wait < 0 {
+			wait = 0
+		}
 		return openAIStickyEscapeConfig{
 			enabled:   enabled,
 			ttftMs:    ttftMs,
 			errorRate: errorRate,
+			wait:      wait,
 		}
 	}
 	return openAIStickyEscapeConfig{
