@@ -1,6 +1,7 @@
 package service
 
 import (
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"net/url"
 	"strings"
 
@@ -21,24 +22,15 @@ func DeepSeekDefaultModelIDs() []string {
 }
 
 // normalizeAccountPlatform canonicalizes account input before provider-specific
-// validation. Account rows never use the synthetic composite platform.
+// validation. Any platform in the platform list (domain.Platforms) can hold accounts;
+// account rows never use the synthetic composite platform (TASK-80: a fixed list here
+// had left out TypeSafe and the later platforms).
 func normalizeAccountPlatform(platform string) (string, error) {
 	platform = strings.ToLower(strings.TrimSpace(platform))
-	switch platform {
-	case PlatformAnthropic,
-		PlatformOpenAI,
-		PlatformGemini,
-		PlatformAntigravity,
-		PlatformGrok,
-		PlatformDeepSeek,
-		PlatformKimi,
-		PlatformZhipu,
-		PlatformMiniMax,
-		PlatformOpenCodeGo:
-		return platform, nil
-	default:
+	if !domain.IsConcretePlatform(platform) {
 		return "", infraerrors.BadRequest("ACCOUNT_PLATFORM_INVALID", "account platform is not supported")
 	}
+	return platform, nil
 }
 
 // normalizeAccountCredentialsForPlatform enforces provider-specific account
