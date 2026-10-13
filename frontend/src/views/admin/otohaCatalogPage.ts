@@ -148,6 +148,24 @@ export function priceTierRange(tiers: PriceTierValue[], index: number): { kind: 
   return { kind: tier.inclusive ? 'from' : 'above', tokens: formatCatalogTokens(tier.aboveInputTokens) }
 }
 
+export interface PriceTierLine {
+  range: { kind: PriceTierRangeKind; tokens: string }
+  input: number
+  output: number
+  cachedInput?: number
+}
+
+/** Every tier with its range and prices, for showing them all; empty when there is a single price. */
+export function priceTierLines(tiers: PriceTierValue[] | null | undefined): PriceTierLine[] {
+  if (!tiers || tiers.length < 2) return []
+  return tiers.map((tier, index) => ({
+    range: priceTierRange(tiers, index),
+    input: tier.input,
+    output: tier.output,
+    ...(tier.cachedInput !== undefined ? { cachedInput: tier.cachedInput } : {})
+  }))
+}
+
 export const THINKING_SETTINGS = ['off', 'between_tools', 'adaptive', 'budget'] as const
 export const THINKING_LEVELS_MAX = 32
 const EFFORT_NAME = /^[a-z][a-z0-9_-]{0,31}$/

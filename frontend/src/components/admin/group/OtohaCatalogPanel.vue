@@ -135,7 +135,8 @@
             </td>
             <td class="whitespace-nowrap px-3 py-2">
               <template v-if="entry.sale_price">
-                <div class="text-gray-900 dark:text-white">{{ formatPrice(entry.sale_price) }}</div>
+                <OtohaCatalogTierLines v-if="tierLinesOf(entry.effective_price_tiers).length" :lines="tierLinesOf(entry.effective_price_tiers)" class="text-xs" />
+                <div v-else class="text-gray-900 dark:text-white">{{ formatPrice(entry.sale_price) }}</div>
                 <div v-if="entry.upstream_price" class="text-xs text-gray-500 dark:text-gray-400">
                   {{ t('admin.otohaCatalog.upstreamPrice', { price: formatPrice(entry.upstream_price) }) }}
                 </div>
@@ -201,7 +202,10 @@
         >
           <div class="text-sm font-medium text-gray-900 dark:text-white">{{ model.name }}</div>
           <div class="font-mono text-gray-500">{{ model.id }}</div>
-          <div class="mt-1">{{ formatPrice(model.price) }} · {{ t('admin.otohaCatalog.tier.' + model.cost) }}</div>
+          <OtohaCatalogTierLines v-if="model.tierLines.length" :lines="model.tierLines" class="mt-1" />
+          <div class="mt-1">
+            <template v-if="!model.tierLines.length">{{ formatPrice(model.price) }} · </template>{{ t('admin.otohaCatalog.tier.' + model.cost) }}
+          </div>
           <div v-if="model.api">{{ t('admin.otohaCatalog.calledAs', { format: apiLabel(model.api) }) }}</div>
           <div v-if="model.abilities.length">{{ t('admin.otohaCatalog.preview.abilities') }}: {{ model.abilities.join(t('admin.otohaCatalog.preview.separator')) }}</div>
           <div v-if="model.uses.length">{{ t('admin.otohaCatalog.preview.use') }}: {{ model.uses.join(t('admin.otohaCatalog.preview.separator')) }}</div>
@@ -352,7 +356,11 @@
         <div class="rounded-md bg-gray-50 px-3 py-2 text-sm text-gray-700 dark:bg-dark-700 dark:text-gray-300">
           <div v-if="editorUpstream">{{ t('admin.otohaCatalog.editor.upstreamNow', { price: formatPrice(editorUpstream) }) }}</div>
           <div v-else>{{ t('admin.otohaCatalog.editor.noUpstreamPrice') }}</div>
-          <div v-if="editorSale" class="font-medium">{{ t('admin.otohaCatalog.editor.saleNow', { price: formatPrice(editorSale) }) }}</div>
+          <template v-if="editorShownTierLines.length">
+            <div class="font-medium">{{ t('admin.otohaCatalog.editor.saleNowTiers') }}</div>
+            <OtohaCatalogTierLines :lines="editorShownTierLines" />
+          </template>
+          <div v-else-if="editorSale" class="font-medium">{{ t('admin.otohaCatalog.editor.saleNow', { price: formatPrice(editorSale) }) }}</div>
           <div v-if="isMixed && editorRoute">{{ t('admin.otohaCatalog.editor.routedTo', { provider: platformLabel(editorRoute) }) }}</div>
           <div v-if="editorAPI">{{ t('admin.otohaCatalog.editor.calledAs', { format: apiLabel(editorAPI) }) }}</div>
           <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.otohaCatalog.editor.priceHint') }}</p>
@@ -537,6 +545,7 @@ import BaseDialog from '@/components/common/BaseDialog.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import Toggle from '@/components/common/Toggle.vue'
 import Icon from '@/components/icons/Icon.vue'
+import OtohaCatalogTierLines from './OtohaCatalogTierLines.vue'
 import { extractApiErrorCode, extractApiErrorMessage } from '@/utils/apiError'
 import { platformLabel } from '@/utils/platformColors'
 import {
@@ -545,6 +554,7 @@ import {
   THINKING_SETTINGS,
   catalogAbilities,
   formatCatalogTokens,
+  priceTierLines,
   priceTierRange,
   priceTierRows,
   priceTiersFromRows,
@@ -633,6 +643,20 @@ const levelRowsState = ref<ThinkingLevelRow[]>([])
 // The tiers the app receives for the edited model now (empty for a model not saved yet).
 const editorTiers = ref<OtohaPriceTier[]>([])
 
+// Every price step the app will show for the edited model: the ones typed by hand while that is on, else the ones
+// the server derived. Empty when there is a single price.
+const editorShownTierLines = computed(() => {
+  if (tiersManual.value) {
+    const typed = priceTiersFromRows(tierRows.value)
+    return 'tiers' in typed ? priceTierLines(typed.tiers) : []
+  }
+  return priceTierLines(editorTiers.value)
+})
+
+function tierLinesOf(tiers: OtohaPriceTier[] | null | undefined) {
+  return priceTierLines(tiers)
+}
+
 const entries = computed(() => view.value?.entries ?? [])
 const isMixed = computed(() => view.value?.group_platform === 'composite')
 
@@ -673,6 +697,7 @@ const previewModels = computed(() =>
       id: model.id,
       name: model.name,
       price: model.price as OtohaModelPrice,
+      tierLines: priceTierLines(Array.isArray(model.priceTiers) ? (model.priceTiers as OtohaPriceTier[]) : null),
       cost: String(model.cost ?? ''),
       api: typeof model.api === 'string' ? model.api : '',
       abilities,

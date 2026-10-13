@@ -206,6 +206,7 @@ export default {
       },
       price: 'Price',
       saleNow: 'Price shown in the app: {price}',
+      saleNowTiers: 'Prices shown in the app, by prompt length:',
       routedTo: 'This model is served by {provider}.',
       calledAs: 'The app calls it in the {format}.',
       api: 'How the app calls it',

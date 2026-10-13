@@ -206,6 +206,7 @@ export default {
       },
       price: '价格',
       saleNow: 'App 显示的售价：{price}',
+      saleNowTiers: 'App 显示的售价（按提示长度）：',
       routedTo: '这个模型由 {provider} 提供。',
       calledAs: 'App 用 {format}调用这个模型。',
       api: 'App 调用方式',

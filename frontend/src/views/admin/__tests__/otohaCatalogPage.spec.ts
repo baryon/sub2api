@@ -4,6 +4,7 @@ import {
   catalogGroupOptions,
   formatCatalogTokens,
   initialCatalogGroupId,
+  priceTierLines,
   priceTierRange,
   priceTierRows,
   priceTiersFromRows,
@@ -120,6 +121,20 @@ describe('price tiers', () => {
     expect(priceTierRange(xai, 0)).toEqual({ kind: 'below', tokens: '200K' })
     expect(priceTierRange(xai, 1)).toEqual({ kind: 'from', tokens: '200K' })
     expect(priceTierRange([tiers[0]], 0)).toEqual({ kind: 'all', tokens: '' })
+  })
+
+  it('lists every tier with its range and prices, and nothing for a single price', () => {
+    const haiku = [
+      { aboveInputTokens: 0, inclusive: false, input: 0.15, output: 0.75, cachedInput: 0.015 },
+      { aboveInputTokens: 100000, inclusive: false, input: 0.75, output: 3.75 }
+    ]
+    expect(priceTierLines(haiku)).toEqual([
+      { range: { kind: 'upTo', tokens: '100K' }, input: 0.15, output: 0.75, cachedInput: 0.015 },
+      { range: { kind: 'above', tokens: '100K' }, input: 0.75, output: 3.75 }
+    ])
+    expect(priceTierLines([haiku[0]])).toEqual([])
+    expect(priceTierLines(null)).toEqual([])
+    expect(priceTierLines(undefined)).toEqual([])
   })
 })
 
