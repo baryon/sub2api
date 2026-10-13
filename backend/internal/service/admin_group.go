@@ -261,6 +261,12 @@ func compositeRouteFromInput(groupID int64, input CompositeRouteInput) (*Composi
 	if !isConcreteRequestPlatform(input.TargetPlatform) {
 		return nil, fmt.Errorf("target_platform must be a concrete provider")
 	}
+	if !compositeRouteEndpointAllowed(input.TargetPlatform, input.Endpoint) {
+		return nil, infraerrors.BadRequest(
+			"COMPOSITE_ROUTE_ENDPOINT_UNSUPPORTED",
+			fmt.Sprintf("endpoint %s is not supported for target platform %s", input.Endpoint, input.TargetPlatform),
+		)
+	}
 	if input.Priority == 0 {
 		input.Priority = 100
 	}
@@ -414,6 +420,9 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 	}
 
 	platform := NormalizeGroupPlatform(input.Platform)
+	if err := validateGroupPlatform(platform); err != nil {
+		return nil, err
+	}
 	// 固定账号 manifest 配置：账号绑定发生在创建之后，创建时无法校验成员关系，
 	// 拒绝开启并在创建后的编辑里配置。
 	if normalizeCodexModelsManifestConfig(platform, input.CodexModelsManifestConfig).Enabled {
@@ -804,7 +813,11 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 		group.I18n = i18n
 	}
 	if input.Platform != "" {
-		group.Platform = input.Platform
+		platform := NormalizeGroupPlatform(input.Platform)
+		if err := validateGroupPlatform(platform); err != nil {
+			return nil, err
+		}
+		group.Platform = platform
 	}
 	if input.RateMultiplier != nil {
 		if *input.RateMultiplier <= 0 {
