@@ -59,7 +59,7 @@ func (h *SubscriptionHandler) List(c *gin.Context) {
 
 	out := make([]dto.UserSubscription, 0, len(subscriptions))
 	for i := range subscriptions {
-		out = append(out, *dto.UserSubscriptionFromService(&subscriptions[i]))
+		out = append(out, *dto.UserSubscriptionFromService(&subscriptions[i]).Localized(c.GetHeader("Accept-Language")))
 	}
 	response.Success(c, out)
 }
@@ -81,7 +81,7 @@ func (h *SubscriptionHandler) GetActive(c *gin.Context) {
 
 	out := make([]dto.UserSubscription, 0, len(subscriptions))
 	for i := range subscriptions {
-		out = append(out, *dto.UserSubscriptionFromService(&subscriptions[i]))
+		out = append(out, *dto.UserSubscriptionFromService(&subscriptions[i]).Localized(c.GetHeader("Accept-Language")))
 	}
 	response.Success(c, out)
 }
@@ -110,8 +110,11 @@ func (h *SubscriptionHandler) GetProgress(c *gin.Context) {
 			// Skip subscriptions with errors
 			continue
 		}
+		if sub.Group != nil {
+			progress.GroupName = sub.Group.I18n.LocalizeName(c.GetHeader("Accept-Language"), progress.GroupName)
+		}
 		result = append(result, SubscriptionProgressInfo{
-			Subscription: dto.UserSubscriptionFromService(sub),
+			Subscription: dto.UserSubscriptionFromService(sub).Localized(c.GetHeader("Accept-Language")),
 			Progress:     progress,
 		})
 	}
@@ -140,7 +143,7 @@ func (h *SubscriptionHandler) GetSummary(c *gin.Context) {
 
 	for i := range subscriptions {
 		sub := &subscriptions[i]
-		item := subscriptionSummaryItem(sub)
+		item := subscriptionSummaryItem(sub, c.GetHeader("Accept-Language"))
 
 		// Track total usage (use monthly as the most comprehensive)
 		totalUsed += sub.MonthlyUsageUSD
@@ -163,7 +166,7 @@ func (h *SubscriptionHandler) GetSummary(c *gin.Context) {
 
 // subscriptionSummaryItem is one subscription in the summary, with the limits that apply to it: its own
 // allowance (the plan it was bought with) where it has one, the group's otherwise (TASK-57).
-func subscriptionSummaryItem(sub *service.UserSubscription) SubscriptionSummaryItem {
+func subscriptionSummaryItem(sub *service.UserSubscription, acceptLanguage string) SubscriptionSummaryItem {
 	item := SubscriptionSummaryItem{
 		ID:             sub.ID,
 		GroupID:        sub.GroupID,
@@ -173,7 +176,7 @@ func subscriptionSummaryItem(sub *service.UserSubscription) SubscriptionSummaryI
 		MonthlyUsedUSD: sub.MonthlyUsageUSD,
 	}
 	if sub.Group != nil {
-		item.GroupName = sub.Group.Name
+		item.GroupName = sub.Group.I18n.LocalizeName(acceptLanguage, sub.Group.Name)
 	}
 	limits := sub.EffectiveLimits(sub.Group)
 	if limits.DailyUSD != nil {

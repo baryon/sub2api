@@ -102,7 +102,9 @@ const fidelityThinkingHistory = `{"role":"user","content":"q"},{"role":"assistan
 
 func TestAPIKeyFidelity_SignedThinkingAndRedactedThinkingAreSentBack(t *testing.T) {
 	tools := `"tools":[{"name":"t","description":"d","input_schema":{"type":"object"}}]`
-	for _, thinking := range []string{`"thinking":{"type":"adaptive"}`, `"thinking":{"type":"enabled","budget_tokens":2048}`, `"thinking":{"type":"disabled"}`} {
+	// claude-haiku-5-5 refuses thinking.type=enabled (Claude Platform, 2026-10-13), and the gateway refuses it
+	// first; adaptive, disabled and no thinking setting are accepted.
+	for _, thinking := range []string{`"thinking":{"type":"adaptive"}`, `"thinking":{"type":"disabled"}`} {
 		body := `{"model":"claude-haiku-5-5","max_tokens":4096,` + thinking + `,` + tools + `,"messages":[` + fidelityThinkingHistory + `]}`
 		for _, passthrough := range []bool{false, true} {
 			upstream := forwardAPIKeyForFidelity(t, passthrough, body, nil)

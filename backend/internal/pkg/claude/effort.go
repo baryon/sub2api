@@ -42,6 +42,7 @@ var claudeEffortFamilies = []struct {
 	{family: "claude-opus-4-5", levels: effortLowMediumHigh},
 	{family: "claude-opus-5-5", levels: effortLowMediumHighXHighMax},
 	{family: "claude-opus-5", levels: effortLowMediumHighXHighMax},
+	{family: "claude-haiku-5-5", levels: effortLowMediumHighXHighMax},
 }
 
 var effortRank = map[string]int{
@@ -65,6 +66,11 @@ func IsOpus55(model string) bool {
 // IsSonnet55 recognizes the official Sonnet 5.5 ID and its provider/date variants.
 func IsSonnet55(model string) bool {
 	return normalizeClaudeModelID(model) == "claude-sonnet-5-5"
+}
+
+// IsHaiku55 recognizes the official Haiku 5.5 ID and its provider/date variants.
+func IsHaiku55(model string) bool {
+	return normalizeClaudeModelID(model) == "claude-haiku-5-5"
 }
 
 // EffortLevelsForModel returns the Anthropic effort values this Claude model
@@ -162,6 +168,8 @@ func normalizeClaudeModelID(model string) string {
 		id = "claude-opus-5-5"
 	case "claude-sonnet-5.5":
 		id = "claude-sonnet-5-5"
+	case "claude-haiku-5.5":
+		id = "claude-haiku-5-5"
 	}
 	if mapped, ok := ModelIDReverseOverrides[id]; ok {
 		id = mapped

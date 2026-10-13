@@ -120,6 +120,7 @@ func ProvideGatewayHandler(
 	otohaCatalog service.OtohaCatalogReader,
 	paymentConfig *service.PaymentConfigService,
 	autoTopUp *service.OtohaAutoTopUpService,
+	geminiCachedContentService *service.GeminiCachedContentService,
 ) *GatewayHandler {
 	h := NewGatewayHandler(gatewayService, openAIGatewayService, geminiCompatService, antigravityGatewayService,
 		userService, concurrencyService, billingCacheService, usageService, apiKeyService, usageRecordWorkerPool,
@@ -132,6 +133,7 @@ func ProvideGatewayHandler(
 	if autoTopUp != nil {
 		h.SetOtohaAutoTopUp(autoTopUp)
 	}
+	h.geminiCachedContentService = geminiCachedContentService
 	return h
 }
 

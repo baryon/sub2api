@@ -53,15 +53,17 @@ type GatewayHandler struct {
 	errorPassthroughService   *service.ErrorPassthroughService
 	contentModerationService  *service.ContentModerationService
 	securityAuditCoordinator  *securityaudit.Coordinator
-	concurrencyHelper         *ConcurrencyHelper
-	userMsgQueueHelper        *UserMsgQueueHelper
-	maxAccountSwitches        int
-	maxAccountSwitchesGemini  int
-	cfg                       *config.Config
-	settingService            *service.SettingService
-	otohaCatalog              service.OtohaCatalogReader
-	otohaAutoTopUp            otohaAutoTopUpState
-	planNames                 service.SubscriptionPlanNamer
+	// geminiCachedContentService 管理 Gemini 显式缓存；为 nil 时相关接口不可用。
+	geminiCachedContentService *service.GeminiCachedContentService
+	concurrencyHelper          *ConcurrencyHelper
+	userMsgQueueHelper         *UserMsgQueueHelper
+	maxAccountSwitches         int
+	maxAccountSwitchesGemini   int
+	cfg                        *config.Config
+	settingService             *service.SettingService
+	otohaCatalog               service.OtohaCatalogReader
+	otohaAutoTopUp             otohaAutoTopUpState
+	planNames                  service.SubscriptionPlanNamer
 }
 
 // NewGatewayHandler creates a new GatewayHandler

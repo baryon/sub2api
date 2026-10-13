@@ -88,7 +88,7 @@ func planListItemFromPlan(p *dbent.SubscriptionPlan, gi service.PlanGroupInfo, a
 	text := service.LocalizedPlanText(p, acceptLanguage)
 	return planListItem{
 		ID: int64(p.ID), GroupID: p.GroupID,
-		GroupPlatform: gi.Platform, GroupName: gi.Name,
+		GroupPlatform: gi.Platform, GroupName: gi.I18n.LocalizeName(acceptLanguage, gi.Name),
 		RateMultiplier: gi.RateMultiplier, PeakRateEnabled: gi.PeakRateEnabled,
 		PeakStart: gi.PeakStart, PeakEnd: gi.PeakEnd, PeakRateMultiplier: gi.PeakRateMultiplier,
 		Name: text.Name, Description: text.Description, Price: p.Price, OriginalPrice: p.OriginalPrice,
@@ -210,7 +210,7 @@ func checkoutPlanFromPlan(p *dbent.SubscriptionPlan, gi service.PlanGroupInfo, a
 	limits := service.PlanEffectiveLimits(p.DailyLimitUsd, p.WeeklyLimitUsd, p.MonthlyLimitUsd, gi)
 	return checkoutPlan{
 		ID: int64(p.ID), GroupID: p.GroupID,
-		GroupPlatform: gi.Platform, GroupName: gi.Name,
+		GroupPlatform: gi.Platform, GroupName: gi.I18n.LocalizeName(acceptLanguage, gi.Name),
 		RateMultiplier:  gi.RateMultiplier,
 		PeakRateEnabled: gi.PeakRateEnabled, PeakStart: gi.PeakStart,
 		PeakEnd: gi.PeakEnd, PeakRateMultiplier: gi.PeakRateMultiplier,
