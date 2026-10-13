@@ -52,7 +52,8 @@ export default {
       auto: '自动（按服务商）',
       anthropicMessages: 'Claude 格式',
       deepseekResponses: 'DeepSeek 格式',
-      openaiResponses: 'OpenAI 格式'
+      openaiResponses: 'OpenAI 格式',
+      geminiGenerateContent: 'Gemini 格式'
     },
     providerUnknown: '无法确定',
     textOnly: '仅文字',

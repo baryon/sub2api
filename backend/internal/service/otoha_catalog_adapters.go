@@ -384,8 +384,9 @@ func (r otohaDiagnoserRouting) Route(ctx context.Context, group *Group, modelID,
 		if api != "" {
 			target = r.resolveComposite(ctx, group, modelID, otohaAPIEndpoint(api))
 		} else {
-			// The app calls a Claude model on /v1/messages and any other on /v1/responses: the model is a Claude one
-			// when /v1/messages sends it to a provider whose format is Anthropic Messages.
+			// The app calls a Claude model on /v1/messages, a Gemini model on /v1beta and any other on /v1/responses:
+			// the model is a Claude one when /v1/messages sends it to a provider whose format is Anthropic Messages,
+			// and a Gemini one when the Gemini endpoint sends it to a provider whose format is generateContent.
 			target = r.resolveComposite(ctx, group, modelID, CompositeRouteEndpointMessages)
 			if target.failed {
 				return OtohaModelRoute{Problem: target.problem, Failed: true}
@@ -393,12 +394,21 @@ func (r otohaDiagnoserRouting) Route(ctx context.Context, group *Group, modelID,
 			if target.problem == "" && OtohaNativeAPIForPlatform(target.platform) == OtohaAPIAnthropicMessages {
 				api = OtohaAPIAnthropicMessages
 			} else {
-				target = r.resolveComposite(ctx, group, modelID, CompositeRouteEndpointResponses)
-				if target.problem == "" {
-					api = OtohaNativeAPIForPlatform(target.platform)
-					if api == OtohaAPIAnthropicMessages {
-						// /v1/responses sends it to Claude, but /v1/messages, which the app would call, does not.
-						return OtohaModelRoute{Problem: OtohaCatalogProblemNoRoute, Platform: target.platform}
+				geminiTarget := r.resolveComposite(ctx, group, modelID, CompositeRouteEndpointGemini)
+				if geminiTarget.failed {
+					return OtohaModelRoute{Problem: geminiTarget.problem, Failed: true}
+				}
+				if geminiTarget.problem == "" && OtohaNativeAPIForPlatform(geminiTarget.platform) == OtohaAPIGeminiGenerateContent {
+					target, api = geminiTarget, OtohaAPIGeminiGenerateContent
+				} else {
+					target = r.resolveComposite(ctx, group, modelID, CompositeRouteEndpointResponses)
+					if target.problem == "" {
+						api = OtohaNativeAPIForPlatform(target.platform)
+						if api == OtohaAPIAnthropicMessages || api == OtohaAPIGeminiGenerateContent {
+							// /v1/responses sends it to Claude or Gemini, but the endpoint the app would call
+							// (/v1/messages, /v1beta) does not.
+							return OtohaModelRoute{Problem: OtohaCatalogProblemNoRoute, Platform: target.platform}
+						}
 					}
 				}
 			}
@@ -556,7 +566,8 @@ func otohaOpenAIGatewayPlatform(platform string) bool {
 // otohaAPIReachesPlatform tells whether the app, calling a model in a format, reaches a provider's accounts and gets
 // that format back. Anthropic Messages (`/v1/messages`): the Anthropic gateway serves Anthropic and Antigravity
 // accounts natively and converts Messages for Gemini accounts, and the OpenAI gateway bridges Messages for the
-// OpenAI-compatible providers. DeepSeek Responses (`/v1/responses`): only DeepSeek accounts answer in DeepSeek's own
+// OpenAI-compatible providers. Gemini generateContent (`/v1beta`): only Gemini accounts answer in Google's protocol,
+// which the gateway passes through. DeepSeek Responses (`/v1/responses`): only DeepSeek accounts answer in DeepSeek's own
 // dialect, which the gateway passes through. OpenAI Responses (`/v1/responses`): the OpenAI gateway serves the other
 // OpenAI-compatible providers, and the Anthropic gateway converts Responses for Anthropic and Antigravity accounts; a
 // DeepSeek account answers in DeepSeek's dialect (reasoning items without the summary OpenAI parsers require), and a
@@ -566,6 +577,8 @@ func otohaAPIReachesPlatform(api, platform string) bool {
 	case OtohaAPIAnthropicMessages:
 		return otohaOpenAIGatewayPlatform(platform) || platform == PlatformAnthropic || platform == PlatformAntigravity ||
 			platform == PlatformGemini
+	case OtohaAPIGeminiGenerateContent:
+		return platform == PlatformGemini
 	case OtohaAPIDeepSeekResponses:
 		return platform == PlatformDeepseek
 	case OtohaAPIOpenAIResponses:

@@ -205,7 +205,7 @@ func TestOtohaCompositeCatalogListsEachProvidersModelsAtWhatBillingCharges(t *te
 
 	gemini := byModel["gemini-2.5-pro"]
 	require.Equal(t, OtohaCatalogProblemNoAccount, gemini.Problem,
-		"routed to Gemini in Anthropic Messages (TASK-85), but no Gemini account of the group serves it")
+		"routed to Gemini in generateContent (TASK-87), but no Gemini account of the group serves it")
 	require.Equal(t, PlatformGemini, gemini.RoutePlatform)
 
 	mystery := byModel["mystery-model"]
@@ -215,7 +215,7 @@ func TestOtohaCompositeCatalogListsEachProvidersModelsAtWhatBillingCharges(t *te
 	require.Equal(t, catalog, view.Preview)
 	require.Contains(t, f.diagnoser.calls, "openai:gpt-6-luna")
 	require.Contains(t, f.diagnoser.calls, "anthropic:claude-sonnet-4-5")
-	require.Contains(t, f.diagnoser.calls, "gemini:gemini-2.5-pro", "Gemini accounts are asked, as the app reaches them through Messages")
+	require.Contains(t, f.diagnoser.calls, "gemini:gemini-2.5-pro", "Gemini accounts are asked, as the app reaches them through generateContent")
 }
 
 func TestOtohaCompositeExplicitRoutePricesAndChecksTheModelItForwards(t *testing.T) {
@@ -237,7 +237,7 @@ func TestOtohaCompositeExplicitRoutePricesAndChecksTheModelItForwards(t *testing
 	require.Equal(t, "claude-sonnet-4-5", byModel["otoha-smart"].RouteModel)
 }
 
-func TestOtohaCompositeRouteToGeminiIsServedInAnthropicMessages(t *testing.T) {
+func TestOtohaCompositeRouteToGeminiIsServedInGenerateContent(t *testing.T) {
 	f := newOtohaCompositeFixture(t)
 	f.routes = []CompositeModelRoute{{
 		ID: 1, GroupID: otohaCompositeGroupID, PublicModel: "otoha-gemini", MatchType: CompositeRouteMatchExact,
@@ -247,7 +247,7 @@ func TestOtohaCompositeRouteToGeminiIsServedInAnthropicMessages(t *testing.T) {
 	f.add(t, "otoha-gemini")
 
 	_, byModel := f.view(t)
-	require.Empty(t, byModel["otoha-gemini"].Problem, "an alias routed to a Gemini account is called in Anthropic Messages")
+	require.Empty(t, byModel["otoha-gemini"].Problem, "an alias routed to a Gemini account is called in generateContent")
 	require.True(t, byModel["otoha-gemini"].InCatalog)
 	require.Equal(t, 2.5, byModel["otoha-gemini"].SalePrice.Input)
 }
@@ -352,8 +352,9 @@ func TestOtohaCompositePrefillReadsTheRoutedProvider(t *testing.T) {
 	require.Nil(t, draft.UpstreamPrice)
 }
 
-// A group of one provider lists its models in the format the gateway converts for it: Gemini's in Anthropic Messages.
-func TestOtohaCatalogOfAGeminiGroupListsItsModelsInAnthropicMessages(t *testing.T) {
+// A group of one provider lists its models in the format the gateway serves for it: Gemini's in Google's generateContent
+// protocol (TASK-87).
+func TestOtohaCatalogOfAGeminiGroupListsItsModelsInGenerateContent(t *testing.T) {
 	f := newOtohaCatalogFixture()
 	f.groups[otohaGroupID].Platform = PlatformGemini
 	f.pricer["gemini-2.5-pro"] = OtohaModelPrice{Input: 1.25, Output: 10}
@@ -366,7 +367,7 @@ func TestOtohaCatalogOfAGeminiGroupListsItsModelsInAnthropicMessages(t *testing.
 	require.Empty(t, view.Entries[0].Problem)
 	require.Empty(t, view.Entries[0].RoutePlatform, "a single-provider group needs no provider column")
 	require.Len(t, view.Preview.Models, 1)
-	require.Equal(t, OtohaAPIAnthropicMessages, view.Preview.Models[0].API)
+	require.Equal(t, OtohaAPIGeminiGenerateContent, view.Preview.Models[0].API)
 }
 
 func TestOtohaSyncedMetadataComesFromTheRoutedProvidersAccounts(t *testing.T) {

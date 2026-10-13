@@ -7,7 +7,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/gemini"
@@ -121,11 +123,67 @@ func modelsEndpointAccountRank(a *Account) int {
 // AI Studio 兼容账号原样返回上游响应；Vertex 服务账号读取 Google 发布方模型列表后转换格式，
 // 上游非 2xx 时原样返回该响应；Vertex API Key 账号返回内置列表。
 func (s *GeminiMessagesCompatService) ForwardListModels(ctx context.Context, account *Account) (*UpstreamHTTPResult, error) {
+	return s.ForwardListModelsPage(ctx, account, GeminiModelsPage{})
+}
+
+// GeminiModelsPage is the page of the model list a client asked for.
+type GeminiModelsPage struct {
+	Size  string
+	Token string
+}
+
+const (
+	geminiModelsPageSizeMax  = 1000
+	geminiModelsPageTokenMax = 2048
+)
+
+// ParseGeminiModelsPage reads the page settings of GET /v1beta/models: pageSize (1 to 1000) and pageToken, as the
+// Gemini API defines them. Nothing else of the client's query is passed on, so the key the client signed in with
+// never leaves the gateway. A setting that is not valid is an error for the client to fix.
+func ParseGeminiModelsPage(query url.Values) (GeminiModelsPage, error) {
+	page := GeminiModelsPage{}
+	if size := strings.TrimSpace(query.Get("pageSize")); size != "" {
+		n, err := strconv.Atoi(size)
+		if err != nil || n < 1 || n > geminiModelsPageSizeMax {
+			return GeminiModelsPage{}, fmt.Errorf("pageSize must be a number from 1 to %d", geminiModelsPageSizeMax)
+		}
+		page.Size = strconv.Itoa(n)
+	}
+	if token := query.Get("pageToken"); token != "" {
+		if len(token) > geminiModelsPageTokenMax {
+			return GeminiModelsPage{}, errors.New("pageToken is too long")
+		}
+		for _, r := range token {
+			switch {
+			case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9', strings.ContainsRune("-_=+/.", r):
+			default:
+				return GeminiModelsPage{}, errors.New("pageToken is not valid")
+			}
+		}
+		page.Token = token
+	}
+	return page, nil
+}
+
+// ForwardListModelsPage is ForwardListModels for the page the client asked for. AI Studio compatible upstreams answer
+// that page; Vertex accounts list everything in one response and ignore it.
+func (s *GeminiMessagesCompatService) ForwardListModelsPage(ctx context.Context, account *Account, page GeminiModelsPage) (*UpstreamHTTPResult, error) {
 	if account == nil {
 		return nil, errors.New("account is nil")
 	}
 	if !account.IsVertexServiceAccount() {
-		return s.forwardGeminiModelsGET(ctx, account, "/v1beta/models")
+		query := url.Values{}
+		if page.Size != "" {
+			query.Set("pageSize", page.Size)
+		}
+		if page.Token != "" {
+			query.Set("pageToken", page.Token)
+		}
+		path := "/v1beta/models"
+		if encoded := query.Encode(); encoded != "" {
+			return s.forwardGeminiModelsGETQuery(ctx, account, path, encoded)
+		}
+		return s.forwardGeminiModelsGET(ctx, account, path)
 	}
 	if account.IsVertexAPIKey() {
 		return geminiModelsJSONResult(http.StatusOK, gemini.FallbackModelsList())
@@ -180,6 +238,11 @@ func (s *GeminiMessagesCompatService) ForwardGetModel(ctx context.Context, accou
 // forwardGeminiModelsGET 向 AI Studio 兼容上游转发模型接口的 GET 请求。
 // path 会被直接拼到上游 base URL 后面，因此按路径护栏逐片段校验，见 upstream_path_guard.go。
 func (s *GeminiMessagesCompatService) forwardGeminiModelsGET(ctx context.Context, account *Account, path string) (*UpstreamHTTPResult, error) {
+	return s.forwardGeminiModelsGETQuery(ctx, account, path, "")
+}
+
+// forwardGeminiModelsGETQuery is forwardGeminiModelsGET with an already encoded query string.
+func (s *GeminiMessagesCompatService) forwardGeminiModelsGETQuery(ctx context.Context, account *Account, path, rawQuery string) (*UpstreamHTTPResult, error) {
 	sanitizedPath, ok := sanitizedUpstreamPathSuffix(path)
 	if !ok || sanitizedPath == "" {
 		return nil, errors.New("invalid path")
@@ -191,6 +254,9 @@ func (s *GeminiMessagesCompatService) forwardGeminiModelsGET(ctx context.Context
 		return nil, err
 	}
 	fullURL := strings.TrimRight(normalizedBaseURL, "/") + sanitizedPath
+	if rawQuery != "" {
+		fullURL += "?" + rawQuery
+	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, fullURL, nil)
 	if err != nil {

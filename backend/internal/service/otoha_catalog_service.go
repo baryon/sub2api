@@ -70,6 +70,9 @@ const (
 	OtohaAPIAnthropicMessages = "anthropic-messages"
 	OtohaAPIDeepSeekResponses = "deepseek-responses"
 	OtohaAPIOpenAIResponses   = "openai-responses"
+	// OtohaAPIGeminiGenerateContent is Google's own protocol on /v1beta/models/<model>:generateContent and
+	// :streamGenerateContent, which the gateway passes through to Gemini accounts (TASK-87).
+	OtohaAPIGeminiGenerateContent = "gemini-generate-content"
 
 	otohaCatalogCacheTTL = 30 * time.Second
 
@@ -94,7 +97,7 @@ var (
 	otohaInputs           = []string{"text", "image", "audio", "video", "file"}
 	otohaCostTiers        = []string{OtohaCostLow, OtohaCostStandard, OtohaCostHigh}
 	otohaCompactionKinds  = []string{OtohaCompactionNone, OtohaCompactionAnthropic, OtohaCompactionOpenAI}
-	otohaAPIs             = []string{OtohaAPIAnthropicMessages, OtohaAPIDeepSeekResponses, OtohaAPIOpenAIResponses}
+	otohaAPIs             = []string{OtohaAPIAnthropicMessages, OtohaAPIDeepSeekResponses, OtohaAPIOpenAIResponses, OtohaAPIGeminiGenerateContent}
 	otohaThinkingSettings = []string{"off", "between_tools", "adaptive", "budget"}
 	otohaExtraOutputs     = []string{"low", "medium", "high"}
 	otohaReasoningPattern = regexp.MustCompile(`^[a-z][a-z0-9_-]{0,31}$`)
@@ -338,14 +341,17 @@ func (r OtohaModelRoute) routedContext(ctx context.Context, modelID string) cont
 }
 
 // OtohaNativeAPIForPlatform is the format the app calls a provider's models in: Anthropic Messages for Claude
-// (Anthropic, and Antigravity, which serves Claude through Messages) and for Gemini (the gateway converts Messages to
-// Gemini's generateContent; of the inbound endpoints only /v1/messages is used, TASK-85), DeepSeek's own Responses for
-// DeepSeek, OpenAI Responses for OpenAI, Grok and the other providers the OpenAI gateway serves. Empty for a provider
-// whose format the app does not speak (TypeSafe).
+// (Anthropic, and Antigravity, which serves Claude through Messages), Google's own generateContent for Gemini (the
+// gateway passes it through on /v1beta, TASK-87; Anthropic Messages, which it converts for Gemini accounts, stays
+// available as the admin's choice, TASK-85), DeepSeek's own Responses for DeepSeek, OpenAI Responses for OpenAI, Grok
+// and the other providers the OpenAI gateway serves. Empty for a provider whose format the app does not speak
+// (TypeSafe).
 func OtohaNativeAPIForPlatform(platform string) string {
 	switch platform {
-	case PlatformAnthropic, PlatformAntigravity, PlatformGemini:
+	case PlatformAnthropic, PlatformAntigravity:
 		return OtohaAPIAnthropicMessages
+	case PlatformGemini:
+		return OtohaAPIGeminiGenerateContent
 	case PlatformDeepseek:
 		return OtohaAPIDeepSeekResponses
 	case PlatformOpenAI, PlatformGrok, PlatformKimi, PlatformZhipu, PlatformMiniMax, PlatformOpenCodeGo:
@@ -357,10 +363,14 @@ func OtohaNativeAPIForPlatform(platform string) string {
 
 // otohaAPIEndpoint is the gateway endpoint a format is called on.
 func otohaAPIEndpoint(api string) string {
-	if api == OtohaAPIAnthropicMessages {
+	switch api {
+	case OtohaAPIAnthropicMessages:
 		return CompositeRouteEndpointMessages
+	case OtohaAPIGeminiGenerateContent:
+		return CompositeRouteEndpointGemini
+	default:
+		return CompositeRouteEndpointResponses
 	}
-	return CompositeRouteEndpointResponses
 }
 
 // OtohaModelRouting tells where the group sends a model, in which format the app calls it (api, when the admin chose

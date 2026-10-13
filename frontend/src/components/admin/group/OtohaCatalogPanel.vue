@@ -627,11 +627,12 @@ const LEVELS = ['strong', 'usable', 'avoid'] as const
 const USES = ['default', 'writing', 'planning', 'fast', 'summarize', 'deep', 'coding', 'web'] as const
 const PROFILE_SOURCES = ['vendor', 'evaluation', 'admin'] as const
 const TIERS = ['low', 'standard', 'high'] as const
-const APIS = ['anthropic-messages', 'deepseek-responses', 'openai-responses'] as const
+const APIS = ['anthropic-messages', 'deepseek-responses', 'openai-responses', 'gemini-generate-content'] as const
 const API_LABEL_KEYS: Record<string, string> = {
   'anthropic-messages': 'anthropicMessages',
   'deepseek-responses': 'deepseekResponses',
-  'openai-responses': 'openaiResponses'
+  'openai-responses': 'openaiResponses',
+  'gemini-generate-content': 'geminiGenerateContent'
 }
 const EXTRA_OUTPUTS = ['low', 'medium', 'high'] as const
 const COMPACTION_KINDS: OtohaCompactionKind[] = ['none', 'anthropic', 'openai']

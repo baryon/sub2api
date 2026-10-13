@@ -908,3 +908,56 @@ func TestApiKeyAuthWithSubscriptionGoogle_SubscriptionLimitExceededReturns429(t 
 	require.Equal(t, "RESOURCE_EXHAUSTED", resp.Error.Status)
 	require.Contains(t, resp.Error.Message, "daily usage limit exceeded")
 }
+
+// TASK-87: the Otoha app (SwiftAgent's GeminiProvider) sends its Otoha key as x-goog-api-key or as a Bearer token on
+// /v1beta; the key's group is the composite Otoha group.
+func TestApiKeyAuthWithSubscriptionGoogleAcceptsAnOtohaKeyOnACompositeGroup(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	group := &service.Group{ID: 2, Name: "Otoha", Status: service.StatusActive, Platform: service.PlatformComposite, Hydrated: true}
+	user := &service.User{ID: 7, Role: service.RoleUser, Status: service.StatusActive, Balance: 10, Concurrency: 3}
+	apiKey := &service.APIKey{ID: 100, UserID: user.ID, Key: "otoha-key", Status: service.StatusActive, User: user, Group: group, GroupID: &group.ID}
+	apiKeyService := newTestAPIKeyService(fakeAPIKeyRepo{
+		getByKey: func(ctx context.Context, key string) (*service.APIKey, error) {
+			if key != apiKey.Key {
+				return nil, service.ErrAPIKeyNotFound
+			}
+			clone := *apiKey
+			return &clone, nil
+		},
+	})
+	cfg := &config.Config{RunMode: config.RunModeStandard}
+	r := gin.New()
+	r.Use(APIKeyAuthWithSubscriptionGoogle(apiKeyService, nil, cfg))
+	r.POST("/v1beta/models/*modelAction", func(c *gin.Context) {
+		got, ok := GetAPIKeyFromContext(c)
+		if !ok || got.Group == nil || got.Group.Platform != service.PlatformComposite {
+			c.JSON(http.StatusInternalServerError, gin.H{"ok": false})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"ok": true})
+	})
+
+	for name, setHeader := range map[string]func(*http.Request){
+		"x-goog-api-key": func(req *http.Request) { req.Header.Set("x-goog-api-key", "otoha-key") },
+		"bearer":         func(req *http.Request) { req.Header.Set("Authorization", "Bearer otoha-key") },
+		"key query":      func(req *http.Request) { req.URL.RawQuery = "key=otoha-key" },
+	} {
+		for _, path := range []string{"/v1beta/models/gemini-3.5-flash:generateContent", "/v1beta/models/gemini-3.5-flash:streamGenerateContent?alt=sse"} {
+			req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(`{}`))
+			setHeader(req)
+			if name == "key query" && strings.Contains(path, "?") {
+				req.URL.RawQuery += "&key=otoha-key"
+			}
+			rec := httptest.NewRecorder()
+			r.ServeHTTP(rec, req)
+			require.Equal(t, http.StatusOK, rec.Code, "%s %s: %s", name, path, rec.Body.String())
+		}
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/v1beta/models/gemini-3.5-flash:generateContent", strings.NewReader(`{}`))
+	req.Header.Set("x-goog-api-key", "wrong-key")
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusUnauthorized, rec.Code)
+	require.Contains(t, rec.Body.String(), `"status":"UNAUTHENTICATED"`)
+}

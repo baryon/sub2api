@@ -157,13 +157,16 @@ func TestResolveGeminiCachedContentBinding(t *testing.T) {
 		require.Contains(t, rec.Body.String(), "has to be the same")
 	})
 
-	t.Run("composite groups are rejected", func(t *testing.T) {
+	// TASK-87: the Otoha group is a composite group; the request that reaches the Gemini handlers is already routed to
+	// its Gemini side, and the reference works as in a Gemini group.
+	t.Run("composite groups serve the reference of a request routed to Gemini", func(t *testing.T) {
 		composite := geminiCachedContentTestAPIKey(service.PlatformComposite)
-		c, rec := newGeminiCachedContentTestContext(http.MethodPost, "/v1beta/models/gemini-3.8-flash:generateContent", composite)
-		_, _, ok := h.resolveGeminiCachedContentBinding(c, zap.NewNop(), composite, "gemini-3.8-flash",
+		c, _ := newGeminiCachedContentTestContext(http.MethodPost, "/v1beta/models/gemini-3.8-flash:generateContent", composite)
+		record, out, ok := h.resolveGeminiCachedContentBinding(c, zap.NewNop(), composite, "gemini-3.8-flash",
 			[]byte(`{"cachedContent":"cachedContents/abc","contents":[]}`))
-		require.False(t, ok)
-		require.Equal(t, http.StatusBadRequest, rec.Code)
+		require.True(t, ok)
+		require.Equal(t, int64(900), record.AccountID)
+		require.JSONEq(t, `{"cachedContent":"cachedContents/upstreamabc","contents":[]}`, string(out))
 	})
 }
 
@@ -261,4 +264,28 @@ func TestWriteGeminiCachedContentUpstreamError_RateLimitMappedUnlessUpstreamGate
 	h.writeGeminiCachedContentUpstreamError(c, &service.GeminiCachedContentUpstreamError{StatusCode: http.StatusBadRequest, Body: []byte(`{"error":{"code":400,"message":"Cached content is too small","status":"INVALID_ARGUMENT"}}`)})
 	require.Equal(t, http.StatusBadRequest, rec.Code)
 	require.Contains(t, rec.Body.String(), "too small", "请求校验类错误仍原样回写")
+}
+
+// TASK-87: a composite group's key manages its caches through the same routes as a Gemini group's.
+func TestGeminiCachedContentsAreManagedInACompositeGroup(t *testing.T) {
+	repo := &geminiCachedContentHandlerRepoStub{}
+	seedGeminiCachedContent(repo, "first", 7, time.Now().Add(time.Hour))
+	h := newGeminiCachedContentHandlerForTest(repo)
+	apiKey := geminiCachedContentTestAPIKey(service.PlatformComposite)
+
+	routedToGemini := func(c *gin.Context) {
+		c.Request = c.Request.WithContext(service.WithResolvedTargetPlatform(c.Request.Context(), service.PlatformGemini))
+	}
+
+	c, rec := newGeminiCachedContentTestContext(http.MethodGet, "/v1beta/cachedContents", apiKey)
+	routedToGemini(c)
+	h.GeminiCachedContentsList(c)
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	require.Contains(t, rec.Body.String(), "cachedContents/first")
+
+	c, rec = newGeminiCachedContentTestContext(http.MethodGet, "/v1beta/cachedContents/first", apiKey)
+	routedToGemini(c)
+	c.Params = gin.Params{{Key: "cacheID", Value: "first"}}
+	h.GeminiCachedContentsGet(c)
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 }

@@ -2,6 +2,7 @@ package routes
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -643,9 +644,10 @@ func compositeGeminiTargetPlatformMiddleware(resolver *service.CompositeRouteRes
 					c.Abort()
 					return
 				}
-				if decision.Matched {
-					c.Request = c.Request.WithContext(service.WithCompositeRouteDecision(c.Request.Context(), decision))
+				if rejectCompositeGeminiModel(c, model, decision) {
+					return
 				}
+				c.Request = c.Request.WithContext(service.WithCompositeRouteDecision(c.Request.Context(), decision))
 			}
 			if _, resolved := service.ResolvedTargetPlatformFromContext(c.Request.Context()); !resolved {
 				c.Request = c.Request.WithContext(service.WithResolvedTargetPlatform(c.Request.Context(), service.PlatformGemini))
@@ -653,6 +655,31 @@ func compositeGeminiTargetPlatformMiddleware(resolver *service.CompositeRouteRes
 		}
 		c.Next()
 	}
+}
+
+// rejectCompositeGeminiModel answers a /v1beta call for a model the composite group does not serve in Google's
+// protocol: a provider that cannot take the Gemini endpoint at all, a model of another provider, or a model no
+// provider of the group claims. They are all 404 in Google's error format, before an account is asked, so a name the
+// group never offered is not sent on to Google. It reports whether it answered.
+func rejectCompositeGeminiModel(c *gin.Context, model string, decision service.CompositeRouteDecision) bool {
+	if decision.Matched && decision.TargetPlatform == service.PlatformGemini {
+		return false
+	}
+	var message string
+	switch {
+	case decision.TargetPlatform != "" && !service.CompositeRouteRequestEndpointSupported(decision.TargetPlatform, service.CompositeRouteEndpointGemini):
+		service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalFeatureGate)
+		message = service.CompositeRouteEndpointGemini + " is not supported for this platform"
+	case decision.Matched:
+		service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalModelConfiguration)
+		message = fmt.Sprintf("Model %q is not a Gemini model, use the endpoint of its provider", model)
+	default:
+		service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalModelConfiguration)
+		message = fmt.Sprintf("Model %q is not available for this group", model)
+	}
+	middleware.GoogleErrorWriter(c, http.StatusNotFound, message)
+	c.Abort()
+	return true
 }
 
 // grokCustomVoiceEndpoint derives the upstream Voice endpoint for the

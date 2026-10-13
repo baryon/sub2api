@@ -90,6 +90,50 @@ func (r *CompositeRouteResolver) ListExactPublicModels(ctx context.Context, grou
 	return models, nil
 }
 
+// compositeRoutesSnapshot answers ListByGroup from routes read once, so a list of models is routed with one lookup.
+type compositeRoutesSnapshot struct {
+	CompositeModelRouteRepository
+	routes []CompositeModelRoute
+}
+
+func (s compositeRoutesSnapshot) ListByGroup(context.Context, int64, bool) ([]CompositeModelRoute, error) {
+	return s.routes, nil
+}
+
+// GeminiServedModels tells which models a composite group serves in Google's own protocol (the /v1beta endpoints):
+// the ones it routes to its Gemini accounts, by an explicit route, by an account that claims the name, or by the name
+// itself. serves answers for any model name; aliases are the public names of the group's explicit Gemini routes. The
+// routes are read once.
+func (r *CompositeRouteResolver) GeminiServedModels(ctx context.Context, groupID int64) (serves func(model string) bool, aliases []string, err error) {
+	resolver := r
+	if r == nil || r.repo == nil {
+		resolver = NewCompositeRouteResolver(nil)
+		if r != nil {
+			resolver.modelOwnershipResolver = r.modelOwnershipResolver
+		}
+	} else {
+		routes, listErr := r.repo.ListByGroup(ctx, groupID, false)
+		if listErr != nil {
+			return nil, nil, fmt.Errorf("list composite routes: %w", listErr)
+		}
+		resolver = &CompositeRouteResolver{repo: compositeRoutesSnapshot{routes: routes}, modelOwnershipResolver: r.modelOwnershipResolver}
+	}
+	serves = func(model string) bool {
+		decision, resolveErr := resolver.Resolve(ctx, groupID, model, CompositeRouteEndpointGemini)
+		return resolveErr == nil && decision.Matched && decision.TargetPlatform == PlatformGemini
+	}
+	public, err := resolver.ListExactPublicModels(ctx, groupID, CompositeRouteEndpointGemini, true)
+	if err != nil {
+		return nil, nil, err
+	}
+	for _, model := range public {
+		if serves(model) {
+			aliases = append(aliases, model)
+		}
+	}
+	return serves, aliases, nil
+}
+
 func (r *CompositeRouteResolver) FilterCodexModels(ctx context.Context, groupID int64, models []string) ([]string, error) {
 	if r == nil || r.repo == nil || groupID <= 0 {
 		return models, nil

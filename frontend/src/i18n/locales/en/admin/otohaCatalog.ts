@@ -52,7 +52,8 @@ export default {
       auto: 'Automatic (by provider)',
       anthropicMessages: 'Claude format',
       deepseekResponses: 'DeepSeek format',
-      openaiResponses: 'OpenAI format'
+      openaiResponses: 'OpenAI format',
+      geminiGenerateContent: 'Gemini format'
     },
     providerUnknown: 'Cannot tell',
     textOnly: 'Text only',

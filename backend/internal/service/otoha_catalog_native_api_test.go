@@ -75,24 +75,25 @@ func TestOtohaCompositeClaudeIsCheckedOnMessages(t *testing.T) {
 		"/v1/messages, which the app uses for Claude, cannot tell where to send it")
 }
 
-// Gemini's models are called in Anthropic Messages, which the gateway converts for Gemini accounts (verified on
-// /v1/messages with adaptive thinking, cache_control, tools and tool results, TASK-85): a Gemini model needs no format
-// chosen by the admin to be shown.
-func TestOtohaCompositeGeminiDefaultsToAnthropicMessages(t *testing.T) {
+// Gemini's models are called in Google's own generateContent protocol, which the gateway passes through
+// (/v1beta/models/<model>:generateContent, TASK-87; SwiftAgent's GeminiProvider). A Gemini model needs no format chosen
+// by the admin to be shown. Anthropic Messages, which the gateway converts for Gemini accounts (TASK-85), stays
+// available as the admin's choice.
+func TestOtohaCompositeGeminiDefaultsToGenerateContent(t *testing.T) {
 	f := newOtohaCompositeFixture(t)
 	f.diagnoser.models[PlatformGemini] = []string{"gemini-2.5-pro"}
 	f.add(t, "gemini-2.5-pro")
 
 	catalog, err := f.svc.CatalogForGroup(context.Background(), otohaCompositeGroupID)
 	require.NoError(t, err)
-	require.Equal(t, OtohaAPIAnthropicMessages, otohaCatalogModelByID(t, catalog, "gemini-2.5-pro").API)
+	require.Equal(t, OtohaAPIGeminiGenerateContent, otohaCatalogModelByID(t, catalog, "gemini-2.5-pro").API)
 
 	_, byModel := f.view(t)
 	gemini := byModel["gemini-2.5-pro"]
 	require.Empty(t, gemini.Problem)
 	require.True(t, gemini.InCatalog)
 	require.Equal(t, PlatformGemini, gemini.RoutePlatform)
-	require.Equal(t, OtohaAPIAnthropicMessages, gemini.EffectiveAPI)
+	require.Equal(t, OtohaAPIGeminiGenerateContent, gemini.EffectiveAPI)
 	require.Contains(t, f.diagnoser.calls, "gemini:gemini-2.5-pro", "the Gemini accounts are asked whether they serve it")
 }
 
@@ -102,12 +103,12 @@ func TestOtohaCompositePrefillOfAGeminiModelNamesTheFormat(t *testing.T) {
 	draft, err := f.svc.Prefill(context.Background(), otohaCompositeGroupID, "gemini-3.5-flash")
 	require.NoError(t, err)
 	require.Equal(t, PlatformGemini, draft.RoutePlatform)
-	require.Equal(t, OtohaAPIAnthropicMessages, draft.RouteAPI)
+	require.Equal(t, OtohaAPIGeminiGenerateContent, draft.RouteAPI)
 	require.Empty(t, draft.Entry.API, "blank derives the format from the provider")
 }
 
 // A Gemini model reached through the account that owns it (a name Google gives no prefix to) is routed the same way.
-func TestOtohaCompositeOwnedGeminiModelDefaultsToAnthropicMessages(t *testing.T) {
+func TestOtohaCompositeOwnedGeminiModelDefaultsToGenerateContent(t *testing.T) {
 	f := newOtohaCompositeFixture(t)
 	f.ownership["nano-banana-pro-preview"] = CompositeModelOwnership{Matched: true, TargetPlatform: PlatformGemini}
 	f.diagnoser.models[PlatformGemini] = []string{"nano-banana-pro-preview"}
@@ -115,7 +116,7 @@ func TestOtohaCompositeOwnedGeminiModelDefaultsToAnthropicMessages(t *testing.T)
 	draft, err := f.svc.Prefill(context.Background(), otohaCompositeGroupID, "nano-banana-pro-preview")
 	require.NoError(t, err)
 	require.Equal(t, PlatformGemini, draft.RoutePlatform)
-	require.Equal(t, OtohaAPIAnthropicMessages, draft.RouteAPI)
+	require.Equal(t, OtohaAPIGeminiGenerateContent, draft.RouteAPI)
 }
 
 // The admin can choose the format: OpenAI Responses for a Claude model (the gateway converts), Anthropic Messages for
@@ -153,12 +154,15 @@ func TestOtohaCompositeAdminChosenAPI(t *testing.T) {
 	require.Equal(t, OtohaAPIDeepSeekResponses, otohaCatalogModelByID(t, catalog, "deepseek-v4-flash").API)
 
 	set("gemini-2.5-pro", OtohaAPIOpenAIResponses)
+	set("claude-sonnet-4-5", OtohaAPIGeminiGenerateContent)
 	set("gpt-6-luna", OtohaAPIDeepSeekResponses)
 	set("deepseek-v4-flash", OtohaAPIOpenAIResponses)
 	_, byModel := f.view(t)
 	require.Equal(t, OtohaCatalogProblemAPIUnreachable, byModel["gemini-2.5-pro"].Problem,
 		"/v1/responses would send a Gemini account an Anthropic request")
 	require.Equal(t, OtohaAPIOpenAIResponses, byModel["gemini-2.5-pro"].EffectiveAPI, "the admin's choice shows on the hidden row")
+	require.Equal(t, OtohaCatalogProblemAPIUnreachable, byModel["claude-sonnet-4-5"].Problem,
+		"only Gemini accounts answer in Google's protocol")
 	require.Equal(t, OtohaCatalogProblemAPIUnreachable, byModel["gpt-6-luna"].Problem,
 		"only DeepSeek answers in DeepSeek's dialect")
 	require.Equal(t, OtohaCatalogProblemAPIUnreachable, byModel["deepseek-v4-flash"].Problem,
@@ -193,12 +197,17 @@ func TestOtohaSingleProviderGroupNamesItsFormat(t *testing.T) {
 	}
 	route := routing.Route(ctx, &Group{ID: 1, Platform: PlatformGemini}, "gemini-2.5-pro", "")
 	require.Empty(t, route.Problem)
-	require.Equal(t, OtohaAPIAnthropicMessages, route.API, "the gateway converts Messages for Gemini accounts")
+	require.Equal(t, OtohaAPIGeminiGenerateContent, route.API, "the gateway passes Google's protocol through to Gemini accounts")
 	route = routing.Route(ctx, &Group{ID: 1, Platform: PlatformTypeSafe}, "jev-latest", "")
 	require.Equal(t, OtohaCatalogProblemNoNativeAPI, route.Problem, "TypeSafe has no format the app speaks")
 	route = routing.Route(ctx, &Group{ID: 1, Platform: PlatformGemini}, "gemini-2.5-pro", OtohaAPIAnthropicMessages)
 	require.Empty(t, route.Problem, "/v1/messages reaches Gemini accounts")
 	require.Equal(t, OtohaAPIAnthropicMessages, route.API)
+	route = routing.Route(ctx, &Group{ID: 1, Platform: PlatformGemini}, "gemini-2.5-pro", OtohaAPIGeminiGenerateContent)
+	require.Empty(t, route.Problem, "/v1beta reaches Gemini accounts")
+	require.Equal(t, OtohaAPIGeminiGenerateContent, route.API)
+	route = routing.Route(ctx, &Group{ID: 1, Platform: PlatformAnthropic}, "claude-sonnet-4-5", OtohaAPIGeminiGenerateContent)
+	require.Equal(t, OtohaCatalogProblemAPIUnreachable, route.Problem, "only Gemini accounts answer in Google's protocol")
 	route = routing.Route(ctx, &Group{ID: 1, Platform: PlatformTypeSafe}, "jev-latest", OtohaAPIAnthropicMessages)
 	require.Equal(t, OtohaCatalogProblemAPIUnreachable, route.Problem, "TypeSafe takes only its own protocol")
 }
@@ -209,4 +218,27 @@ func TestOtohaCompositePrefillNamesTheFormat(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, OtohaAPIAnthropicMessages, draft.RouteAPI)
 	require.Empty(t, draft.Entry.API)
+}
+
+// The app calls a Gemini model on /v1beta, so a composite route that serves it only on /v1/messages does not make it
+// callable there, and a route that serves it on the Gemini endpoint does.
+func TestOtohaCompositeGeminiIsCheckedOnTheGeminiEndpoint(t *testing.T) {
+	f := newOtohaCompositeFixture(t)
+	f.diagnoser.models[PlatformGemini] = []string{"gemini-2.5-pro"}
+	f.routes = []CompositeModelRoute{
+		{ID: 1, GroupID: otohaCompositeGroupID, PublicModel: "otoha-gemini", MatchType: CompositeRouteMatchExact,
+			TargetPlatform: PlatformGemini, UpstreamModel: "gemini-2.5-pro", Endpoint: CompositeRouteEndpointGemini, Enabled: true},
+		{ID: 2, GroupID: otohaCompositeGroupID, PublicModel: "messages-gemini", MatchType: CompositeRouteMatchExact,
+			TargetPlatform: PlatformGemini, UpstreamModel: "gemini-2.5-pro", Endpoint: CompositeRouteEndpointMessages, Enabled: true},
+	}
+	f.add(t, "otoha-gemini", "messages-gemini")
+
+	catalog, err := f.svc.CatalogForGroup(context.Background(), otohaCompositeGroupID)
+	require.NoError(t, err)
+	require.Equal(t, []string{"otoha-gemini"}, otohaModelIDs(catalog))
+	require.Equal(t, OtohaAPIGeminiGenerateContent, catalog.Models[0].API)
+
+	_, byModel := f.view(t)
+	require.Equal(t, "gemini-2.5-pro", byModel["otoha-gemini"].RouteModel)
+	require.Equal(t, OtohaCatalogProblemNoRoute, byModel["messages-gemini"].Problem)
 }

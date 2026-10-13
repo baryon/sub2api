@@ -28,7 +28,8 @@ const geminiCachedContentPersistTimeout = 15 * time.Second
 
 const geminiCachedContentUnavailableMessage = "The account holding this cached content is temporarily unavailable"
 
-// geminiCachedContentsPreamble 校验显式缓存管理接口的公共前置条件：gemini 分组、非 composite 分组、功能已装配。
+// geminiCachedContentsPreamble 校验显式缓存管理接口的公共前置条件：请求落在 gemini 平台（gemini 分组，或 composite 分组的 Gemini 一侧，
+// 见 compositeGeminiTargetPlatformMiddleware）、功能已装配。
 func (h *GatewayHandler) geminiCachedContentsPreamble(c *gin.Context, component string) (*service.APIKey, middleware.AuthSubject, *zap.Logger, bool) {
 	apiKey, ok := middleware.GetAPIKeyFromContext(c)
 	if !ok || apiKey == nil {
@@ -44,7 +45,7 @@ func (h *GatewayHandler) geminiCachedContentsPreamble(c *gin.Context, component 
 		googlePlatformError(c, http.StatusNotFound, "Explicit context caching is not enabled")
 		return nil, middleware.AuthSubject{}, nil, false
 	}
-	if apiKey.Group == nil || apiKey.GroupID == nil || apiKey.Group.Platform == service.PlatformComposite {
+	if apiKey.Group == nil || apiKey.GroupID == nil {
 		googleError(c, http.StatusBadRequest, "Explicit context caching is not supported for this API key group")
 		return nil, middleware.AuthSubject{}, nil, false
 	}
@@ -588,8 +589,7 @@ func (h *GatewayHandler) resolveGeminiCachedContentBinding(c *gin.Context, reqLo
 	if ref == nil {
 		return nil, body, true
 	}
-	if middleware.HasForcePlatform(c) || h.geminiCachedContentService == nil ||
-		apiKey.Group == nil || apiKey.Group.Platform == service.PlatformComposite {
+	if middleware.HasForcePlatform(c) || h.geminiCachedContentService == nil || apiKey.Group == nil {
 		googleError(c, http.StatusBadRequest, "cachedContent is not supported on this route")
 		return nil, nil, false
 	}

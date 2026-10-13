@@ -64,7 +64,12 @@ export interface OtohaThinkingLevel {
 }
 
 /** The format the app calls a model in; '' derives it from the provider. */
-export type OtohaCatalogAPI = '' | 'anthropic-messages' | 'deepseek-responses' | 'openai-responses'
+export type OtohaCatalogAPI =
+  | ''
+  | 'anthropic-messages'
+  | 'deepseek-responses'
+  | 'openai-responses'
+  | 'gemini-generate-content'
 
 export interface OtohaCatalogEntryInput {
   model_id: string

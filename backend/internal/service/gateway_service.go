@@ -1559,6 +1559,19 @@ func (s *GatewayService) GetCompositeRouteModels(ctx context.Context, groupID *i
 	return s.compositeResolver.ListExactPublicModels(ctx, *groupID, endpoint, includeSystemOne)
 }
 
+// CompositeGeminiModels is what a composite group serves in Google's protocol: a test for any model name, and the
+// public names of its explicit Gemini routes (see CompositeRouteResolver.GeminiServedModels).
+func (s *GatewayService) CompositeGeminiModels(ctx context.Context, groupID int64) (func(model string) bool, []string, error) {
+	var resolver *CompositeRouteResolver
+	if s != nil {
+		resolver = s.compositeResolver
+	}
+	if resolver == nil {
+		resolver = NewCompositeRouteResolver(nil)
+	}
+	return resolver.GeminiServedModels(ctx, groupID)
+}
+
 func (s *GatewayService) FilterCompositeCodexModels(ctx context.Context, groupID int64, models []string) ([]string, error) {
 	if s == nil || s.compositeResolver == nil {
 		return models, nil
