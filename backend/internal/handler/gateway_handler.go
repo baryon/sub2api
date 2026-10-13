@@ -60,6 +60,7 @@ type GatewayHandler struct {
 	cfg                       *config.Config
 	settingService            *service.SettingService
 	otohaCatalog              service.OtohaCatalogReader
+	otohaAutoTopUp            otohaAutoTopUpState
 	planNames                 service.SubscriptionPlanNamer
 }
 

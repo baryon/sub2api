@@ -30,6 +30,17 @@ func (h *GatewayHandler) SetOtohaCatalog(reader service.OtohaCatalogReader) {
 	h.otohaCatalog = reader
 }
 
+// otohaAutoTopUpState gives a user's automatic top-up for the Otoha app's usage answer (TASK-78).
+type otohaAutoTopUpState interface {
+	State(ctx context.Context, userID int64) (*service.OtohaAutoTopUp, error)
+}
+
+// SetOtohaAutoTopUp gives the handler automatic top-up, which `/v1/usage?client=otoha` reports: the app holds
+// only an API key, so it cannot read the account page's answer (TASK-78, OtohaAI OAI-643).
+func (h *GatewayHandler) SetOtohaAutoTopUp(reader otohaAutoTopUpState) {
+	h.otohaAutoTopUp = reader
+}
+
 // SetPlanNames gives the handler the plan names `/v1/usage` reports (TASK-60).
 func (h *GatewayHandler) SetPlanNames(names service.SubscriptionPlanNamer) {
 	h.planNames = names
@@ -116,7 +127,22 @@ func (h *GatewayHandler) prepareOtohaUsage(c *gin.Context, apiKey *service.APIKe
 			"end":   end.Format(time.RFC3339),
 		},
 		"model_usage": service.OtohaModelUsageFromStats(stats),
+		"auto_topup":  h.otohaAutoTopUpOf(c.Request.Context(), apiKey.UserID),
 	})
+}
+
+// otohaAutoTopUpOf is the key owner's automatic top-up; nil when the server has none or it cannot be read now,
+// which leaves the rest of the answer as it is.
+func (h *GatewayHandler) otohaAutoTopUpOf(ctx context.Context, userID int64) *service.OtohaAutoTopUp {
+	if h.otohaAutoTopUp == nil || userID <= 0 {
+		return nil
+	}
+	state, err := h.otohaAutoTopUp.State(ctx, userID)
+	if err != nil {
+		logger.L().Warn("otoha_usage.auto_topup_failed", zap.Int64("user_id", userID), zap.Error(err))
+		return nil
+	}
+	return state
 }
 
 // addOtohaUsage copies what prepareOtohaUsage read into a /v1/usage response.

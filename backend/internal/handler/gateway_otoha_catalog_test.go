@@ -272,3 +272,69 @@ func TestOtohaModelsCarriesThinkingAndLevels(t *testing.T) {
 	require.JSONEq(t, `null`, string(body.Models[1]["thinking"]))
 	require.JSONEq(t, `[]`, string(body.Models[1]["levels"]))
 }
+
+type otohaAutoTopUpStateStub struct {
+	state  *service.OtohaAutoTopUp
+	err    error
+	userID int64
+}
+
+func (s *otohaAutoTopUpStateStub) State(_ context.Context, userID int64) (*service.OtohaAutoTopUp, error) {
+	s.userID = userID
+	return s.state, s.err
+}
+
+func otohaUsageRequestWithAutoTopUp(t *testing.T, path string, reader *otohaAutoTopUpStateStub) map[string]any {
+	t.Helper()
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodGet, path, nil)
+	c.Set(string(middleware.ContextKeyAPIKey), &service.APIKey{ID: 31, UserID: 9, Status: service.StatusActive, Group: &service.Group{
+		ID: 5, Name: "Otoha", SubscriptionType: service.SubscriptionTypeSubscription, BalanceFallbackEnabled: true,
+	}})
+	c.Set(string(middleware.ContextKeyUser), middleware.AuthSubject{UserID: 9})
+	h := &GatewayHandler{
+		userService:  service.NewUserService(usageUserRepoStub{balance: 3}, nil, nil, nil),
+		usageService: service.NewUsageService(&otohaUsageRepoStub{}, nil, nil, nil),
+	}
+	if reader != nil {
+		h.SetOtohaAutoTopUp(reader)
+	}
+	h.Usage(c)
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	var response map[string]any
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &response))
+	return response
+}
+
+// The app holds only an API key, so it reads automatic top-up from its usage answer (TASK-78, OtohaAI OAI-643).
+func TestOtohaUsageCarriesTheKeyOwnersAutomaticTopUp(t *testing.T) {
+	reader := &otohaAutoTopUpStateStub{state: &service.OtohaAutoTopUp{Enabled: true, ThresholdUSD: 5, AmountUSD: 20, MonthlyCapUSD: 100}}
+	response := otohaUsageRequestWithAutoTopUp(t, "/v1/usage?client=otoha", reader)
+
+	require.Equal(t, int64(9), reader.userID, "the key owner's settings")
+	topUp, ok := response["auto_topup"].(map[string]any)
+	require.True(t, ok, "response: %v", response)
+	require.Equal(t, true, topUp["enabled"])
+	require.Equal(t, 5.0, topUp["threshold_usd"])
+	require.Equal(t, 20.0, topUp["amount_usd"])
+	require.Equal(t, 100.0, topUp["monthly_cap_usd"])
+}
+
+func TestOtohaUsageWithoutReadableAutomaticTopUpLeavesItNull(t *testing.T) {
+	response := otohaUsageRequestWithAutoTopUp(t, "/v1/usage?client=otoha", &otohaAutoTopUpStateStub{err: errors.New("db down")})
+	require.Contains(t, response, "auto_topup")
+	require.Nil(t, response["auto_topup"])
+	require.Contains(t, response, "model_usage", "the rest of the answer stays")
+
+	response = otohaUsageRequestWithAutoTopUp(t, "/v1/usage?client=otoha", nil)
+	require.Nil(t, response["auto_topup"], "a server without automatic top-up")
+}
+
+func TestUsageWithoutTheOtohaClientHasNoAutomaticTopUp(t *testing.T) {
+	reader := &otohaAutoTopUpStateStub{state: &service.OtohaAutoTopUp{Enabled: true}}
+	response := otohaUsageRequestWithAutoTopUp(t, "/v1/usage", reader)
+	require.NotContains(t, response, "auto_topup")
+	require.Zero(t, reader.userID, "not read")
+}
