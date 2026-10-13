@@ -18,6 +18,7 @@ func NewOtohaCatalogService(
 	gatewayService *GatewayService,
 	openAIGatewayService *OpenAIGatewayService,
 	accountRepo AccountRepository,
+	imageRepo OtohaImageRepository,
 ) *OtohaCatalogService {
 	routing := otohaDiagnoserRouting{}
 	if gatewayService != nil {
@@ -37,13 +38,21 @@ func NewOtohaCatalogService(
 		}
 		routing.channelMapping = gatewayService.channelService.ResolveChannelMapping
 	}
-	return NewOtohaCatalogServiceWithDeps(
+	svc := NewOtohaCatalogServiceWithDeps(
 		repo,
 		groupRepo,
 		otohaResolverPricer{resolver: resolver},
 		otohaGatewayMetadata{gateway: gatewayService, accounts: accountRepo},
 		routing,
 	)
+	if imageRepo != nil {
+		svc.WithImages(imageRepo, otohaOpenAIImagePricer{openai: openAIGatewayService}, routing)
+		if openAIGatewayService != nil {
+			// Billing charges the prices the admin set on image models, so they are what the app is shown (TASK-73).
+			openAIGatewayService.SetOtohaImagePriceOverrides(svc)
+		}
+	}
+	return svc
 }
 
 // otohaResolverPricer reads the token price billing resolves for the model in the group (group price, then channel
@@ -441,6 +450,50 @@ func (r otohaDiagnoserRouting) Route(ctx context.Context, group *Group, modelID,
 	}
 	if len(billed) != 1 || billed[0] != model {
 		route.BilledModels = billed
+	}
+	return route
+}
+
+// ImageRoute tells where the group sends a request for an image model on the images endpoints, and whether an
+// account serves it there. Only the OpenAI and Grok gateways serve them.
+func (r otohaDiagnoserRouting) ImageRoute(ctx context.Context, group *Group, modelID string) OtohaModelRoute {
+	if group == nil {
+		return OtohaModelRoute{}
+	}
+	route := OtohaModelRoute{}
+	platform, model := group.Platform, modelID
+	if group.Platform == PlatformComposite {
+		target := r.resolveComposite(ctx, group, modelID, CompositeRouteEndpointImages)
+		if target.problem != "" {
+			return OtohaModelRoute{Problem: target.problem, Platform: target.platform, Failed: target.failed}
+		}
+		platform, model = target.platform, target.model
+		route.Platform = platform
+		if model != modelID {
+			route.UpstreamModel = model
+		}
+	}
+	if platform != PlatformOpenAI && platform != PlatformGrok {
+		route.Problem = OtohaCatalogProblemNoRoute
+		return route
+	}
+	routedCtx := ctx
+	if route.Platform != "" {
+		routedCtx = WithCompositeRouteDecision(ctx, CompositeRouteDecision{
+			Matched:        true,
+			PublicModel:    modelID,
+			TargetPlatform: platform,
+			UpstreamModel:  model,
+			Endpoint:       CompositeRouteEndpointImages,
+		})
+	}
+	if r.restricted != nil && r.restricted(routedCtx, group.ID, model) {
+		route.Problem = OtohaCatalogProblemChannelRestricted
+		return route
+	}
+	groupID := group.ID
+	if r.openai != nil && !r.openai.DiagnoseModelAvailabilityForPlatform(ctx, &groupID, model, platform).HasModelSupport {
+		route.Problem = OtohaCatalogProblemNoAccount
 	}
 	return route
 }

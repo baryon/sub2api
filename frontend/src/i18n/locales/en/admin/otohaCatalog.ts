@@ -67,7 +67,8 @@ export default {
       api_unreachable: 'Chosen format does not reach it',
       channel_restricted: 'Channel does not allow it',
       no_account: 'No account for it',
-      no_price: 'No price'
+      no_price: 'No price',
+      images_not_allowed: 'Drawing not allowed in group'
     },
     statusHint: {
       not_allowed: 'Add this model to the group\'s model allowlist to show it.',
@@ -80,6 +81,62 @@ export default {
       api_unreachable: 'The format chosen for this model does not reach the provider\'s accounts. Set it back to automatic or choose another.',
       api_unreachable_at: 'The format chosen for this model does not reach the {provider} accounts. Set it back to automatic or choose another.',
       no_price: 'The price table has no price for this model. Set one in the group\'s per-model pricing.'
+    },
+    images: {
+      title: 'Image models',
+      intro: 'The Otoha app draws with these models. Choose which sizes it may ask for and what one picture costs.',
+      addPlaceholder: 'Enter an image model, for example gpt-image-2',
+      add: 'Add image model',
+      empty: 'No image models yet',
+      emptyHint: 'Add one so the Otoha app can draw pictures.',
+      columns: {
+        sizes: 'Sizes',
+        price: 'Price'
+      },
+      perPicture: 'per picture',
+      perPictureShort: 'per picture',
+      canEdit: 'Can edit pictures',
+      qualitiesLine: 'Quality: {qualities}',
+      setHere: 'set here',
+      tierNames: {
+        small: '1K · up to 1024 px',
+        medium: '2K · up to 2048 px',
+        large: '4K · larger'
+      },
+      createTitle: 'Add image model',
+      editTitle: 'Edit {model}',
+      exists: 'This image model is already in the catalog.',
+      gone: 'This image model is no longer in the catalog. Please refresh.',
+      editor: {
+        abilities: 'What it can do',
+        sizes: 'Sizes the app may ask for',
+        sizesHint: 'Separate with commas, for example 1024x1024, 1536x1024. A size is priced by its longer side: up to 1024 px, up to 2048 px, or larger.',
+        qualities: 'Quality settings',
+        qualitiesHint: 'For example low, medium, high. The price is the same whatever quality is asked for.',
+        edits: 'Can edit pictures and work from reference pictures',
+        price: 'Price of one picture',
+        priceHint: 'Leave a price empty to follow the group: its per-model pricing, else its 1K, 2K and 4K image prices. A price set here is what is charged for this model, times the group\'s image rate.',
+        priceBefore: 'Price before the rate (US$)',
+        followBilling: 'Follow the group',
+        shownNow: 'Shown in the app: {price} (before the rate: {billing})',
+        afterSave: 'The price that applies is shown after saving.'
+      },
+      errors: {
+        sizes: {
+          none: 'List at least one size the app may ask for.',
+          format: 'Write sizes as width x height, for example 1024x1024, with each side between 16 and 8192.',
+          many: 'List at most 12 sizes.'
+        },
+        qualities: 'Quality settings are single words, for example low or high.',
+        price: 'Prices cannot be negative or more than 1000.'
+      },
+      statusHint: {
+        images_not_allowed: 'The group does not allow drawing. Turn on image generation in the group settings.',
+        not_allowed: 'Add this model to the group\'s model allowlist to show it.',
+        no_route: 'The group cannot tell which provider should draw with this model. Set its provider in the group\'s Composite Routes.',
+        channel_restricted: 'The group\'s channel allows only the models it prices, and this is not one of them. Add it to the channel pricing.',
+        no_price: 'The group\'s channel charges this model by tokens, so there is no price per picture. Set a price here.'
+      }
     },
     tier: {
       auto: 'Automatic (from price)',

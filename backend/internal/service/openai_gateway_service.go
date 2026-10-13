@@ -448,6 +448,9 @@ var ErrNoAvailableCompactAccounts = errors.New("no available accounts support /r
 
 // OpenAIGatewayService handles OpenAI API gateway operations
 type OpenAIGatewayService struct {
+	// otohaImagePrices gives the prices the admin set on a group's Otoha catalog image models; nil without a catalog
+	// (TASK-73). Billing charges an image at such a price, so the app's catalog and the charge cannot differ.
+	otohaImagePrices       OtohaImagePriceOverrides
 	accountRepo            AccountRepository
 	usageLogRepo           UsageLogRepository
 	usageBillingRepo       UsageBillingRepository

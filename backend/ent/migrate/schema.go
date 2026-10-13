@@ -1098,6 +1098,50 @@ var (
 			},
 		},
 	}
+	// OtohaCatalogImageModelsColumns holds the columns for the "otoha_catalog_image_models" table.
+	OtohaCatalogImageModelsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "model_id", Type: field.TypeString, Size: 200},
+		{Name: "name", Type: field.TypeString, Size: 200, Default: ""},
+		{Name: "description", Type: field.TypeString, Default: "", SchemaType: map[string]string{"postgres": "text"}},
+		{Name: "enabled", Type: field.TypeBool, Default: true},
+		{Name: "sort_order", Type: field.TypeInt, Default: 0},
+		{Name: "sizes", Type: field.TypeJSON, Nullable: true},
+		{Name: "qualities", Type: field.TypeJSON, Nullable: true},
+		{Name: "edits", Type: field.TypeBool, Default: false},
+		{Name: "price_1k", Type: field.TypeFloat64, Nullable: true},
+		{Name: "price_2k", Type: field.TypeFloat64, Nullable: true},
+		{Name: "price_4k", Type: field.TypeFloat64, Nullable: true},
+		{Name: "group_id", Type: field.TypeInt64},
+	}
+	// OtohaCatalogImageModelsTable holds the schema information for the "otoha_catalog_image_models" table.
+	OtohaCatalogImageModelsTable = &schema.Table{
+		Name:       "otoha_catalog_image_models",
+		Columns:    OtohaCatalogImageModelsColumns,
+		PrimaryKey: []*schema.Column{OtohaCatalogImageModelsColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "otoha_catalog_image_models_groups_group",
+				Columns:    []*schema.Column{OtohaCatalogImageModelsColumns[14]},
+				RefColumns: []*schema.Column{GroupsColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "otohacatalogimagemodel_group_id_model_id",
+				Unique:  true,
+				Columns: []*schema.Column{OtohaCatalogImageModelsColumns[14], OtohaCatalogImageModelsColumns[3]},
+			},
+			{
+				Name:    "otohacatalogimagemodel_group_id_sort_order",
+				Unique:  false,
+				Columns: []*schema.Column{OtohaCatalogImageModelsColumns[14], OtohaCatalogImageModelsColumns[7]},
+			},
+		},
+	}
 	// OtohaCatalogModelsColumns holds the columns for the "otoha_catalog_models" table.
 	OtohaCatalogModelsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt64, Increment: true},
@@ -2173,6 +2217,7 @@ var (
 		GroupsTable,
 		IdempotencyRecordsTable,
 		IdentityAdoptionDecisionsTable,
+		OtohaCatalogImageModelsTable,
 		OtohaCatalogModelsTable,
 		PaymentAuditLogsTable,
 		PaymentOrdersTable,
@@ -2270,6 +2315,10 @@ func init() {
 	IdentityAdoptionDecisionsTable.ForeignKeys[1].RefTable = PendingAuthSessionsTable
 	IdentityAdoptionDecisionsTable.Annotation = &entsql.Annotation{
 		Table: "identity_adoption_decisions",
+	}
+	OtohaCatalogImageModelsTable.ForeignKeys[0].RefTable = GroupsTable
+	OtohaCatalogImageModelsTable.Annotation = &entsql.Annotation{
+		Table: "otoha_catalog_image_models",
 	}
 	OtohaCatalogModelsTable.ForeignKeys[0].RefTable = GroupsTable
 	OtohaCatalogModelsTable.Annotation = &entsql.Annotation{

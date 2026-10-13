@@ -67,7 +67,8 @@ export default {
       api_unreachable: '所选调用方式不可用',
       channel_restricted: '渠道不允许',
       no_account: '没有可用账号',
-      no_price: '没有价格'
+      no_price: '没有价格',
+      images_not_allowed: '分组不允许画图'
     },
     statusHint: {
       not_allowed: '把这个模型加入分组的模型白名单后才会显示。',
@@ -80,6 +81,62 @@ export default {
       api_unreachable: '给这个模型选的调用方式到不了这家服务商的账号。请改回自动或换一种方式。',
       api_unreachable_at: '给这个模型选的调用方式到不了 {provider} 的账号。请改回自动或换一种方式。',
       no_price: '价格表里没有这个模型的价格。请在分组设置的「分组逐模型定价」里为它设价格。'
+    },
+    images: {
+      title: '作图模型',
+      intro: 'Otoha App 用这些模型画图。设置它可以要求的尺寸，以及一张图的价格。',
+      addPlaceholder: '输入作图模型名称，例如 gpt-image-2',
+      add: '添加作图模型',
+      empty: '还没有作图模型',
+      emptyHint: '添加后，Otoha App 才能画图。',
+      columns: {
+        sizes: '尺寸',
+        price: '售价'
+      },
+      perPicture: '每张图',
+      perPictureShort: '每张',
+      canEdit: '可以修改图片',
+      qualitiesLine: '清晰度：{qualities}',
+      setHere: '在此设置',
+      tierNames: {
+        small: '1K · 边长不超过 1024 像素',
+        medium: '2K · 边长不超过 2048 像素',
+        large: '4K · 更大'
+      },
+      createTitle: '添加作图模型',
+      editTitle: '编辑 {model}',
+      exists: '这个作图模型已在目录里。',
+      gone: '这个作图模型已不在目录里，请刷新。',
+      editor: {
+        abilities: '能力',
+        sizes: 'App 可以要求的尺寸',
+        sizesHint: '用逗号分隔，例如 1024x1024, 1536x1024。尺寸按较长的一边计价：不超过 1024 像素、不超过 2048 像素，或更大。',
+        qualities: '清晰度选项',
+        qualitiesHint: '例如 low, medium, high。无论选哪一档，价格都相同。',
+        edits: '可以修改图片，也可以参考已有图片作图',
+        price: '一张图的价格',
+        priceHint: '价格留空则跟随分组：先看分组逐模型定价，再看分组的 1K、2K、4K 图片价格。在这里填写的价格就是这个模型的计费价，再乘分组的图片倍率。',
+        priceBefore: '倍率前价格（美元）',
+        followBilling: '跟随分组',
+        shownNow: 'App 显示的售价：{price}（倍率前 {billing}）',
+        afterSave: '保存后显示实际生效的价格。'
+      },
+      errors: {
+        sizes: {
+          none: '至少填写一个 App 可以要求的尺寸。',
+          format: '尺寸写成宽 x 高，例如 1024x1024，每边在 16 到 8192 之间。',
+          many: '最多填写 12 个尺寸。'
+        },
+        qualities: '清晰度选项是单个英文单词，例如 low 或 high。',
+        price: '价格不能为负数，也不能超过 1000。'
+      },
+      statusHint: {
+        images_not_allowed: '这个分组不允许画图。请在分组设置里打开图片生成。',
+        not_allowed: '把这个模型加入分组的模型白名单后才会显示。',
+        no_route: '分组无法判断该由哪个服务商来画图。请在分组的混合路由里设置它的服务商。',
+        channel_restricted: '分组的渠道只允许它定过价的模型，而这个模型不在其中。请把它加入渠道定价。',
+        no_price: '分组的渠道按 token 计费这个模型，所以没有每张图的价格。请在这里设置价格。'
+      }
     },
     tier: {
       auto: '自动（按售价）',

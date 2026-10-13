@@ -34,6 +34,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/idempotencyrecord"
 	"github.com/Wei-Shaw/sub2api/ent/identityadoptiondecision"
+	"github.com/Wei-Shaw/sub2api/ent/otohacatalogimagemodel"
 	"github.com/Wei-Shaw/sub2api/ent/otohacatalogmodel"
 	"github.com/Wei-Shaw/sub2api/ent/paymentauditlog"
 	"github.com/Wei-Shaw/sub2api/ent/paymentorder"
@@ -102,6 +103,8 @@ type Client struct {
 	IdempotencyRecord *IdempotencyRecordClient
 	// IdentityAdoptionDecision is the client for interacting with the IdentityAdoptionDecision builders.
 	IdentityAdoptionDecision *IdentityAdoptionDecisionClient
+	// OtohaCatalogImageModel is the client for interacting with the OtohaCatalogImageModel builders.
+	OtohaCatalogImageModel *OtohaCatalogImageModelClient
 	// OtohaCatalogModel is the client for interacting with the OtohaCatalogModel builders.
 	OtohaCatalogModel *OtohaCatalogModelClient
 	// PaymentAuditLog is the client for interacting with the PaymentAuditLog builders.
@@ -174,6 +177,7 @@ func (c *Client) init() {
 	c.Group = NewGroupClient(c.config)
 	c.IdempotencyRecord = NewIdempotencyRecordClient(c.config)
 	c.IdentityAdoptionDecision = NewIdentityAdoptionDecisionClient(c.config)
+	c.OtohaCatalogImageModel = NewOtohaCatalogImageModelClient(c.config)
 	c.OtohaCatalogModel = NewOtohaCatalogModelClient(c.config)
 	c.PaymentAuditLog = NewPaymentAuditLogClient(c.config)
 	c.PaymentOrder = NewPaymentOrderClient(c.config)
@@ -306,6 +310,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		Group:                         NewGroupClient(cfg),
 		IdempotencyRecord:             NewIdempotencyRecordClient(cfg),
 		IdentityAdoptionDecision:      NewIdentityAdoptionDecisionClient(cfg),
+		OtohaCatalogImageModel:        NewOtohaCatalogImageModelClient(cfg),
 		OtohaCatalogModel:             NewOtohaCatalogModelClient(cfg),
 		PaymentAuditLog:               NewPaymentAuditLogClient(cfg),
 		PaymentOrder:                  NewPaymentOrderClient(cfg),
@@ -365,6 +370,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		Group:                         NewGroupClient(cfg),
 		IdempotencyRecord:             NewIdempotencyRecordClient(cfg),
 		IdentityAdoptionDecision:      NewIdentityAdoptionDecisionClient(cfg),
+		OtohaCatalogImageModel:        NewOtohaCatalogImageModelClient(cfg),
 		OtohaCatalogModel:             NewOtohaCatalogModelClient(cfg),
 		PaymentAuditLog:               NewPaymentAuditLogClient(cfg),
 		PaymentOrder:                  NewPaymentOrderClient(cfg),
@@ -420,12 +426,13 @@ func (c *Client) Use(hooks ...Hook) {
 		c.BatchImageJob, c.ChannelMonitor, c.ChannelMonitorDailyRollup,
 		c.ChannelMonitorHistory, c.ChannelMonitorRequestTemplate,
 		c.CompositeModelRoute, c.ErrorPassthroughRule, c.Group, c.IdempotencyRecord,
-		c.IdentityAdoptionDecision, c.OtohaCatalogModel, c.PaymentAuditLog,
-		c.PaymentOrder, c.PaymentProviderInstance, c.PendingAuthSession, c.PromoCode,
-		c.PromoCodeUsage, c.Proxy, c.RedeemCode, c.SecuritySecret, c.Setting,
-		c.SubscriptionPlan, c.TLSFingerprintProfile, c.UsageCleanupTask, c.UsageLog,
-		c.User, c.UserAllowedGroup, c.UserAttributeDefinition, c.UserAttributeValue,
-		c.UserPlatformQuota, c.UserSubscription,
+		c.IdentityAdoptionDecision, c.OtohaCatalogImageModel, c.OtohaCatalogModel,
+		c.PaymentAuditLog, c.PaymentOrder, c.PaymentProviderInstance,
+		c.PendingAuthSession, c.PromoCode, c.PromoCodeUsage, c.Proxy, c.RedeemCode,
+		c.SecuritySecret, c.Setting, c.SubscriptionPlan, c.TLSFingerprintProfile,
+		c.UsageCleanupTask, c.UsageLog, c.User, c.UserAllowedGroup,
+		c.UserAttributeDefinition, c.UserAttributeValue, c.UserPlatformQuota,
+		c.UserSubscription,
 	} {
 		n.Use(hooks...)
 	}
@@ -440,12 +447,13 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 		c.BatchImageJob, c.ChannelMonitor, c.ChannelMonitorDailyRollup,
 		c.ChannelMonitorHistory, c.ChannelMonitorRequestTemplate,
 		c.CompositeModelRoute, c.ErrorPassthroughRule, c.Group, c.IdempotencyRecord,
-		c.IdentityAdoptionDecision, c.OtohaCatalogModel, c.PaymentAuditLog,
-		c.PaymentOrder, c.PaymentProviderInstance, c.PendingAuthSession, c.PromoCode,
-		c.PromoCodeUsage, c.Proxy, c.RedeemCode, c.SecuritySecret, c.Setting,
-		c.SubscriptionPlan, c.TLSFingerprintProfile, c.UsageCleanupTask, c.UsageLog,
-		c.User, c.UserAllowedGroup, c.UserAttributeDefinition, c.UserAttributeValue,
-		c.UserPlatformQuota, c.UserSubscription,
+		c.IdentityAdoptionDecision, c.OtohaCatalogImageModel, c.OtohaCatalogModel,
+		c.PaymentAuditLog, c.PaymentOrder, c.PaymentProviderInstance,
+		c.PendingAuthSession, c.PromoCode, c.PromoCodeUsage, c.Proxy, c.RedeemCode,
+		c.SecuritySecret, c.Setting, c.SubscriptionPlan, c.TLSFingerprintProfile,
+		c.UsageCleanupTask, c.UsageLog, c.User, c.UserAllowedGroup,
+		c.UserAttributeDefinition, c.UserAttributeValue, c.UserPlatformQuota,
+		c.UserSubscription,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -492,6 +500,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.IdempotencyRecord.mutate(ctx, m)
 	case *IdentityAdoptionDecisionMutation:
 		return c.IdentityAdoptionDecision.mutate(ctx, m)
+	case *OtohaCatalogImageModelMutation:
+		return c.OtohaCatalogImageModel.mutate(ctx, m)
 	case *OtohaCatalogModelMutation:
 		return c.OtohaCatalogModel.mutate(ctx, m)
 	case *PaymentAuditLogMutation:
@@ -3582,6 +3592,155 @@ func (c *IdentityAdoptionDecisionClient) mutate(ctx context.Context, m *Identity
 		return (&IdentityAdoptionDecisionDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown IdentityAdoptionDecision mutation op: %q", m.Op())
+	}
+}
+
+// OtohaCatalogImageModelClient is a client for the OtohaCatalogImageModel schema.
+type OtohaCatalogImageModelClient struct {
+	config
+}
+
+// NewOtohaCatalogImageModelClient returns a client for the OtohaCatalogImageModel from the given config.
+func NewOtohaCatalogImageModelClient(c config) *OtohaCatalogImageModelClient {
+	return &OtohaCatalogImageModelClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `otohacatalogimagemodel.Hooks(f(g(h())))`.
+func (c *OtohaCatalogImageModelClient) Use(hooks ...Hook) {
+	c.hooks.OtohaCatalogImageModel = append(c.hooks.OtohaCatalogImageModel, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `otohacatalogimagemodel.Intercept(f(g(h())))`.
+func (c *OtohaCatalogImageModelClient) Intercept(interceptors ...Interceptor) {
+	c.inters.OtohaCatalogImageModel = append(c.inters.OtohaCatalogImageModel, interceptors...)
+}
+
+// Create returns a builder for creating a OtohaCatalogImageModel entity.
+func (c *OtohaCatalogImageModelClient) Create() *OtohaCatalogImageModelCreate {
+	mutation := newOtohaCatalogImageModelMutation(c.config, OpCreate)
+	return &OtohaCatalogImageModelCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of OtohaCatalogImageModel entities.
+func (c *OtohaCatalogImageModelClient) CreateBulk(builders ...*OtohaCatalogImageModelCreate) *OtohaCatalogImageModelCreateBulk {
+	return &OtohaCatalogImageModelCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *OtohaCatalogImageModelClient) MapCreateBulk(slice any, setFunc func(*OtohaCatalogImageModelCreate, int)) *OtohaCatalogImageModelCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &OtohaCatalogImageModelCreateBulk{err: fmt.Errorf("calling to OtohaCatalogImageModelClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*OtohaCatalogImageModelCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &OtohaCatalogImageModelCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for OtohaCatalogImageModel.
+func (c *OtohaCatalogImageModelClient) Update() *OtohaCatalogImageModelUpdate {
+	mutation := newOtohaCatalogImageModelMutation(c.config, OpUpdate)
+	return &OtohaCatalogImageModelUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *OtohaCatalogImageModelClient) UpdateOne(_m *OtohaCatalogImageModel) *OtohaCatalogImageModelUpdateOne {
+	mutation := newOtohaCatalogImageModelMutation(c.config, OpUpdateOne, withOtohaCatalogImageModel(_m))
+	return &OtohaCatalogImageModelUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *OtohaCatalogImageModelClient) UpdateOneID(id int64) *OtohaCatalogImageModelUpdateOne {
+	mutation := newOtohaCatalogImageModelMutation(c.config, OpUpdateOne, withOtohaCatalogImageModelID(id))
+	return &OtohaCatalogImageModelUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for OtohaCatalogImageModel.
+func (c *OtohaCatalogImageModelClient) Delete() *OtohaCatalogImageModelDelete {
+	mutation := newOtohaCatalogImageModelMutation(c.config, OpDelete)
+	return &OtohaCatalogImageModelDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *OtohaCatalogImageModelClient) DeleteOne(_m *OtohaCatalogImageModel) *OtohaCatalogImageModelDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *OtohaCatalogImageModelClient) DeleteOneID(id int64) *OtohaCatalogImageModelDeleteOne {
+	builder := c.Delete().Where(otohacatalogimagemodel.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &OtohaCatalogImageModelDeleteOne{builder}
+}
+
+// Query returns a query builder for OtohaCatalogImageModel.
+func (c *OtohaCatalogImageModelClient) Query() *OtohaCatalogImageModelQuery {
+	return &OtohaCatalogImageModelQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeOtohaCatalogImageModel},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a OtohaCatalogImageModel entity by its id.
+func (c *OtohaCatalogImageModelClient) Get(ctx context.Context, id int64) (*OtohaCatalogImageModel, error) {
+	return c.Query().Where(otohacatalogimagemodel.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *OtohaCatalogImageModelClient) GetX(ctx context.Context, id int64) *OtohaCatalogImageModel {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryGroup queries the group edge of a OtohaCatalogImageModel.
+func (c *OtohaCatalogImageModelClient) QueryGroup(_m *OtohaCatalogImageModel) *GroupQuery {
+	query := (&GroupClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(otohacatalogimagemodel.Table, otohacatalogimagemodel.FieldID, id),
+			sqlgraph.To(group.Table, group.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, false, otohacatalogimagemodel.GroupTable, otohacatalogimagemodel.GroupColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *OtohaCatalogImageModelClient) Hooks() []Hook {
+	return c.hooks.OtohaCatalogImageModel
+}
+
+// Interceptors returns the client interceptors.
+func (c *OtohaCatalogImageModelClient) Interceptors() []Interceptor {
+	return c.inters.OtohaCatalogImageModel
+}
+
+func (c *OtohaCatalogImageModelClient) mutate(ctx context.Context, m *OtohaCatalogImageModelMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&OtohaCatalogImageModelCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&OtohaCatalogImageModelUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&OtohaCatalogImageModelUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&OtohaCatalogImageModelDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown OtohaCatalogImageModel mutation op: %q", m.Op())
 	}
 }
 
@@ -7002,24 +7161,24 @@ type (
 		AuthIdentityChannel, BatchImageEvent, BatchImageItem, BatchImageJob,
 		ChannelMonitor, ChannelMonitorDailyRollup, ChannelMonitorHistory,
 		ChannelMonitorRequestTemplate, CompositeModelRoute, ErrorPassthroughRule,
-		Group, IdempotencyRecord, IdentityAdoptionDecision, OtohaCatalogModel,
-		PaymentAuditLog, PaymentOrder, PaymentProviderInstance, PendingAuthSession,
-		PromoCode, PromoCodeUsage, Proxy, RedeemCode, SecuritySecret, Setting,
-		SubscriptionPlan, TLSFingerprintProfile, UsageCleanupTask, UsageLog, User,
-		UserAllowedGroup, UserAttributeDefinition, UserAttributeValue,
-		UserPlatformQuota, UserSubscription []ent.Hook
+		Group, IdempotencyRecord, IdentityAdoptionDecision, OtohaCatalogImageModel,
+		OtohaCatalogModel, PaymentAuditLog, PaymentOrder, PaymentProviderInstance,
+		PendingAuthSession, PromoCode, PromoCodeUsage, Proxy, RedeemCode,
+		SecuritySecret, Setting, SubscriptionPlan, TLSFingerprintProfile,
+		UsageCleanupTask, UsageLog, User, UserAllowedGroup, UserAttributeDefinition,
+		UserAttributeValue, UserPlatformQuota, UserSubscription []ent.Hook
 	}
 	inters struct {
 		APIKey, Account, AccountGroup, Announcement, AnnouncementRead, AuthIdentity,
 		AuthIdentityChannel, BatchImageEvent, BatchImageItem, BatchImageJob,
 		ChannelMonitor, ChannelMonitorDailyRollup, ChannelMonitorHistory,
 		ChannelMonitorRequestTemplate, CompositeModelRoute, ErrorPassthroughRule,
-		Group, IdempotencyRecord, IdentityAdoptionDecision, OtohaCatalogModel,
-		PaymentAuditLog, PaymentOrder, PaymentProviderInstance, PendingAuthSession,
-		PromoCode, PromoCodeUsage, Proxy, RedeemCode, SecuritySecret, Setting,
-		SubscriptionPlan, TLSFingerprintProfile, UsageCleanupTask, UsageLog, User,
-		UserAllowedGroup, UserAttributeDefinition, UserAttributeValue,
-		UserPlatformQuota, UserSubscription []ent.Interceptor
+		Group, IdempotencyRecord, IdentityAdoptionDecision, OtohaCatalogImageModel,
+		OtohaCatalogModel, PaymentAuditLog, PaymentOrder, PaymentProviderInstance,
+		PendingAuthSession, PromoCode, PromoCodeUsage, Proxy, RedeemCode,
+		SecuritySecret, Setting, SubscriptionPlan, TLSFingerprintProfile,
+		UsageCleanupTask, UsageLog, User, UserAllowedGroup, UserAttributeDefinition,
+		UserAttributeValue, UserPlatformQuota, UserSubscription []ent.Interceptor
 	}
 )
 

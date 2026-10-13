@@ -24,6 +24,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/idempotencyrecord"
 	"github.com/Wei-Shaw/sub2api/ent/identityadoptiondecision"
+	"github.com/Wei-Shaw/sub2api/ent/otohacatalogimagemodel"
 	"github.com/Wei-Shaw/sub2api/ent/otohacatalogmodel"
 	"github.com/Wei-Shaw/sub2api/ent/paymentauditlog"
 	"github.com/Wei-Shaw/sub2api/ent/paymentorder"
@@ -1304,6 +1305,61 @@ func init() {
 	identityadoptiondecisionDescDecidedAt := identityadoptiondecisionFields[4].Descriptor()
 	// identityadoptiondecision.DefaultDecidedAt holds the default value on creation for the decided_at field.
 	identityadoptiondecision.DefaultDecidedAt = identityadoptiondecisionDescDecidedAt.Default.(func() time.Time)
+	otohacatalogimagemodelMixin := schema.OtohaCatalogImageModel{}.Mixin()
+	otohacatalogimagemodelMixinFields0 := otohacatalogimagemodelMixin[0].Fields()
+	_ = otohacatalogimagemodelMixinFields0
+	otohacatalogimagemodelFields := schema.OtohaCatalogImageModel{}.Fields()
+	_ = otohacatalogimagemodelFields
+	// otohacatalogimagemodelDescCreatedAt is the schema descriptor for created_at field.
+	otohacatalogimagemodelDescCreatedAt := otohacatalogimagemodelMixinFields0[0].Descriptor()
+	// otohacatalogimagemodel.DefaultCreatedAt holds the default value on creation for the created_at field.
+	otohacatalogimagemodel.DefaultCreatedAt = otohacatalogimagemodelDescCreatedAt.Default.(func() time.Time)
+	// otohacatalogimagemodelDescUpdatedAt is the schema descriptor for updated_at field.
+	otohacatalogimagemodelDescUpdatedAt := otohacatalogimagemodelMixinFields0[1].Descriptor()
+	// otohacatalogimagemodel.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	otohacatalogimagemodel.DefaultUpdatedAt = otohacatalogimagemodelDescUpdatedAt.Default.(func() time.Time)
+	// otohacatalogimagemodel.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	otohacatalogimagemodel.UpdateDefaultUpdatedAt = otohacatalogimagemodelDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// otohacatalogimagemodelDescModelID is the schema descriptor for model_id field.
+	otohacatalogimagemodelDescModelID := otohacatalogimagemodelFields[1].Descriptor()
+	// otohacatalogimagemodel.ModelIDValidator is a validator for the "model_id" field. It is called by the builders before save.
+	otohacatalogimagemodel.ModelIDValidator = func() func(string) error {
+		validators := otohacatalogimagemodelDescModelID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(model_id string) error {
+			for _, fn := range fns {
+				if err := fn(model_id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// otohacatalogimagemodelDescName is the schema descriptor for name field.
+	otohacatalogimagemodelDescName := otohacatalogimagemodelFields[2].Descriptor()
+	// otohacatalogimagemodel.DefaultName holds the default value on creation for the name field.
+	otohacatalogimagemodel.DefaultName = otohacatalogimagemodelDescName.Default.(string)
+	// otohacatalogimagemodel.NameValidator is a validator for the "name" field. It is called by the builders before save.
+	otohacatalogimagemodel.NameValidator = otohacatalogimagemodelDescName.Validators[0].(func(string) error)
+	// otohacatalogimagemodelDescDescription is the schema descriptor for description field.
+	otohacatalogimagemodelDescDescription := otohacatalogimagemodelFields[3].Descriptor()
+	// otohacatalogimagemodel.DefaultDescription holds the default value on creation for the description field.
+	otohacatalogimagemodel.DefaultDescription = otohacatalogimagemodelDescDescription.Default.(string)
+	// otohacatalogimagemodelDescEnabled is the schema descriptor for enabled field.
+	otohacatalogimagemodelDescEnabled := otohacatalogimagemodelFields[4].Descriptor()
+	// otohacatalogimagemodel.DefaultEnabled holds the default value on creation for the enabled field.
+	otohacatalogimagemodel.DefaultEnabled = otohacatalogimagemodelDescEnabled.Default.(bool)
+	// otohacatalogimagemodelDescSortOrder is the schema descriptor for sort_order field.
+	otohacatalogimagemodelDescSortOrder := otohacatalogimagemodelFields[5].Descriptor()
+	// otohacatalogimagemodel.DefaultSortOrder holds the default value on creation for the sort_order field.
+	otohacatalogimagemodel.DefaultSortOrder = otohacatalogimagemodelDescSortOrder.Default.(int)
+	// otohacatalogimagemodelDescEdits is the schema descriptor for edits field.
+	otohacatalogimagemodelDescEdits := otohacatalogimagemodelFields[8].Descriptor()
+	// otohacatalogimagemodel.DefaultEdits holds the default value on creation for the edits field.
+	otohacatalogimagemodel.DefaultEdits = otohacatalogimagemodelDescEdits.Default.(bool)
 	otohacatalogmodelMixin := schema.OtohaCatalogModel{}.Mixin()
 	otohacatalogmodelMixinFields0 := otohacatalogmodelMixin[0].Fields()
 	_ = otohacatalogmodelMixinFields0

@@ -52,6 +52,8 @@ type Tx struct {
 	IdempotencyRecord *IdempotencyRecordClient
 	// IdentityAdoptionDecision is the client for interacting with the IdentityAdoptionDecision builders.
 	IdentityAdoptionDecision *IdentityAdoptionDecisionClient
+	// OtohaCatalogImageModel is the client for interacting with the OtohaCatalogImageModel builders.
+	OtohaCatalogImageModel *OtohaCatalogImageModelClient
 	// OtohaCatalogModel is the client for interacting with the OtohaCatalogModel builders.
 	OtohaCatalogModel *OtohaCatalogModelClient
 	// PaymentAuditLog is the client for interacting with the PaymentAuditLog builders.
@@ -244,6 +246,7 @@ func (tx *Tx) init() {
 	tx.Group = NewGroupClient(tx.config)
 	tx.IdempotencyRecord = NewIdempotencyRecordClient(tx.config)
 	tx.IdentityAdoptionDecision = NewIdentityAdoptionDecisionClient(tx.config)
+	tx.OtohaCatalogImageModel = NewOtohaCatalogImageModelClient(tx.config)
 	tx.OtohaCatalogModel = NewOtohaCatalogModelClient(tx.config)
 	tx.PaymentAuditLog = NewPaymentAuditLogClient(tx.config)
 	tx.PaymentOrder = NewPaymentOrderClient(tx.config)

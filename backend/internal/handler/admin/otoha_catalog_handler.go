@@ -18,6 +18,9 @@ type otohaCatalogAdmin interface {
 	DeleteEntry(ctx context.Context, groupID, entryID int64) error
 	ReorderEntries(ctx context.Context, groupID int64, entryIDs []int64) error
 	Prefill(ctx context.Context, groupID int64, modelID string) (*service.OtohaCatalogPrefill, error)
+	CreateImageEntry(ctx context.Context, groupID int64, input service.OtohaImageEntryInput) (*service.OtohaImageEntry, error)
+	UpdateImageEntry(ctx context.Context, groupID, entryID int64, input service.OtohaImageEntryInput) (*service.OtohaImageEntry, error)
+	DeleteImageEntry(ctx context.Context, groupID, entryID int64) error
 }
 
 // OtohaCatalogHandler serves the admin API for a group's Otoha model catalog.
@@ -231,4 +234,99 @@ func (h *OtohaCatalogHandler) Prefill(c *gin.Context) {
 		return
 	}
 	response.Success(c, draft)
+}
+
+// OtohaImageEntryRequest is one image model as the admin page submits it (TASK-73). A price left out follows billing.
+type OtohaImageEntryRequest struct {
+	ModelID     string   `json:"model_id"`
+	Name        string   `json:"name"`
+	Description string   `json:"description"`
+	Enabled     *bool    `json:"enabled"`
+	Sizes       []string `json:"sizes"`
+	Qualities   []string `json:"qualities"`
+	Edits       bool     `json:"edits"`
+	Price1K     *float64 `json:"price_1k"`
+	Price2K     *float64 `json:"price_2k"`
+	Price4K     *float64 `json:"price_4k"`
+}
+
+func (r OtohaImageEntryRequest) input() service.OtohaImageEntryInput {
+	enabled := true
+	if r.Enabled != nil {
+		enabled = *r.Enabled
+	}
+	return service.OtohaImageEntryInput{
+		ModelID:     r.ModelID,
+		Name:        r.Name,
+		Description: r.Description,
+		Enabled:     enabled,
+		Sizes:       r.Sizes,
+		Qualities:   r.Qualities,
+		Edits:       r.Edits,
+		Price1K:     r.Price1K,
+		Price2K:     r.Price2K,
+		Price4K:     r.Price4K,
+	}
+}
+
+// CreateImageEntry adds an image model to the group's catalog.
+// POST /api/v1/admin/groups/:id/otoha-catalog/image-entries
+func (h *OtohaCatalogHandler) CreateImageEntry(c *gin.Context) {
+	groupID, ok := parsePositiveIDParam(c, "id")
+	if !ok {
+		return
+	}
+	var req OtohaImageEntryRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request body: "+err.Error())
+		return
+	}
+	entry, err := h.catalog.CreateImageEntry(c.Request.Context(), groupID, req.input())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Created(c, entry)
+}
+
+// UpdateImageEntry replaces one image model of the group's catalog.
+// PUT /api/v1/admin/groups/:id/otoha-catalog/image-entries/:entry_id
+func (h *OtohaCatalogHandler) UpdateImageEntry(c *gin.Context) {
+	groupID, ok := parsePositiveIDParam(c, "id")
+	if !ok {
+		return
+	}
+	entryID, ok := parsePositiveIDParam(c, "entry_id")
+	if !ok {
+		return
+	}
+	var req OtohaImageEntryRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request body: "+err.Error())
+		return
+	}
+	entry, err := h.catalog.UpdateImageEntry(c.Request.Context(), groupID, entryID, req.input())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, entry)
+}
+
+// DeleteImageEntry removes one image model of the group's catalog.
+// DELETE /api/v1/admin/groups/:id/otoha-catalog/image-entries/:entry_id
+func (h *OtohaCatalogHandler) DeleteImageEntry(c *gin.Context) {
+	groupID, ok := parsePositiveIDParam(c, "id")
+	if !ok {
+		return
+	}
+	entryID, ok := parsePositiveIDParam(c, "entry_id")
+	if !ok {
+		return
+	}
+	if err := h.catalog.DeleteImageEntry(c.Request.Context(), groupID, entryID); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, gin.H{"deleted": true})
 }

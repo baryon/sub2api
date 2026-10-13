@@ -350,7 +350,7 @@ func TestOtohaRedeemClaimReturnsTheAppConfiguration(t *testing.T) {
 	f.subs.sub = &UserSubscription{ID: 3, UserID: 1, GroupID: otohaTestGroupID, Status: SubscriptionStatusActive,
 		ExpiresAt: time.Date(2026, 11, 3, 8, 0, 0, 0, time.UTC)}
 	f.repo.planOrder = &OtohaPlanOrder{PlanName: "Otoha Pro", Reference: "sub2_20261004ABC"}
-	f.catalog.catalog = &OtohaCatalog{Schema: 1, Revision: "r7", Models: []OtohaCatalogModel{
+	f.catalog.catalog = &OtohaCatalog{Schema: 1, Revision: "r7", ImageModels: []OtohaImageModel{}, Models: []OtohaCatalogModel{
 		{ID: "deepseek-v4", Name: "DeepSeek V4", Inputs: []string{"text"}, Tools: true, Cost: "low",
 			Price: OtohaModelPrice{Currency: "USD", Per: "1M tokens", Input: 0.5, Output: 1}, Use: []string{"fast"},
 			PriceTiers: []OtohaPriceTier{{Input: 0.5, Output: 1}}, Compaction: OtohaCompaction{Kind: "none"}},
@@ -392,7 +392,8 @@ func TestOtohaRedeemClaimReturnsTheAppConfiguration(t *testing.T) {
 	         "price": {"currency": "USD", "per": "1M tokens", "input": 2, "output": 8}, "use": ["default", "writing"],
 	         "priceTiers": [{"aboveInputTokens": 0, "inclusive": false, "input": 2, "output": 8}, {"aboveInputTokens": 272000, "inclusive": false, "input": 4, "output": 12}],
 	         "compaction": {"kind": "openai"}, "thinking": null, "levels": null}
-	      ]
+	      ],
+	      "imageModels": []
 	    }
 	  }],
 	  "subscription": {

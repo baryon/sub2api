@@ -40,16 +40,48 @@ func otohaModelsRequest(h *GatewayHandler, header map[string]string) *httptest.R
 
 func TestOtohaModelsETagFollowsTheRevision(t *testing.T) {
 	h := &GatewayHandler{}
-	h.SetOtohaCatalog(otohaCatalogReaderStub{catalog: &service.OtohaCatalog{Schema: 1, Revision: "abc", Models: []service.OtohaCatalogModel{}}})
+	h.SetOtohaCatalog(otohaCatalogReaderStub{catalog: &service.OtohaCatalog{Schema: 1, Revision: "abc", Models: []service.OtohaCatalogModel{}, ImageModels: []service.OtohaImageModel{}}})
 
 	rec := otohaModelsRequest(h, nil)
 	require.Equal(t, http.StatusOK, rec.Code)
 	require.Equal(t, `"abc"`, rec.Header().Get("ETag"))
 	require.Equal(t, "no-cache", rec.Header().Get("Cache-Control"))
-	require.JSONEq(t, `{"schema":1,"revision":"abc","models":[]}`, rec.Body.String())
+	require.JSONEq(t, `{"schema":1,"revision":"abc","models":[],"imageModels":[]}`, rec.Body.String())
 
 	require.Equal(t, http.StatusNotModified, otohaModelsRequest(h, map[string]string{"If-None-Match": `"abc"`}).Code)
 	require.Equal(t, http.StatusOK, otohaModelsRequest(h, map[string]string{"If-None-Match": `"older"`}).Code, "a new revision is sent")
+}
+
+func TestOtohaModelsListsImageModelsApartFromTheChatModels(t *testing.T) {
+	h := &GatewayHandler{}
+	h.SetOtohaCatalog(otohaCatalogReaderStub{catalog: &service.OtohaCatalog{
+		Schema: 1, Revision: "img1",
+		Models: []service.OtohaCatalogModel{{ID: "gpt-6-luna", Name: "Luna"}},
+		ImageModels: []service.OtohaImageModel{{
+			ID: "gpt-image-2", Name: "GPT Image 2", API: service.OtohaImageAPI, Edits: true, Qualities: []string{"low", "high"},
+			Currency: "USD", Per: "image",
+			Sizes: []service.OtohaImageSize{{Size: "1024x1024", Tier: "1K", Price: 0.06}, {Size: "1536x1024", Tier: "2K", Price: 0.09}},
+		}},
+	}})
+
+	rec := otohaModelsRequest(h, nil)
+	require.Equal(t, http.StatusOK, rec.Code)
+	var body struct {
+		Models      []map[string]any `json:"models"`
+		ImageModels []map[string]any `json:"imageModels"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
+	require.Len(t, body.Models, 1)
+	require.Equal(t, "gpt-6-luna", body.Models[0]["id"], "an older app, which reads only models, sees no image model")
+	require.Len(t, body.ImageModels, 1)
+	require.Equal(t, map[string]any{
+		"id": "gpt-image-2", "name": "GPT Image 2", "api": "openai-images", "edits": true,
+		"qualities": []any{"low", "high"}, "currency": "USD", "per": "image",
+		"sizes": []any{
+			map[string]any{"size": "1024x1024", "tier": "1K", "price": 0.06},
+			map[string]any{"size": "1536x1024", "tier": "2K", "price": 0.09},
+		},
+	}, body.ImageModels[0])
 }
 
 func TestOtohaModelsReportsAnUnreadableCatalog(t *testing.T) {

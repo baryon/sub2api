@@ -220,7 +220,9 @@ type OtohaCatalogAdminView struct {
 	GroupPlatform  string                   `json:"group_platform"`
 	RateMultiplier float64                  `json:"rate_multiplier"`
 	Entries        []OtohaCatalogAdminEntry `json:"entries"`
-	Preview        *OtohaCatalog            `json:"preview"`
+	// ImageEntries are the group's image models with their prices and problems (TASK-73).
+	ImageEntries []OtohaImageAdminEntry `json:"image_entries"`
+	Preview      *OtohaCatalog          `json:"preview"`
 }
 
 // OtohaCatalogPrefill is a draft entry filled from upstream metadata, with the prices it would sell at.
@@ -363,12 +365,18 @@ type OtohaCatalogService struct {
 	pricer   OtohaUpstreamPricer
 	metadata OtohaModelMetadataSource
 	routing  OtohaModelRouting
+	// images, imagePricer and imageRouting carry the image models (TASK-73); set with WithImages.
+	images       OtohaImageRepository
+	imagePricer  OtohaImagePricer
+	imageRouting OtohaImageRouting
 
-	cacheMu    sync.Mutex
-	cache      map[int64]otohaCatalogCacheEntry
-	generation map[int64]uint64
-	rebuilds   singleflight.Group
-	now        func() time.Time
+	cacheMu sync.Mutex
+	cache   map[int64]otohaCatalogCacheEntry
+	// imageOverrides are the prices the admin set on image models, by group, for billing to read.
+	imageOverrides map[int64]otohaImageOverrideCacheEntry
+	generation     map[int64]uint64
+	rebuilds       singleflight.Group
+	now            func() time.Time
 }
 
 // otohaCatalogItem is an entry that passes into the app's catalog, with its price before any rate.
@@ -388,6 +396,9 @@ type otohaCatalogSnapshot struct {
 	groupRate  float64
 	items      []otohaCatalogItem
 	incomplete bool
+	// imageItems are the image models that pass into the catalog; imageRate says which rate prices them.
+	imageItems []otohaImageItem
+	imageRate  otohaImageRate
 }
 
 type otohaCatalogCacheEntry struct {
@@ -421,6 +432,8 @@ func NewOtohaCatalogServiceWithDeps(
 		cache:      map[int64]otohaCatalogCacheEntry{},
 		generation: map[int64]uint64{},
 		now:        time.Now,
+
+		imageOverrides: map[int64]otohaImageOverrideCacheEntry{},
 	}
 }
 
@@ -431,7 +444,7 @@ func (s *OtohaCatalogService) CatalogForGroup(ctx context.Context, groupID int64
 	if err != nil || !snapshot.hasCatalog {
 		return nil, err
 	}
-	return buildOtohaCatalog(snapshot.items, snapshot.groupRate), nil
+	return buildOtohaCatalog(snapshot.items, snapshot.imageItems, snapshot.groupRate, snapshot.imageRate), nil
 }
 
 // CatalogForGroupAtRate gives the group's catalog priced at a key owner's own rate in the group (a user-specific
@@ -441,7 +454,7 @@ func (s *OtohaCatalogService) CatalogForGroupAtRate(ctx context.Context, groupID
 	if err != nil || !snapshot.hasCatalog {
 		return nil, err
 	}
-	return buildOtohaCatalog(snapshot.items, rate), nil
+	return buildOtohaCatalog(snapshot.items, snapshot.imageItems, rate, snapshot.imageRate), nil
 }
 
 // snapshot reads the group's evaluated catalog from the cache, or evaluates it once for concurrent callers. A
@@ -491,12 +504,23 @@ func (s *OtohaCatalogService) evaluateGroup(ctx context.Context, groupID int64) 
 	if err != nil {
 		return otohaCatalogSnapshot{}, err
 	}
-	if len(entries) == 0 {
+	imageEntries, err := s.listImages(ctx, groupID)
+	if err != nil {
+		return otohaCatalogSnapshot{}, err
+	}
+	if len(entries) == 0 && len(imageEntries) == 0 {
 		return otohaCatalogSnapshot{}, nil
 	}
 	evaluated, items := s.evaluate(ctx, group, entries)
-	snapshot := otohaCatalogSnapshot{hasCatalog: true, groupRate: group.RateMultiplier, items: items}
+	snapshot := otohaCatalogSnapshot{hasCatalog: true, groupRate: group.RateMultiplier, items: items, imageRate: otohaImageRateOf(group)}
 	for _, e := range evaluated {
+		if e.lookupFailed {
+			snapshot.incomplete = true
+		}
+	}
+	evaluatedImages, imageItems := s.evaluateImages(ctx, group, imageEntries)
+	snapshot.imageItems = imageItems
+	for _, e := range evaluatedImages {
 		if e.lookupFailed {
 			snapshot.incomplete = true
 		}
@@ -511,6 +535,7 @@ func (s *OtohaCatalogService) InvalidateGroup(groupID int64) {
 	}
 	s.cacheMu.Lock()
 	delete(s.cache, groupID)
+	delete(s.imageOverrides, groupID)
 	s.generation[groupID]++
 	s.cacheMu.Unlock()
 }
@@ -532,10 +557,17 @@ func (s *OtohaCatalogService) AdminView(ctx context.Context, groupID int64) (*Ot
 		RateMultiplier: group.RateMultiplier,
 		Entries:        []OtohaCatalogAdminEntry{},
 	}
-	if len(entries) > 0 {
+	imageEntries, err := s.listImages(ctx, groupID)
+	if err != nil {
+		return nil, err
+	}
+	view.ImageEntries = []OtohaImageAdminEntry{}
+	if len(entries) > 0 || len(imageEntries) > 0 {
 		var items []otohaCatalogItem
 		view.Entries, items = s.evaluate(ctx, group, entries)
-		view.Preview = buildOtohaCatalog(items, group.RateMultiplier)
+		var imageItems []otohaImageItem
+		view.ImageEntries, imageItems = s.evaluateImages(ctx, group, imageEntries)
+		view.Preview = buildOtohaCatalog(items, imageItems, group.RateMultiplier, otohaImageRateOf(group))
 	}
 	return view, nil
 }
@@ -838,8 +870,9 @@ func (s *OtohaCatalogService) evaluate(ctx context.Context, group *Group, entrie
 	return out, items
 }
 
-// buildOtohaCatalog prices the catalog's models at a rate; the revision covers every price.
-func buildOtohaCatalog(items []otohaCatalogItem, rate float64) *OtohaCatalog {
+// buildOtohaCatalog prices the catalog's models at a rate (and its image models at the image rate); the revision
+// covers every price.
+func buildOtohaCatalog(items []otohaCatalogItem, imageItems []otohaImageItem, rate float64, imageRate otohaImageRate) *OtohaCatalog {
 	catalog := &OtohaCatalog{Schema: OtohaCatalogSchemaVersion, Models: make([]OtohaCatalogModel, 0, len(items))}
 	for _, item := range items {
 		sale := otohaSalePrice(item.upstream, rate)
@@ -848,6 +881,7 @@ func buildOtohaCatalog(items []otohaCatalogItem, rate float64) *OtohaCatalog {
 		model.PriceTiers = otohaPriceTiers(item.entry, item.upstream, item.tiers, rate)
 		catalog.Models = append(catalog.Models, model)
 	}
+	catalog.ImageModels = buildOtohaImageModels(imageItems, imageRate.at(rate))
 	catalog.Revision = otohaCatalogRevision(catalog)
 	return catalog
 }
@@ -956,15 +990,21 @@ func (s *OtohaCatalogService) routedLongerTiers(ctx context.Context, group *Grou
 	return out
 }
 
-// otohaCatalogRevision hashes what the app receives, so any change to a model, a price or the order changes it.
+// otohaCatalogRevision hashes what the app receives, so any change to a model, a price or the order changes it. A
+// catalog without image models hashes as it did before they existed.
 func otohaCatalogRevision(catalog *OtohaCatalog) string {
 	body, err := json.Marshal(struct {
-		Schema int                 `json:"schema"`
-		Models []OtohaCatalogModel `json:"models"`
-	}{catalog.Schema, catalog.Models})
+		Schema      int                 `json:"schema"`
+		Models      []OtohaCatalogModel `json:"models"`
+		ImageModels []OtohaImageModel   `json:"imageModels,omitempty"`
+	}{catalog.Schema, catalog.Models, catalog.ImageModels})
 	if err != nil {
 		return ""
 	}
+	return hashOtohaRevision(body)
+}
+
+func hashOtohaRevision(body []byte) string {
 	sum := sha256.Sum256(body)
 	return hex.EncodeToString(sum[:8])
 }

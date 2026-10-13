@@ -63,6 +63,9 @@ type IdempotencyRecord func(*sql.Selector)
 // IdentityAdoptionDecision is the predicate function for identityadoptiondecision builders.
 type IdentityAdoptionDecision func(*sql.Selector)
 
+// OtohaCatalogImageModel is the predicate function for otohacatalogimagemodel builders.
+type OtohaCatalogImageModel func(*sql.Selector)
+
 // OtohaCatalogModel is the predicate function for otohacatalogmodel builders.
 type OtohaCatalogModel func(*sql.Selector)
 

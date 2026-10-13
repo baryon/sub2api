@@ -122,6 +122,54 @@ export interface OtohaCatalogAdminEntry extends OtohaCatalogEntry {
   effective_price_tiers: OtohaPriceTier[] | null
 }
 
+/** What the admin sets on an image model of the catalog; a price left null follows billing. */
+export interface OtohaImageEntryInput {
+  model_id: string
+  name: string
+  description: string
+  enabled: boolean
+  sizes: string[]
+  qualities: string[]
+  edits: boolean
+  price_1k: number | null
+  price_2k: number | null
+  price_4k: number | null
+}
+
+/** The price of one image of a size tier: what billing charges before the group's rate and after it. */
+export interface OtohaImageTierPrice {
+  tier: '1K' | '2K' | '4K'
+  upstream: number
+  sale: number
+  /** The admin set it on the model (else it follows billing). */
+  set?: boolean
+}
+
+export interface OtohaImageAdminEntry extends OtohaImageEntryInput {
+  id: number
+  group_id: number
+  sort_order: number
+  created_at: string
+  updated_at: string
+  prices: OtohaImageTierPrice[]
+  in_catalog: boolean
+  problem: OtohaCatalogProblem | 'images_not_allowed'
+  route_platform: string
+}
+
+/** An image model as the app receives it: each size with its price tier and the price of one image. */
+export interface OtohaImageModel {
+  id: string
+  name: string
+  description?: string
+  api: string
+  edits: boolean
+  qualities: string[]
+  currency: string
+  per: string
+  sizes: { size: string; tier: '1K' | '2K' | '4K'; price: number }[]
+}
+
 export interface OtohaCatalogModel {
   id: string
   name: string
@@ -132,6 +180,7 @@ export interface OtohaCatalog {
   schema: number
   revision: string
   models: OtohaCatalogModel[]
+  imageModels?: OtohaImageModel[]
 }
 
 export interface OtohaCatalogAdminView {
@@ -140,6 +189,7 @@ export interface OtohaCatalogAdminView {
   group_platform: string
   rate_multiplier: number
   entries: OtohaCatalogAdminEntry[]
+  image_entries: OtohaImageAdminEntry[]
   preview: OtohaCatalog | null
 }
 
@@ -196,6 +246,27 @@ export async function prefill(groupId: number, modelId: string): Promise<OtohaCa
   return data
 }
 
+export async function createImageEntry(groupId: number, entry: OtohaImageEntryInput): Promise<OtohaImageAdminEntry> {
+  const { data } = await apiClient.post<OtohaImageAdminEntry>(`/admin/groups/${groupId}/otoha-catalog/image-entries`, entry)
+  return data
+}
+
+export async function updateImageEntry(
+  groupId: number,
+  entryId: number,
+  entry: OtohaImageEntryInput
+): Promise<OtohaImageAdminEntry> {
+  const { data } = await apiClient.put<OtohaImageAdminEntry>(
+    `/admin/groups/${groupId}/otoha-catalog/image-entries/${entryId}`,
+    entry
+  )
+  return data
+}
+
+export async function deleteImageEntry(groupId: number, entryId: number): Promise<void> {
+  await apiClient.delete(`/admin/groups/${groupId}/otoha-catalog/image-entries/${entryId}`)
+}
+
 export async function getSettings(): Promise<OtohaCatalogSettings> {
   const { data } = await apiClient.get<OtohaCatalogSettings>('/admin/otoha-catalog/settings')
   return data
@@ -207,6 +278,9 @@ export const otohaCatalogAPI = {
   createEntry,
   updateEntry,
   deleteEntry,
+  createImageEntry,
+  updateImageEntry,
+  deleteImageEntry,
   reorder,
   prefill
 }

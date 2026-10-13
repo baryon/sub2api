@@ -27,6 +27,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/idempotencyrecord"
 	"github.com/Wei-Shaw/sub2api/ent/identityadoptiondecision"
+	"github.com/Wei-Shaw/sub2api/ent/otohacatalogimagemodel"
 	"github.com/Wei-Shaw/sub2api/ent/otohacatalogmodel"
 	"github.com/Wei-Shaw/sub2api/ent/paymentauditlog"
 	"github.com/Wei-Shaw/sub2api/ent/paymentorder"
@@ -618,6 +619,33 @@ func (f TraverseIdentityAdoptionDecision) Traverse(ctx context.Context, q ent.Qu
 		return f(ctx, q)
 	}
 	return fmt.Errorf("unexpected query type %T. expect *ent.IdentityAdoptionDecisionQuery", q)
+}
+
+// The OtohaCatalogImageModelFunc type is an adapter to allow the use of ordinary function as a Querier.
+type OtohaCatalogImageModelFunc func(context.Context, *ent.OtohaCatalogImageModelQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f OtohaCatalogImageModelFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.OtohaCatalogImageModelQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.OtohaCatalogImageModelQuery", q)
+}
+
+// The TraverseOtohaCatalogImageModel type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseOtohaCatalogImageModel func(context.Context, *ent.OtohaCatalogImageModelQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseOtohaCatalogImageModel) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseOtohaCatalogImageModel) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.OtohaCatalogImageModelQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.OtohaCatalogImageModelQuery", q)
 }
 
 // The OtohaCatalogModelFunc type is an adapter to allow the use of ordinary function as a Querier.
@@ -1228,6 +1256,8 @@ func NewQuery(q ent.Query) (Query, error) {
 		return &query[*ent.IdempotencyRecordQuery, predicate.IdempotencyRecord, idempotencyrecord.OrderOption]{typ: ent.TypeIdempotencyRecord, tq: q}, nil
 	case *ent.IdentityAdoptionDecisionQuery:
 		return &query[*ent.IdentityAdoptionDecisionQuery, predicate.IdentityAdoptionDecision, identityadoptiondecision.OrderOption]{typ: ent.TypeIdentityAdoptionDecision, tq: q}, nil
+	case *ent.OtohaCatalogImageModelQuery:
+		return &query[*ent.OtohaCatalogImageModelQuery, predicate.OtohaCatalogImageModel, otohacatalogimagemodel.OrderOption]{typ: ent.TypeOtohaCatalogImageModel, tq: q}, nil
 	case *ent.OtohaCatalogModelQuery:
 		return &query[*ent.OtohaCatalogModelQuery, predicate.OtohaCatalogModel, otohacatalogmodel.OrderOption]{typ: ent.TypeOtohaCatalogModel, tq: q}, nil
 	case *ent.PaymentAuditLogQuery:

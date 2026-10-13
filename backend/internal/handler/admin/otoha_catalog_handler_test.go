@@ -22,6 +22,7 @@ type otohaCatalogAdminStub struct {
 	err      error
 	view     *service.OtohaCatalogAdminView
 	lastCall string
+	imageIn  service.OtohaImageEntryInput
 }
 
 func (s *otohaCatalogAdminStub) AdminView(_ context.Context, groupID int64) (*service.OtohaCatalogAdminView, error) {
@@ -63,6 +64,27 @@ func (s *otohaCatalogAdminStub) Prefill(_ context.Context, groupID int64, modelI
 	return &service.OtohaCatalogPrefill{Entry: service.OtohaCatalogEntry{ModelID: modelID}}, nil
 }
 
+func (s *otohaCatalogAdminStub) CreateImageEntry(_ context.Context, groupID int64, input service.OtohaImageEntryInput) (*service.OtohaImageEntry, error) {
+	s.groupID, s.imageIn, s.lastCall = groupID, input, "create-image"
+	if s.err != nil {
+		return nil, s.err
+	}
+	return &service.OtohaImageEntry{ID: 21, GroupID: groupID, ModelID: input.ModelID}, nil
+}
+
+func (s *otohaCatalogAdminStub) UpdateImageEntry(_ context.Context, groupID, entryID int64, input service.OtohaImageEntryInput) (*service.OtohaImageEntry, error) {
+	s.groupID, s.entryID, s.imageIn, s.lastCall = groupID, entryID, input, "update-image"
+	if s.err != nil {
+		return nil, s.err
+	}
+	return &service.OtohaImageEntry{ID: entryID, GroupID: groupID, ModelID: input.ModelID}, nil
+}
+
+func (s *otohaCatalogAdminStub) DeleteImageEntry(_ context.Context, groupID, entryID int64) error {
+	s.groupID, s.entryID, s.lastCall = groupID, entryID, "delete-image"
+	return s.err
+}
+
 func otohaAdminRouter(stub *otohaCatalogAdminStub) *gin.Engine {
 	return otohaAdminRouterFor(stub, 0)
 }
@@ -79,6 +101,9 @@ func otohaAdminRouterFor(stub *otohaCatalogAdminStub, otohaGroupID int64) *gin.E
 	g.DELETE("/entries/:entry_id", h.DeleteEntry)
 	g.PUT("/order", h.Reorder)
 	g.POST("/prefill", h.Prefill)
+	g.POST("/image-entries", h.CreateImageEntry)
+	g.PUT("/image-entries/:entry_id", h.UpdateImageEntry)
+	g.DELETE("/image-entries/:entry_id", h.DeleteImageEntry)
 	return r
 }
 
@@ -230,4 +255,82 @@ func TestOtohaCatalogAdminTakesThinkingAndLevels(t *testing.T) {
 		{Value: "off", MaxEffort: "high"}, {Value: "adaptive"},
 	}}, stub.input.Thinking)
 	require.Equal(t, []service.OtohaThinkingLevel{{Setting: "off", Complexity: "simple", ExtraOutput: "low"}}, stub.input.Levels)
+}
+
+func TestOtohaCatalogAdminImageEntryTakesEveryField(t *testing.T) {
+	stub := &otohaCatalogAdminStub{}
+	rec := otohaAdminDo(otohaAdminRouter(stub), http.MethodPost, "/groups/7/otoha-catalog/image-entries", `{
+		"model_id":"gpt-image-2","name":"GPT Image 2","description":"d","enabled":false,
+		"sizes":["1024x1024","1536x1024"],"qualities":["low","high"],"edits":true,
+		"price_1k":0.05,"price_4k":0.2}`)
+	require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
+	require.Equal(t, "create-image", stub.lastCall)
+	require.Equal(t, int64(7), stub.groupID)
+	in := stub.imageIn
+	require.Equal(t, "gpt-image-2", in.ModelID)
+	require.Equal(t, "GPT Image 2", in.Name)
+	require.Equal(t, "d", in.Description)
+	require.False(t, in.Enabled)
+	require.Equal(t, []string{"1024x1024", "1536x1024"}, in.Sizes)
+	require.Equal(t, []string{"low", "high"}, in.Qualities)
+	require.True(t, in.Edits)
+	require.NotNil(t, in.Price1K)
+	require.Equal(t, 0.05, *in.Price1K)
+	require.Nil(t, in.Price2K, "a price left out follows billing")
+	require.NotNil(t, in.Price4K)
+	require.Equal(t, 0.2, *in.Price4K)
+}
+
+func TestOtohaCatalogAdminImageEntryIsEnabledUnlessTurnedOff(t *testing.T) {
+	stub := &otohaCatalogAdminStub{}
+	rec := otohaAdminDo(otohaAdminRouter(stub), http.MethodPost, "/groups/7/otoha-catalog/image-entries", `{"model_id":"gpt-image-2","sizes":["1024x1024"]}`)
+	require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
+	require.True(t, stub.imageIn.Enabled)
+}
+
+func TestOtohaCatalogAdminImageEntryUpdateAndDelete(t *testing.T) {
+	stub := &otohaCatalogAdminStub{}
+	r := otohaAdminRouter(stub)
+
+	rec := otohaAdminDo(r, http.MethodPut, "/groups/7/otoha-catalog/image-entries/21", `{"model_id":"gpt-image-2","sizes":["1024x1024"],"edits":true}`)
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	require.Equal(t, "update-image", stub.lastCall)
+	require.Equal(t, int64(21), stub.entryID)
+	require.True(t, stub.imageIn.Edits)
+
+	rec = otohaAdminDo(r, http.MethodDelete, "/groups/7/otoha-catalog/image-entries/21", "")
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	require.Equal(t, "delete-image", stub.lastCall)
+	require.Equal(t, int64(21), stub.entryID)
+}
+
+func TestOtohaCatalogAdminImageEntryRefusesABadBody(t *testing.T) {
+	stub := &otohaCatalogAdminStub{}
+	rec := otohaAdminDo(otohaAdminRouter(stub), http.MethodPost, "/groups/7/otoha-catalog/image-entries", `{"sizes":"not a list"}`)
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+	require.Empty(t, stub.lastCall)
+}
+
+func TestOtohaCatalogAdminViewCarriesTheImageEntries(t *testing.T) {
+	stub := &otohaCatalogAdminStub{view: &service.OtohaCatalogAdminView{
+		ImageEntries: []service.OtohaImageAdminEntry{{
+			OtohaImageEntry: service.OtohaImageEntry{ID: 21, ModelID: "gpt-image-2", Sizes: []string{"1024x1024"}},
+			Prices:          []service.OtohaImageTierPrice{{Tier: "1K", Upstream: 0.04, Sale: 0.06}},
+			InCatalog:       true,
+		}},
+	}}
+	rec := otohaAdminDo(otohaAdminRouter(stub), http.MethodGet, "/groups/7/otoha-catalog", "")
+	require.Equal(t, http.StatusOK, rec.Code)
+	var body struct {
+		Data struct {
+			ImageEntries []map[string]any `json:"image_entries"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
+	require.Len(t, body.Data.ImageEntries, 1)
+	entry := body.Data.ImageEntries[0]
+	require.Equal(t, "gpt-image-2", entry["model_id"])
+	require.Equal(t, true, entry["in_catalog"])
+	require.Equal(t, "", entry["problem"])
+	require.Equal(t, []any{map[string]any{"tier": "1K", "upstream": 0.04, "sale": 0.06}}, entry["prices"])
 }

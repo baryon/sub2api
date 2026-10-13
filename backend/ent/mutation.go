@@ -31,6 +31,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/idempotencyrecord"
 	"github.com/Wei-Shaw/sub2api/ent/identityadoptiondecision"
+	"github.com/Wei-Shaw/sub2api/ent/otohacatalogimagemodel"
 	"github.com/Wei-Shaw/sub2api/ent/otohacatalogmodel"
 	"github.com/Wei-Shaw/sub2api/ent/paymentauditlog"
 	"github.com/Wei-Shaw/sub2api/ent/paymentorder"
@@ -84,6 +85,7 @@ const (
 	TypeGroup                         = "Group"
 	TypeIdempotencyRecord             = "IdempotencyRecord"
 	TypeIdentityAdoptionDecision      = "IdentityAdoptionDecision"
+	TypeOtohaCatalogImageModel        = "OtohaCatalogImageModel"
 	TypeOtohaCatalogModel             = "OtohaCatalogModel"
 	TypePaymentAuditLog               = "PaymentAuditLog"
 	TypePaymentOrder                  = "PaymentOrder"
@@ -29610,6 +29612,1358 @@ func (m *IdentityAdoptionDecisionMutation) ResetEdge(name string) error {
 		return nil
 	}
 	return fmt.Errorf("unknown IdentityAdoptionDecision edge %s", name)
+}
+
+// OtohaCatalogImageModelMutation represents an operation that mutates the OtohaCatalogImageModel nodes in the graph.
+type OtohaCatalogImageModelMutation struct {
+	config
+	op              Op
+	typ             string
+	id              *int64
+	created_at      *time.Time
+	updated_at      *time.Time
+	model_id        *string
+	name            *string
+	description     *string
+	enabled         *bool
+	sort_order      *int
+	addsort_order   *int
+	sizes           *[]string
+	appendsizes     []string
+	qualities       *[]string
+	appendqualities []string
+	edits           *bool
+	price_1k        *float64
+	addprice_1k     *float64
+	price_2k        *float64
+	addprice_2k     *float64
+	price_4k        *float64
+	addprice_4k     *float64
+	clearedFields   map[string]struct{}
+	group           *int64
+	clearedgroup    bool
+	done            bool
+	oldValue        func(context.Context) (*OtohaCatalogImageModel, error)
+	predicates      []predicate.OtohaCatalogImageModel
+}
+
+var _ ent.Mutation = (*OtohaCatalogImageModelMutation)(nil)
+
+// otohacatalogimagemodelOption allows management of the mutation configuration using functional options.
+type otohacatalogimagemodelOption func(*OtohaCatalogImageModelMutation)
+
+// newOtohaCatalogImageModelMutation creates new mutation for the OtohaCatalogImageModel entity.
+func newOtohaCatalogImageModelMutation(c config, op Op, opts ...otohacatalogimagemodelOption) *OtohaCatalogImageModelMutation {
+	m := &OtohaCatalogImageModelMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeOtohaCatalogImageModel,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withOtohaCatalogImageModelID sets the ID field of the mutation.
+func withOtohaCatalogImageModelID(id int64) otohacatalogimagemodelOption {
+	return func(m *OtohaCatalogImageModelMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *OtohaCatalogImageModel
+		)
+		m.oldValue = func(ctx context.Context) (*OtohaCatalogImageModel, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().OtohaCatalogImageModel.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withOtohaCatalogImageModel sets the old OtohaCatalogImageModel of the mutation.
+func withOtohaCatalogImageModel(node *OtohaCatalogImageModel) otohacatalogimagemodelOption {
+	return func(m *OtohaCatalogImageModelMutation) {
+		m.oldValue = func(context.Context) (*OtohaCatalogImageModel, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m OtohaCatalogImageModelMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m OtohaCatalogImageModelMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *OtohaCatalogImageModelMutation) ID() (id int64, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *OtohaCatalogImageModelMutation) IDs(ctx context.Context) ([]int64, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []int64{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().OtohaCatalogImageModel.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *OtohaCatalogImageModelMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *OtohaCatalogImageModelMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the OtohaCatalogImageModel entity.
+// If the OtohaCatalogImageModel object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *OtohaCatalogImageModelMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *OtohaCatalogImageModelMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *OtohaCatalogImageModelMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *OtohaCatalogImageModelMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updated_at" field's value of the OtohaCatalogImageModel entity.
+// If the OtohaCatalogImageModel object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *OtohaCatalogImageModelMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *OtohaCatalogImageModelMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+}
+
+// SetGroupID sets the "group_id" field.
+func (m *OtohaCatalogImageModelMutation) SetGroupID(i int64) {
+	m.group = &i
+}
+
+// GroupID returns the value of the "group_id" field in the mutation.
+func (m *OtohaCatalogImageModelMutation) GroupID() (r int64, exists bool) {
+	v := m.group
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldGroupID returns the old "group_id" field's value of the OtohaCatalogImageModel entity.
+// If the OtohaCatalogImageModel object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *OtohaCatalogImageModelMutation) OldGroupID(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldGroupID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldGroupID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldGroupID: %w", err)
+	}
+	return oldValue.GroupID, nil
+}
+
+// ResetGroupID resets all changes to the "group_id" field.
+func (m *OtohaCatalogImageModelMutation) ResetGroupID() {
+	m.group = nil
+}
+
+// SetModelID sets the "model_id" field.
+func (m *OtohaCatalogImageModelMutation) SetModelID(s string) {
+	m.model_id = &s
+}
+
+// ModelID returns the value of the "model_id" field in the mutation.
+func (m *OtohaCatalogImageModelMutation) ModelID() (r string, exists bool) {
+	v := m.model_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldModelID returns the old "model_id" field's value of the OtohaCatalogImageModel entity.
+// If the OtohaCatalogImageModel object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *OtohaCatalogImageModelMutation) OldModelID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldModelID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldModelID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldModelID: %w", err)
+	}
+	return oldValue.ModelID, nil
+}
+
+// ResetModelID resets all changes to the "model_id" field.
+func (m *OtohaCatalogImageModelMutation) ResetModelID() {
+	m.model_id = nil
+}
+
+// SetName sets the "name" field.
+func (m *OtohaCatalogImageModelMutation) SetName(s string) {
+	m.name = &s
+}
+
+// Name returns the value of the "name" field in the mutation.
+func (m *OtohaCatalogImageModelMutation) Name() (r string, exists bool) {
+	v := m.name
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldName returns the old "name" field's value of the OtohaCatalogImageModel entity.
+// If the OtohaCatalogImageModel object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *OtohaCatalogImageModelMutation) OldName(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldName is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldName requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldName: %w", err)
+	}
+	return oldValue.Name, nil
+}
+
+// ResetName resets all changes to the "name" field.
+func (m *OtohaCatalogImageModelMutation) ResetName() {
+	m.name = nil
+}
+
+// SetDescription sets the "description" field.
+func (m *OtohaCatalogImageModelMutation) SetDescription(s string) {
+	m.description = &s
+}
+
+// Description returns the value of the "description" field in the mutation.
+func (m *OtohaCatalogImageModelMutation) Description() (r string, exists bool) {
+	v := m.description
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDescription returns the old "description" field's value of the OtohaCatalogImageModel entity.
+// If the OtohaCatalogImageModel object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *OtohaCatalogImageModelMutation) OldDescription(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDescription is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDescription requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDescription: %w", err)
+	}
+	return oldValue.Description, nil
+}
+
+// ResetDescription resets all changes to the "description" field.
+func (m *OtohaCatalogImageModelMutation) ResetDescription() {
+	m.description = nil
+}
+
+// SetEnabled sets the "enabled" field.
+func (m *OtohaCatalogImageModelMutation) SetEnabled(b bool) {
+	m.enabled = &b
+}
+
+// Enabled returns the value of the "enabled" field in the mutation.
+func (m *OtohaCatalogImageModelMutation) Enabled() (r bool, exists bool) {
+	v := m.enabled
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldEnabled returns the old "enabled" field's value of the OtohaCatalogImageModel entity.
+// If the OtohaCatalogImageModel object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *OtohaCatalogImageModelMutation) OldEnabled(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldEnabled is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldEnabled requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldEnabled: %w", err)
+	}
+	return oldValue.Enabled, nil
+}
+
+// ResetEnabled resets all changes to the "enabled" field.
+func (m *OtohaCatalogImageModelMutation) ResetEnabled() {
+	m.enabled = nil
+}
+
+// SetSortOrder sets the "sort_order" field.
+func (m *OtohaCatalogImageModelMutation) SetSortOrder(i int) {
+	m.sort_order = &i
+	m.addsort_order = nil
+}
+
+// SortOrder returns the value of the "sort_order" field in the mutation.
+func (m *OtohaCatalogImageModelMutation) SortOrder() (r int, exists bool) {
+	v := m.sort_order
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSortOrder returns the old "sort_order" field's value of the OtohaCatalogImageModel entity.
+// If the OtohaCatalogImageModel object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *OtohaCatalogImageModelMutation) OldSortOrder(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSortOrder is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSortOrder requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSortOrder: %w", err)
+	}
+	return oldValue.SortOrder, nil
+}
+
+// AddSortOrder adds i to the "sort_order" field.
+func (m *OtohaCatalogImageModelMutation) AddSortOrder(i int) {
+	if m.addsort_order != nil {
+		*m.addsort_order += i
+	} else {
+		m.addsort_order = &i
+	}
+}
+
+// AddedSortOrder returns the value that was added to the "sort_order" field in this mutation.
+func (m *OtohaCatalogImageModelMutation) AddedSortOrder() (r int, exists bool) {
+	v := m.addsort_order
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetSortOrder resets all changes to the "sort_order" field.
+func (m *OtohaCatalogImageModelMutation) ResetSortOrder() {
+	m.sort_order = nil
+	m.addsort_order = nil
+}
+
+// SetSizes sets the "sizes" field.
+func (m *OtohaCatalogImageModelMutation) SetSizes(s []string) {
+	m.sizes = &s
+	m.appendsizes = nil
+}
+
+// Sizes returns the value of the "sizes" field in the mutation.
+func (m *OtohaCatalogImageModelMutation) Sizes() (r []string, exists bool) {
+	v := m.sizes
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSizes returns the old "sizes" field's value of the OtohaCatalogImageModel entity.
+// If the OtohaCatalogImageModel object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *OtohaCatalogImageModelMutation) OldSizes(ctx context.Context) (v []string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSizes is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSizes requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSizes: %w", err)
+	}
+	return oldValue.Sizes, nil
+}
+
+// AppendSizes adds s to the "sizes" field.
+func (m *OtohaCatalogImageModelMutation) AppendSizes(s []string) {
+	m.appendsizes = append(m.appendsizes, s...)
+}
+
+// AppendedSizes returns the list of values that were appended to the "sizes" field in this mutation.
+func (m *OtohaCatalogImageModelMutation) AppendedSizes() ([]string, bool) {
+	if len(m.appendsizes) == 0 {
+		return nil, false
+	}
+	return m.appendsizes, true
+}
+
+// ClearSizes clears the value of the "sizes" field.
+func (m *OtohaCatalogImageModelMutation) ClearSizes() {
+	m.sizes = nil
+	m.appendsizes = nil
+	m.clearedFields[otohacatalogimagemodel.FieldSizes] = struct{}{}
+}
+
+// SizesCleared returns if the "sizes" field was cleared in this mutation.
+func (m *OtohaCatalogImageModelMutation) SizesCleared() bool {
+	_, ok := m.clearedFields[otohacatalogimagemodel.FieldSizes]
+	return ok
+}
+
+// ResetSizes resets all changes to the "sizes" field.
+func (m *OtohaCatalogImageModelMutation) ResetSizes() {
+	m.sizes = nil
+	m.appendsizes = nil
+	delete(m.clearedFields, otohacatalogimagemodel.FieldSizes)
+}
+
+// SetQualities sets the "qualities" field.
+func (m *OtohaCatalogImageModelMutation) SetQualities(s []string) {
+	m.qualities = &s
+	m.appendqualities = nil
+}
+
+// Qualities returns the value of the "qualities" field in the mutation.
+func (m *OtohaCatalogImageModelMutation) Qualities() (r []string, exists bool) {
+	v := m.qualities
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldQualities returns the old "qualities" field's value of the OtohaCatalogImageModel entity.
+// If the OtohaCatalogImageModel object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *OtohaCatalogImageModelMutation) OldQualities(ctx context.Context) (v []string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldQualities is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldQualities requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldQualities: %w", err)
+	}
+	return oldValue.Qualities, nil
+}
+
+// AppendQualities adds s to the "qualities" field.
+func (m *OtohaCatalogImageModelMutation) AppendQualities(s []string) {
+	m.appendqualities = append(m.appendqualities, s...)
+}
+
+// AppendedQualities returns the list of values that were appended to the "qualities" field in this mutation.
+func (m *OtohaCatalogImageModelMutation) AppendedQualities() ([]string, bool) {
+	if len(m.appendqualities) == 0 {
+		return nil, false
+	}
+	return m.appendqualities, true
+}
+
+// ClearQualities clears the value of the "qualities" field.
+func (m *OtohaCatalogImageModelMutation) ClearQualities() {
+	m.qualities = nil
+	m.appendqualities = nil
+	m.clearedFields[otohacatalogimagemodel.FieldQualities] = struct{}{}
+}
+
+// QualitiesCleared returns if the "qualities" field was cleared in this mutation.
+func (m *OtohaCatalogImageModelMutation) QualitiesCleared() bool {
+	_, ok := m.clearedFields[otohacatalogimagemodel.FieldQualities]
+	return ok
+}
+
+// ResetQualities resets all changes to the "qualities" field.
+func (m *OtohaCatalogImageModelMutation) ResetQualities() {
+	m.qualities = nil
+	m.appendqualities = nil
+	delete(m.clearedFields, otohacatalogimagemodel.FieldQualities)
+}
+
+// SetEdits sets the "edits" field.
+func (m *OtohaCatalogImageModelMutation) SetEdits(b bool) {
+	m.edits = &b
+}
+
+// Edits returns the value of the "edits" field in the mutation.
+func (m *OtohaCatalogImageModelMutation) Edits() (r bool, exists bool) {
+	v := m.edits
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldEdits returns the old "edits" field's value of the OtohaCatalogImageModel entity.
+// If the OtohaCatalogImageModel object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *OtohaCatalogImageModelMutation) OldEdits(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldEdits is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldEdits requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldEdits: %w", err)
+	}
+	return oldValue.Edits, nil
+}
+
+// ResetEdits resets all changes to the "edits" field.
+func (m *OtohaCatalogImageModelMutation) ResetEdits() {
+	m.edits = nil
+}
+
+// SetPrice1k sets the "price_1k" field.
+func (m *OtohaCatalogImageModelMutation) SetPrice1k(f float64) {
+	m.price_1k = &f
+	m.addprice_1k = nil
+}
+
+// Price1k returns the value of the "price_1k" field in the mutation.
+func (m *OtohaCatalogImageModelMutation) Price1k() (r float64, exists bool) {
+	v := m.price_1k
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPrice1k returns the old "price_1k" field's value of the OtohaCatalogImageModel entity.
+// If the OtohaCatalogImageModel object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *OtohaCatalogImageModelMutation) OldPrice1k(ctx context.Context) (v *float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPrice1k is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPrice1k requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPrice1k: %w", err)
+	}
+	return oldValue.Price1k, nil
+}
+
+// AddPrice1k adds f to the "price_1k" field.
+func (m *OtohaCatalogImageModelMutation) AddPrice1k(f float64) {
+	if m.addprice_1k != nil {
+		*m.addprice_1k += f
+	} else {
+		m.addprice_1k = &f
+	}
+}
+
+// AddedPrice1k returns the value that was added to the "price_1k" field in this mutation.
+func (m *OtohaCatalogImageModelMutation) AddedPrice1k() (r float64, exists bool) {
+	v := m.addprice_1k
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearPrice1k clears the value of the "price_1k" field.
+func (m *OtohaCatalogImageModelMutation) ClearPrice1k() {
+	m.price_1k = nil
+	m.addprice_1k = nil
+	m.clearedFields[otohacatalogimagemodel.FieldPrice1k] = struct{}{}
+}
+
+// Price1kCleared returns if the "price_1k" field was cleared in this mutation.
+func (m *OtohaCatalogImageModelMutation) Price1kCleared() bool {
+	_, ok := m.clearedFields[otohacatalogimagemodel.FieldPrice1k]
+	return ok
+}
+
+// ResetPrice1k resets all changes to the "price_1k" field.
+func (m *OtohaCatalogImageModelMutation) ResetPrice1k() {
+	m.price_1k = nil
+	m.addprice_1k = nil
+	delete(m.clearedFields, otohacatalogimagemodel.FieldPrice1k)
+}
+
+// SetPrice2k sets the "price_2k" field.
+func (m *OtohaCatalogImageModelMutation) SetPrice2k(f float64) {
+	m.price_2k = &f
+	m.addprice_2k = nil
+}
+
+// Price2k returns the value of the "price_2k" field in the mutation.
+func (m *OtohaCatalogImageModelMutation) Price2k() (r float64, exists bool) {
+	v := m.price_2k
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPrice2k returns the old "price_2k" field's value of the OtohaCatalogImageModel entity.
+// If the OtohaCatalogImageModel object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *OtohaCatalogImageModelMutation) OldPrice2k(ctx context.Context) (v *float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPrice2k is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPrice2k requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPrice2k: %w", err)
+	}
+	return oldValue.Price2k, nil
+}
+
+// AddPrice2k adds f to the "price_2k" field.
+func (m *OtohaCatalogImageModelMutation) AddPrice2k(f float64) {
+	if m.addprice_2k != nil {
+		*m.addprice_2k += f
+	} else {
+		m.addprice_2k = &f
+	}
+}
+
+// AddedPrice2k returns the value that was added to the "price_2k" field in this mutation.
+func (m *OtohaCatalogImageModelMutation) AddedPrice2k() (r float64, exists bool) {
+	v := m.addprice_2k
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearPrice2k clears the value of the "price_2k" field.
+func (m *OtohaCatalogImageModelMutation) ClearPrice2k() {
+	m.price_2k = nil
+	m.addprice_2k = nil
+	m.clearedFields[otohacatalogimagemodel.FieldPrice2k] = struct{}{}
+}
+
+// Price2kCleared returns if the "price_2k" field was cleared in this mutation.
+func (m *OtohaCatalogImageModelMutation) Price2kCleared() bool {
+	_, ok := m.clearedFields[otohacatalogimagemodel.FieldPrice2k]
+	return ok
+}
+
+// ResetPrice2k resets all changes to the "price_2k" field.
+func (m *OtohaCatalogImageModelMutation) ResetPrice2k() {
+	m.price_2k = nil
+	m.addprice_2k = nil
+	delete(m.clearedFields, otohacatalogimagemodel.FieldPrice2k)
+}
+
+// SetPrice4k sets the "price_4k" field.
+func (m *OtohaCatalogImageModelMutation) SetPrice4k(f float64) {
+	m.price_4k = &f
+	m.addprice_4k = nil
+}
+
+// Price4k returns the value of the "price_4k" field in the mutation.
+func (m *OtohaCatalogImageModelMutation) Price4k() (r float64, exists bool) {
+	v := m.price_4k
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPrice4k returns the old "price_4k" field's value of the OtohaCatalogImageModel entity.
+// If the OtohaCatalogImageModel object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *OtohaCatalogImageModelMutation) OldPrice4k(ctx context.Context) (v *float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPrice4k is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPrice4k requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPrice4k: %w", err)
+	}
+	return oldValue.Price4k, nil
+}
+
+// AddPrice4k adds f to the "price_4k" field.
+func (m *OtohaCatalogImageModelMutation) AddPrice4k(f float64) {
+	if m.addprice_4k != nil {
+		*m.addprice_4k += f
+	} else {
+		m.addprice_4k = &f
+	}
+}
+
+// AddedPrice4k returns the value that was added to the "price_4k" field in this mutation.
+func (m *OtohaCatalogImageModelMutation) AddedPrice4k() (r float64, exists bool) {
+	v := m.addprice_4k
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearPrice4k clears the value of the "price_4k" field.
+func (m *OtohaCatalogImageModelMutation) ClearPrice4k() {
+	m.price_4k = nil
+	m.addprice_4k = nil
+	m.clearedFields[otohacatalogimagemodel.FieldPrice4k] = struct{}{}
+}
+
+// Price4kCleared returns if the "price_4k" field was cleared in this mutation.
+func (m *OtohaCatalogImageModelMutation) Price4kCleared() bool {
+	_, ok := m.clearedFields[otohacatalogimagemodel.FieldPrice4k]
+	return ok
+}
+
+// ResetPrice4k resets all changes to the "price_4k" field.
+func (m *OtohaCatalogImageModelMutation) ResetPrice4k() {
+	m.price_4k = nil
+	m.addprice_4k = nil
+	delete(m.clearedFields, otohacatalogimagemodel.FieldPrice4k)
+}
+
+// ClearGroup clears the "group" edge to the Group entity.
+func (m *OtohaCatalogImageModelMutation) ClearGroup() {
+	m.clearedgroup = true
+	m.clearedFields[otohacatalogimagemodel.FieldGroupID] = struct{}{}
+}
+
+// GroupCleared reports if the "group" edge to the Group entity was cleared.
+func (m *OtohaCatalogImageModelMutation) GroupCleared() bool {
+	return m.clearedgroup
+}
+
+// GroupIDs returns the "group" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// GroupID instead. It exists only for internal usage by the builders.
+func (m *OtohaCatalogImageModelMutation) GroupIDs() (ids []int64) {
+	if id := m.group; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetGroup resets all changes to the "group" edge.
+func (m *OtohaCatalogImageModelMutation) ResetGroup() {
+	m.group = nil
+	m.clearedgroup = false
+}
+
+// Where appends a list predicates to the OtohaCatalogImageModelMutation builder.
+func (m *OtohaCatalogImageModelMutation) Where(ps ...predicate.OtohaCatalogImageModel) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the OtohaCatalogImageModelMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *OtohaCatalogImageModelMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.OtohaCatalogImageModel, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *OtohaCatalogImageModelMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *OtohaCatalogImageModelMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (OtohaCatalogImageModel).
+func (m *OtohaCatalogImageModelMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *OtohaCatalogImageModelMutation) Fields() []string {
+	fields := make([]string, 0, 14)
+	if m.created_at != nil {
+		fields = append(fields, otohacatalogimagemodel.FieldCreatedAt)
+	}
+	if m.updated_at != nil {
+		fields = append(fields, otohacatalogimagemodel.FieldUpdatedAt)
+	}
+	if m.group != nil {
+		fields = append(fields, otohacatalogimagemodel.FieldGroupID)
+	}
+	if m.model_id != nil {
+		fields = append(fields, otohacatalogimagemodel.FieldModelID)
+	}
+	if m.name != nil {
+		fields = append(fields, otohacatalogimagemodel.FieldName)
+	}
+	if m.description != nil {
+		fields = append(fields, otohacatalogimagemodel.FieldDescription)
+	}
+	if m.enabled != nil {
+		fields = append(fields, otohacatalogimagemodel.FieldEnabled)
+	}
+	if m.sort_order != nil {
+		fields = append(fields, otohacatalogimagemodel.FieldSortOrder)
+	}
+	if m.sizes != nil {
+		fields = append(fields, otohacatalogimagemodel.FieldSizes)
+	}
+	if m.qualities != nil {
+		fields = append(fields, otohacatalogimagemodel.FieldQualities)
+	}
+	if m.edits != nil {
+		fields = append(fields, otohacatalogimagemodel.FieldEdits)
+	}
+	if m.price_1k != nil {
+		fields = append(fields, otohacatalogimagemodel.FieldPrice1k)
+	}
+	if m.price_2k != nil {
+		fields = append(fields, otohacatalogimagemodel.FieldPrice2k)
+	}
+	if m.price_4k != nil {
+		fields = append(fields, otohacatalogimagemodel.FieldPrice4k)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *OtohaCatalogImageModelMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case otohacatalogimagemodel.FieldCreatedAt:
+		return m.CreatedAt()
+	case otohacatalogimagemodel.FieldUpdatedAt:
+		return m.UpdatedAt()
+	case otohacatalogimagemodel.FieldGroupID:
+		return m.GroupID()
+	case otohacatalogimagemodel.FieldModelID:
+		return m.ModelID()
+	case otohacatalogimagemodel.FieldName:
+		return m.Name()
+	case otohacatalogimagemodel.FieldDescription:
+		return m.Description()
+	case otohacatalogimagemodel.FieldEnabled:
+		return m.Enabled()
+	case otohacatalogimagemodel.FieldSortOrder:
+		return m.SortOrder()
+	case otohacatalogimagemodel.FieldSizes:
+		return m.Sizes()
+	case otohacatalogimagemodel.FieldQualities:
+		return m.Qualities()
+	case otohacatalogimagemodel.FieldEdits:
+		return m.Edits()
+	case otohacatalogimagemodel.FieldPrice1k:
+		return m.Price1k()
+	case otohacatalogimagemodel.FieldPrice2k:
+		return m.Price2k()
+	case otohacatalogimagemodel.FieldPrice4k:
+		return m.Price4k()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *OtohaCatalogImageModelMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case otohacatalogimagemodel.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case otohacatalogimagemodel.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	case otohacatalogimagemodel.FieldGroupID:
+		return m.OldGroupID(ctx)
+	case otohacatalogimagemodel.FieldModelID:
+		return m.OldModelID(ctx)
+	case otohacatalogimagemodel.FieldName:
+		return m.OldName(ctx)
+	case otohacatalogimagemodel.FieldDescription:
+		return m.OldDescription(ctx)
+	case otohacatalogimagemodel.FieldEnabled:
+		return m.OldEnabled(ctx)
+	case otohacatalogimagemodel.FieldSortOrder:
+		return m.OldSortOrder(ctx)
+	case otohacatalogimagemodel.FieldSizes:
+		return m.OldSizes(ctx)
+	case otohacatalogimagemodel.FieldQualities:
+		return m.OldQualities(ctx)
+	case otohacatalogimagemodel.FieldEdits:
+		return m.OldEdits(ctx)
+	case otohacatalogimagemodel.FieldPrice1k:
+		return m.OldPrice1k(ctx)
+	case otohacatalogimagemodel.FieldPrice2k:
+		return m.OldPrice2k(ctx)
+	case otohacatalogimagemodel.FieldPrice4k:
+		return m.OldPrice4k(ctx)
+	}
+	return nil, fmt.Errorf("unknown OtohaCatalogImageModel field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *OtohaCatalogImageModelMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case otohacatalogimagemodel.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case otohacatalogimagemodel.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
+	case otohacatalogimagemodel.FieldGroupID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetGroupID(v)
+		return nil
+	case otohacatalogimagemodel.FieldModelID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetModelID(v)
+		return nil
+	case otohacatalogimagemodel.FieldName:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetName(v)
+		return nil
+	case otohacatalogimagemodel.FieldDescription:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDescription(v)
+		return nil
+	case otohacatalogimagemodel.FieldEnabled:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetEnabled(v)
+		return nil
+	case otohacatalogimagemodel.FieldSortOrder:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSortOrder(v)
+		return nil
+	case otohacatalogimagemodel.FieldSizes:
+		v, ok := value.([]string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSizes(v)
+		return nil
+	case otohacatalogimagemodel.FieldQualities:
+		v, ok := value.([]string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetQualities(v)
+		return nil
+	case otohacatalogimagemodel.FieldEdits:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetEdits(v)
+		return nil
+	case otohacatalogimagemodel.FieldPrice1k:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPrice1k(v)
+		return nil
+	case otohacatalogimagemodel.FieldPrice2k:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPrice2k(v)
+		return nil
+	case otohacatalogimagemodel.FieldPrice4k:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPrice4k(v)
+		return nil
+	}
+	return fmt.Errorf("unknown OtohaCatalogImageModel field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *OtohaCatalogImageModelMutation) AddedFields() []string {
+	var fields []string
+	if m.addsort_order != nil {
+		fields = append(fields, otohacatalogimagemodel.FieldSortOrder)
+	}
+	if m.addprice_1k != nil {
+		fields = append(fields, otohacatalogimagemodel.FieldPrice1k)
+	}
+	if m.addprice_2k != nil {
+		fields = append(fields, otohacatalogimagemodel.FieldPrice2k)
+	}
+	if m.addprice_4k != nil {
+		fields = append(fields, otohacatalogimagemodel.FieldPrice4k)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *OtohaCatalogImageModelMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case otohacatalogimagemodel.FieldSortOrder:
+		return m.AddedSortOrder()
+	case otohacatalogimagemodel.FieldPrice1k:
+		return m.AddedPrice1k()
+	case otohacatalogimagemodel.FieldPrice2k:
+		return m.AddedPrice2k()
+	case otohacatalogimagemodel.FieldPrice4k:
+		return m.AddedPrice4k()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *OtohaCatalogImageModelMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case otohacatalogimagemodel.FieldSortOrder:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddSortOrder(v)
+		return nil
+	case otohacatalogimagemodel.FieldPrice1k:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddPrice1k(v)
+		return nil
+	case otohacatalogimagemodel.FieldPrice2k:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddPrice2k(v)
+		return nil
+	case otohacatalogimagemodel.FieldPrice4k:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddPrice4k(v)
+		return nil
+	}
+	return fmt.Errorf("unknown OtohaCatalogImageModel numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *OtohaCatalogImageModelMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(otohacatalogimagemodel.FieldSizes) {
+		fields = append(fields, otohacatalogimagemodel.FieldSizes)
+	}
+	if m.FieldCleared(otohacatalogimagemodel.FieldQualities) {
+		fields = append(fields, otohacatalogimagemodel.FieldQualities)
+	}
+	if m.FieldCleared(otohacatalogimagemodel.FieldPrice1k) {
+		fields = append(fields, otohacatalogimagemodel.FieldPrice1k)
+	}
+	if m.FieldCleared(otohacatalogimagemodel.FieldPrice2k) {
+		fields = append(fields, otohacatalogimagemodel.FieldPrice2k)
+	}
+	if m.FieldCleared(otohacatalogimagemodel.FieldPrice4k) {
+		fields = append(fields, otohacatalogimagemodel.FieldPrice4k)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *OtohaCatalogImageModelMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *OtohaCatalogImageModelMutation) ClearField(name string) error {
+	switch name {
+	case otohacatalogimagemodel.FieldSizes:
+		m.ClearSizes()
+		return nil
+	case otohacatalogimagemodel.FieldQualities:
+		m.ClearQualities()
+		return nil
+	case otohacatalogimagemodel.FieldPrice1k:
+		m.ClearPrice1k()
+		return nil
+	case otohacatalogimagemodel.FieldPrice2k:
+		m.ClearPrice2k()
+		return nil
+	case otohacatalogimagemodel.FieldPrice4k:
+		m.ClearPrice4k()
+		return nil
+	}
+	return fmt.Errorf("unknown OtohaCatalogImageModel nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *OtohaCatalogImageModelMutation) ResetField(name string) error {
+	switch name {
+	case otohacatalogimagemodel.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case otohacatalogimagemodel.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	case otohacatalogimagemodel.FieldGroupID:
+		m.ResetGroupID()
+		return nil
+	case otohacatalogimagemodel.FieldModelID:
+		m.ResetModelID()
+		return nil
+	case otohacatalogimagemodel.FieldName:
+		m.ResetName()
+		return nil
+	case otohacatalogimagemodel.FieldDescription:
+		m.ResetDescription()
+		return nil
+	case otohacatalogimagemodel.FieldEnabled:
+		m.ResetEnabled()
+		return nil
+	case otohacatalogimagemodel.FieldSortOrder:
+		m.ResetSortOrder()
+		return nil
+	case otohacatalogimagemodel.FieldSizes:
+		m.ResetSizes()
+		return nil
+	case otohacatalogimagemodel.FieldQualities:
+		m.ResetQualities()
+		return nil
+	case otohacatalogimagemodel.FieldEdits:
+		m.ResetEdits()
+		return nil
+	case otohacatalogimagemodel.FieldPrice1k:
+		m.ResetPrice1k()
+		return nil
+	case otohacatalogimagemodel.FieldPrice2k:
+		m.ResetPrice2k()
+		return nil
+	case otohacatalogimagemodel.FieldPrice4k:
+		m.ResetPrice4k()
+		return nil
+	}
+	return fmt.Errorf("unknown OtohaCatalogImageModel field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *OtohaCatalogImageModelMutation) AddedEdges() []string {
+	edges := make([]string, 0, 1)
+	if m.group != nil {
+		edges = append(edges, otohacatalogimagemodel.EdgeGroup)
+	}
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *OtohaCatalogImageModelMutation) AddedIDs(name string) []ent.Value {
+	switch name {
+	case otohacatalogimagemodel.EdgeGroup:
+		if id := m.group; id != nil {
+			return []ent.Value{*id}
+		}
+	}
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *OtohaCatalogImageModelMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 1)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *OtohaCatalogImageModelMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *OtohaCatalogImageModelMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 1)
+	if m.clearedgroup {
+		edges = append(edges, otohacatalogimagemodel.EdgeGroup)
+	}
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *OtohaCatalogImageModelMutation) EdgeCleared(name string) bool {
+	switch name {
+	case otohacatalogimagemodel.EdgeGroup:
+		return m.clearedgroup
+	}
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *OtohaCatalogImageModelMutation) ClearEdge(name string) error {
+	switch name {
+	case otohacatalogimagemodel.EdgeGroup:
+		m.ClearGroup()
+		return nil
+	}
+	return fmt.Errorf("unknown OtohaCatalogImageModel unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *OtohaCatalogImageModelMutation) ResetEdge(name string) error {
+	switch name {
+	case otohacatalogimagemodel.EdgeGroup:
+		m.ResetGroup()
+		return nil
+	}
+	return fmt.Errorf("unknown OtohaCatalogImageModel edge %s", name)
 }
 
 // OtohaCatalogModelMutation represents an operation that mutates the OtohaCatalogModel nodes in the graph.

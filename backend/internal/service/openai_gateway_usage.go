@@ -624,6 +624,10 @@ func (s *OpenAIGatewayService) calculateOpenAIRecordUsageCost(
 	}
 
 	if result != nil && result.ImageCount > 0 {
+		// A price the admin set on the model in the group's Otoha catalog is the price the app was shown (TASK-73).
+		if cost, ok := s.otohaImageOverrideCost(ctx, billingModels, apiKey, result, imageMultiplier); ok {
+			return cost, nil
+		}
 		// 渠道定价为 token 计费时走 token 路径，否则走图片计费
 		if resolved := s.resolveOpenAIChannelPricing(ctx, billingModel, apiKey); resolved == nil || resolved.Mode != BillingModeToken {
 			return s.calculateOpenAIImageCost(ctx, billingModel, apiKey, result, imageMultiplier), nil

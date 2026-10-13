@@ -183,6 +183,8 @@
       </table>
     </div>
 
+    <OtohaCatalogImagePanel v-if="view" :group-id="group.id" :entries="view.image_entries ?? []" @changed="load" />
+
     <section v-if="view" class="rounded-lg border border-gray-200 p-4 dark:border-dark-600" data-testid="otoha-catalog-preview">
       <div class="mb-2 flex flex-wrap items-baseline gap-2">
         <h4 class="text-sm font-medium text-gray-800 dark:text-gray-100">{{ t('admin.otohaCatalog.preview.title') }}</h4>
@@ -191,10 +193,10 @@
         </span>
       </div>
       <p v-if="!view.preview" class="text-sm text-gray-500 dark:text-gray-400">{{ t('admin.otohaCatalog.preview.none') }}</p>
-      <p v-else-if="view.preview.models.length === 0" class="text-sm text-gray-500 dark:text-gray-400">
+      <p v-else-if="view.preview.models.length === 0 && !previewImageModels.length" class="text-sm text-gray-500 dark:text-gray-400">
         {{ t('admin.otohaCatalog.preview.noModels') }}
       </p>
-      <ol v-else class="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+      <ol v-if="view.preview && previewModels.length" class="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
         <li
           v-for="model in previewModels"
           :key="model.id"
@@ -209,6 +211,22 @@
           <div v-if="model.api">{{ t('admin.otohaCatalog.calledAs', { format: apiLabel(model.api) }) }}</div>
           <div v-if="model.abilities.length">{{ t('admin.otohaCatalog.preview.abilities') }}: {{ model.abilities.join(t('admin.otohaCatalog.preview.separator')) }}</div>
           <div v-if="model.uses.length">{{ t('admin.otohaCatalog.preview.use') }}: {{ model.uses.join(t('admin.otohaCatalog.preview.separator')) }}</div>
+        </li>
+      </ol>
+      <ol v-if="previewImageModels.length" class="mt-2 grid gap-2 sm:grid-cols-2 xl:grid-cols-3" data-testid="otoha-catalog-preview-images">
+        <li
+          v-for="model in previewImageModels"
+          :key="model.id"
+          class="rounded-md bg-gray-50 px-3 py-2 text-xs text-gray-600 dark:bg-dark-700 dark:text-gray-300"
+        >
+          <div class="text-sm font-medium text-gray-900 dark:text-white">{{ model.name }}</div>
+          <div class="font-mono text-gray-500">{{ model.id }}</div>
+          <div v-for="size in model.sizes" :key="size.size" class="mt-0.5">
+            <span class="font-mono">{{ size.size }}</span>
+            <span class="ml-2 font-medium text-gray-900 dark:text-white">{{ formatAmount(size.price) }}</span>
+            <span class="ml-1 text-gray-500">{{ t('admin.otohaCatalog.images.perPictureShort') }}</span>
+          </div>
+          <div v-if="model.edits">{{ t('admin.otohaCatalog.images.canEdit') }}</div>
         </li>
       </ol>
     </section>
@@ -546,6 +564,7 @@ import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import Toggle from '@/components/common/Toggle.vue'
 import Icon from '@/components/icons/Icon.vue'
 import OtohaCatalogTierLines from './OtohaCatalogTierLines.vue'
+import OtohaCatalogImagePanel from './OtohaCatalogImagePanel.vue'
 import { extractApiErrorCode, extractApiErrorMessage } from '@/utils/apiError'
 import { platformLabel } from '@/utils/platformColors'
 import {
@@ -681,6 +700,8 @@ const addableCandidates = computed(() => {
 })
 
 const reasoningLevels = computed(() => parseList(reasoningText.value))
+
+const previewImageModels = computed(() => view.value?.preview?.imageModels ?? [])
 
 const previewModels = computed(() =>
   (view.value?.preview?.models ?? []).map((model) => {

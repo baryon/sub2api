@@ -395,10 +395,11 @@ func TestOtohaCatalogJSONCarriesNoInternalFields(t *testing.T) {
 	}
 	var top map[string]json.RawMessage
 	require.NoError(t, json.Unmarshal(body, &top))
-	require.Len(t, top, 3)
+	require.Len(t, top, 4)
 	require.Contains(t, top, "schema")
 	require.Contains(t, top, "revision")
 	require.Contains(t, top, "models")
+	require.Contains(t, top, "imageModels")
 }
 
 func TestOtohaCatalogRevisionChangesWhenTheCatalogOrAPriceChanges(t *testing.T) {

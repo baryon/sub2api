@@ -2,7 +2,11 @@ import { describe, expect, it } from 'vitest'
 import {
   catalogAbilities,
   catalogGroupOptions,
+  checkImageSizes,
   formatCatalogTokens,
+  imagePriceFromText,
+  imageSizeTier,
+  parseImageList,
   initialCatalogGroupId,
   priceTierLines,
   priceTierRange,
@@ -191,5 +195,39 @@ describe('thinking levels', () => {
 
   it('has no levels for a model nobody described', () => {
     expect(levelsFromRows(levelRows(null))).toEqual({ levels: [] })
+  })
+})
+
+describe('image models', () => {
+  it('reads a typed list once each, in lower case', () => {
+    expect(parseImageList('1024x1024, 1536X1024  1024x1024，Low')).toEqual(['1024x1024', '1536x1024', 'low'])
+    expect(parseImageList('')).toEqual([])
+  })
+
+  it('tells the price tier a size is charged in, as billing does', () => {
+    expect(imageSizeTier('1024x1024')).toBe('1K')
+    expect(imageSizeTier('1024x1536')).toBe('2K')
+    expect(imageSizeTier('2048x1152')).toBe('2K')
+    expect(imageSizeTier('3840x2160')).toBe('4K')
+    expect(imageSizeTier('large')).toBeNull()
+  })
+
+  it('checks the sizes the server checks', () => {
+    expect(checkImageSizes(['1024x1024', '1536x1024'])).toBeNull()
+    expect(checkImageSizes([])).toBe('none')
+    expect(checkImageSizes(['large'])).toBe('format')
+    expect(checkImageSizes(['0x1024'])).toBe('format')
+    expect(checkImageSizes(['99999x1024'])).toBe('format')
+    expect(checkImageSizes(Array.from({ length: 13 }, (_, i) => `1024x${1000 + i * 16}`))).toBe('many')
+  })
+
+  it('reads a typed price, leaving it empty to follow billing', () => {
+    expect(imagePriceFromText('')).toEqual({ price: null })
+    expect(imagePriceFromText(null)).toEqual({ price: null })
+    expect(imagePriceFromText('0.05')).toEqual({ price: 0.05 })
+    expect(imagePriceFromText(0)).toEqual({ price: 0 })
+    expect(imagePriceFromText('-1')).toEqual({ error: 'number' })
+    expect(imagePriceFromText('abc')).toEqual({ error: 'number' })
+    expect(imagePriceFromText('5000')).toEqual({ error: 'number' })
   })
 })

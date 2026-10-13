@@ -249,3 +249,53 @@ export function levelsFromRows(rows: ThinkingLevelRow[]): ThinkingLevelsResult {
   }
   return { levels }
 }
+
+export const IMAGE_TIERS = ['1K', '2K', '4K'] as const
+export type ImageTier = (typeof IMAGE_TIERS)[number]
+export const IMAGE_SIZES_MAX = 12
+const IMAGE_EDGE_MIN = 16
+const IMAGE_EDGE_MAX = 8192
+const IMAGE_PRICE_MAX = 1000
+
+/** A typed list of sizes or qualities: split at commas and spaces, lower case, each once. */
+export function parseImageList(text: string): string[] {
+  const seen = new Set<string>()
+  for (const part of text.split(/[,，\s]+/)) {
+    const value = part.trim().toLowerCase()
+    if (value) seen.add(value)
+  }
+  return [...seen]
+}
+
+/** The price tier billing charges an image size in: by its longest side, up to 1024 is 1K, up to 2048 is 2K, else 4K. */
+export function imageSizeTier(size: string): ImageTier | null {
+  const match = /^(\d{2,5})x(\d{2,5})$/.exec(size.trim().toLowerCase())
+  if (!match) return null
+  const longest = Math.max(Number(match[1]), Number(match[2]))
+  if (longest <= 1024) return '1K'
+  if (longest <= 2048) return '2K'
+  return '4K'
+}
+
+/** What is wrong with the typed sizes, as the server checks them; null when they are fine. */
+export function checkImageSizes(sizes: string[]): 'none' | 'format' | 'many' | null {
+  if (sizes.length === 0) return 'none'
+  if (sizes.length > IMAGE_SIZES_MAX) return 'many'
+  for (const size of sizes) {
+    const match = /^(\d{2,5})x(\d{2,5})$/.exec(size)
+    if (!match) return 'format'
+    for (const edge of [match[1], match[2]]) {
+      const n = Number(edge)
+      if (n < IMAGE_EDGE_MIN || n > IMAGE_EDGE_MAX) return 'format'
+    }
+  }
+  return null
+}
+
+/** A typed image price: empty follows billing (null); otherwise a number that is not negative. */
+export function imagePriceFromText(value: number | string | null | undefined): { price: number | null } | { error: 'number' } {
+  const n = typedNumber(value ?? '')
+  if (value === '' || value === null || value === undefined) return { price: null }
+  if (n === null || n < 0 || n > IMAGE_PRICE_MAX) return { error: 'number' }
+  return { price: n }
+}

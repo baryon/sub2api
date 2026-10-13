@@ -12,6 +12,9 @@ type OtohaCatalog struct {
 	// Revision changes whenever the catalog or a price in it changes.
 	Revision string              `json:"revision"`
 	Models   []OtohaCatalogModel `json:"models"`
+	// ImageModels are the models the app draws with (TASK-73), apart from Models so an older app, which reads only
+	// Models, never lists one as a chat model. Empty when the group has none.
+	ImageModels []OtohaImageModel `json:"imageModels"`
 }
 
 // OtohaCatalogModel is one model as the app shows and chooses it.
