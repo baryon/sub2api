@@ -2,6 +2,10 @@ package repository
 
 import (
 	"context"
+	"fmt"
+	"time"
+
+	entsql "entgo.io/ent/dialect/sql"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/otohacatalogimagemodel"
@@ -144,4 +148,45 @@ func otohaImageEntityToService(row *dbent.OtohaCatalogImageModel) service.OtohaI
 		CreatedAt:        row.CreatedAt,
 		UpdatedAt:        row.UpdatedAt,
 	}
+}
+
+var _ service.OtohaImageObservations = (*otohaCatalogImageRepository)(nil)
+
+// ObservedImageOutputs lists, for the group's image requests since a time that billing charged by the size of the
+// output, each distinct model (as the client named it), size asked for, billed tier and output size, most recent
+// first. The catalog prices a size at the highest of these tiers (TASK-77).
+func (r *otohaCatalogImageRepository) ObservedImageOutputs(ctx context.Context, groupID int64, since time.Time) ([]service.OtohaImageObservation, error) {
+	const query = `
+SELECT COALESCE(NULLIF(requested_model, ''), model) AS model_name,
+       LOWER(BTRIM(image_input_size)) AS requested_size,
+       image_size,
+       COALESCE(BTRIM(image_output_size), '') AS output_size,
+       MAX(created_at) AS last_seen
+FROM usage_logs
+WHERE group_id = $1
+  AND created_at >= $2
+  AND image_size_source = 'output'
+  AND image_size IN ('1K', '2K', '4K')
+  AND image_input_size IS NOT NULL
+  AND BTRIM(image_input_size) <> ''
+GROUP BY 1, 2, 3, 4
+ORDER BY last_seen DESC, model_name, requested_size, image_size DESC, output_size`
+	var rows entsql.Rows
+	if err := clientFromContext(ctx, r.client).Driver().Query(ctx, query, []any{groupID, since}, &rows); err != nil {
+		return nil, fmt.Errorf("read billed image tiers: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	out := []service.OtohaImageObservation{}
+	for rows.Next() {
+		var observation service.OtohaImageObservation
+		var lastSeen time.Time
+		if err := rows.Scan(&observation.Model, &observation.RequestedSize, &observation.Tier, &observation.OutputSize, &lastSeen); err != nil {
+			return nil, fmt.Errorf("scan billed image tier: %w", err)
+		}
+		out = append(out, observation)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("read billed image tiers: %w", err)
+	}
+	return out, nil
 }

@@ -84,6 +84,8 @@ export default {
       no_price: 'The price table has no price for this model. Set one in the group\'s per-model pricing.'
     },
     images: {
+      billedAsObserved: '{size} · billed as {tier} (the upstream actually returned {output})',
+      billedAsRequested: '{size} · billed as {tier} (no recent pictures drawn at this size, so by the size itself)',
       auto: 'Automatic',
       autoHint: 'Added automatically from the model lists of the group\'s accounts',
       autoEditNote: 'This model was added automatically from the accounts\' model lists. What you change stays and is not overwritten when the upstream is checked again.',

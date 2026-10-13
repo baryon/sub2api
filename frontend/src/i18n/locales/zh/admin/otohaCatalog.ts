@@ -84,6 +84,8 @@ export default {
       no_price: '价格表里没有这个模型的价格。请在分组设置的「分组逐模型定价」里为它设价格。'
     },
     images: {
+      billedAsObserved: '{size} · 按 {tier} 计费（上游实际输出 {output}）',
+      billedAsRequested: '{size} · 按 {tier} 计费（近期没有实际出图记录，按尺寸本身分档）',
       auto: '自动',
       autoHint: '由系统根据分组账号的模型列表自动加入',
       autoEditNote: '这是系统根据账号的模型列表自动加入的。你改过的内容会一直保留，之后再检查上游时不会被覆盖。',

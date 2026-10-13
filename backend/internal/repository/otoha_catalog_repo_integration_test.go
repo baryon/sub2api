@@ -149,3 +149,61 @@ func TestOtohaCatalogImageRepositoryKeepsDiscoveryState(t *testing.T) {
 	require.NoError(t, err)
 	require.Nil(t, list[1].UnavailableSince, "back in the upstream list")
 }
+
+// TASK-77: the tiers billing charged for the outputs of a group's image requests, from its usage log.
+func TestOtohaCatalogImageRepositoryReadsBilledOutputTiers(t *testing.T) {
+	ctx := context.Background()
+	client := testEntClient(t)
+	user := mustCreateUser(t, client, &service.User{})
+	key := mustCreateApiKey(t, client, &service.APIKey{UserID: user.ID})
+	account := mustCreateAccount(t, client, &service.Account{Name: "otoha-billed-tiers", Platform: service.PlatformOpenAI})
+	group := mustCreateGroup(t, client, &service.Group{Name: fmt.Sprintf("otoha-billed-tiers-%d", time.Now().UnixNano()), Platform: service.PlatformOpenAI, RateMultiplier: 1})
+	other := mustCreateGroup(t, client, &service.Group{Name: fmt.Sprintf("otoha-billed-tiers-other-%d", time.Now().UnixNano()), Platform: service.PlatformOpenAI, RateMultiplier: 1})
+	t.Cleanup(func() {
+		_, _ = integrationDB.ExecContext(ctx, "DELETE FROM usage_logs WHERE user_id = $1", user.ID)
+		_, _ = integrationDB.ExecContext(ctx, "DELETE FROM api_keys WHERE id = $1", key.ID)
+		_, _ = integrationDB.ExecContext(ctx, "DELETE FROM accounts WHERE id = $1", account.ID)
+		_, _ = integrationDB.ExecContext(ctx, "DELETE FROM groups WHERE id IN ($1, $2)", group.ID, other.ID)
+		_, _ = integrationDB.ExecContext(ctx, "DELETE FROM users WHERE id = $1", user.ID)
+	})
+
+	now := time.Now()
+	n := 0
+	insert := func(groupID int64, model string, requestedModel *string, at time.Time, tier, source, input, output *string) {
+		t.Helper()
+		n++
+		_, err := integrationDB.ExecContext(ctx, `INSERT INTO usage_logs
+   (user_id, api_key_id, account_id, group_id, request_id, model, requested_model, image_count, image_size, image_size_source, image_input_size, image_output_size, created_at)
+   VALUES ($1,$2,$3,$4,$5,$6,$7,1,$8,$9,$10,$11,$12)`,
+			user.ID, key.ID, account.ID, groupID, fmt.Sprintf("billed-tier-%d-%d", user.ID, n), model, requestedModel, tier, source, input, output, at)
+		require.NoError(t, err)
+	}
+	s := func(v string) *string { return &v }
+	days := func(d int) time.Time { return now.AddDate(0, 0, -d) }
+
+	// gpt-image-2 asked 1024x1024 comes back 1254x1254 (2K) twice, and once 3840x2160 (4K).
+	insert(group.ID, "gpt-image-2", s("gpt-image-2"), days(1), s("2K"), s("output"), s("1024x1024"), s("1254x1254"))
+	insert(group.ID, "gpt-image-2", s("gpt-image-2"), days(2), s("2K"), s("output"), s("1024x1024"), s("1254x1254"))
+	insert(group.ID, "gpt-image-2", nil, days(3), s("4K"), s("output"), s("1024x1024"), s("3840x2160"))
+	// not counted: too old, billed by the size asked for, mixed tiers, no sizes recorded, another group
+	insert(group.ID, "gpt-image-2", s("gpt-image-2"), days(31), s("4K"), s("output"), s("1536x1024"), s("3840x2160"))
+	insert(group.ID, "gpt-image-2", s("gpt-image-2"), days(1), s("2K"), s("input"), s("1536x1024"), nil)
+	insert(group.ID, "gpt-image-2", s("gpt-image-2"), days(1), s("mixed"), s("output"), s("1536x1024"), s("1254x1254"))
+	insert(group.ID, "gpt-image-2", s("gpt-image-2"), days(1), s("2K"), s("output"), nil, s("1254x1254"))
+	insert(other.ID, "gpt-image-2", s("gpt-image-2"), days(1), s("4K"), s("output"), s("1024x1024"), s("3840x2160"))
+	// a model that was mapped: the name the client used is what the catalog lists
+	insert(group.ID, "upstream-name", s("grok-imagine-image"), days(2), s("1K"), s("output"), s("1024X1024"), s("1024x1024"))
+
+	repo := NewOtohaCatalogImageRepository(client)
+	got, err := repo.(service.OtohaImageObservations).ObservedImageOutputs(ctx, group.ID, now.AddDate(0, 0, -30))
+	require.NoError(t, err)
+	require.Equal(t, []service.OtohaImageObservation{
+		{Model: "gpt-image-2", RequestedSize: "1024x1024", Tier: "2K", OutputSize: "1254x1254"},
+		{Model: "grok-imagine-image", RequestedSize: "1024x1024", Tier: "1K", OutputSize: "1024x1024"},
+		{Model: "gpt-image-2", RequestedSize: "1024x1024", Tier: "4K", OutputSize: "3840x2160"},
+	}, got, "one row per model, size, tier and output size, most recent first, with the model as the client named it")
+
+	empty, err := repo.(service.OtohaImageObservations).ObservedImageOutputs(ctx, group.ID, now.Add(time.Hour))
+	require.NoError(t, err)
+	require.Empty(t, empty)
+}

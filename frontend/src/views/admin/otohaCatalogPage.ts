@@ -3,6 +3,8 @@
  * a model's abilities are summed up in the table.
  */
 
+import type { OtohaImageSizeBasis } from '@/api/admin/otohaCatalog'
+
 export interface CatalogGroup {
   id: number
   name: string
@@ -275,6 +277,25 @@ export function imageSizeTier(size: string): ImageTier | null {
   if (longest <= 1024) return '1K'
   if (longest <= 2048) return '2K'
   return '4K'
+}
+
+/** A size as people read it: 1254x1254 as 1254×1254. */
+export function displayImageSize(size: string): string {
+  return size.trim().toLowerCase().replace('x', '×')
+}
+
+/**
+ * The tier a size is priced at: the one the server found billed for it (a size may come back larger than asked for),
+ * else the tier of the size itself.
+ */
+export function billedImageTier(size: string, basis: OtohaImageSizeBasis[] | undefined): ImageTier | null {
+  const known = (basis ?? []).find((b) => b.size === size.trim().toLowerCase())
+  return known?.billed_tier ?? imageSizeTier(size)
+}
+
+/** The sizes whose price follows what the upstream actually drew, not the size asked for. */
+export function observedImageBases(basis: OtohaImageSizeBasis[] | undefined): OtohaImageSizeBasis[] {
+  return (basis ?? []).filter((b) => b.basis === 'observed' && b.observed_output_size)
 }
 
 /** What is wrong with the typed sizes, as the server checks them; null when they are fine. */

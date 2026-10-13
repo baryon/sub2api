@@ -1,3 +1,4 @@
+import type { OtohaImageSizeBasis } from '@/api/admin/otohaCatalog'
 import { describe, expect, it } from 'vitest'
 import {
   catalogAbilities,
@@ -6,6 +7,9 @@ import {
   formatCatalogTokens,
   imagePriceFromText,
   imageSizeTier,
+  billedImageTier,
+  displayImageSize,
+  observedImageBases,
   imageSwitchNotice,
   imageUpstreamMissing,
   discoveryEvidenceKey,
@@ -217,6 +221,20 @@ describe('image models', () => {
     expect(imageSizeTier('2048x1152')).toBe('2K')
     expect(imageSizeTier('3840x2160')).toBe('4K')
     expect(imageSizeTier('large')).toBeNull()
+  })
+
+  it('prices a size at the tier billing charged for what the upstream drew', () => {
+    const basis = [
+      { size: '1024x1024', requested_tier: '1K', billed_tier: '2K', observed_output_size: '1254x1254', basis: 'observed' },
+      { size: '1536x1024', requested_tier: '2K', billed_tier: '2K', basis: 'requested' }
+    ] as OtohaImageSizeBasis[]
+    expect(billedImageTier('1024x1024', basis)).toBe('2K')
+    expect(billedImageTier(' 1024X1024 ', basis)).toBe('2K')
+    expect(billedImageTier('3840x2160', basis)).toBe('4K')
+    expect(billedImageTier('1024x1024', undefined)).toBe('1K')
+    expect(observedImageBases(basis).map((b) => b.size)).toEqual(['1024x1024'])
+    expect(observedImageBases(undefined)).toEqual([])
+    expect(displayImageSize('1254x1254')).toBe('1254×1254')
   })
 
   it('checks the sizes the server checks', () => {

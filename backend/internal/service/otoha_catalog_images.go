@@ -8,6 +8,9 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"go.uber.org/zap"
 )
 
 // Image models in the Otoha catalog (TASK-73). The app draws with `POST /v1/images/generations` and
@@ -33,6 +36,15 @@ const (
 	otohaImageEdgeMax      = 8192
 
 	otohaImageOverrideTTL = 30 * time.Second
+
+	// What the usage log says was billed is read over this window and kept this long (TASK-77).
+	otohaImageObservationDays = 30
+	otohaImageObservationTTL  = 5 * time.Minute
+
+	// OtohaImageBasisObserved: the size is priced at the tier recently billed for its output; OtohaImageBasisRequested:
+	// no such record, so at the tier of the size itself.
+	OtohaImageBasisObserved  = "observed"
+	OtohaImageBasisRequested = "requested"
 )
 
 var (
@@ -122,10 +134,86 @@ type OtohaImageTierPrice struct {
 	Set      bool    `json:"set,omitempty"`
 }
 
-// OtohaImageAdminEntry is an image model with what the admin needs to judge it: the price of each size tier and why
-// the app does not get it (Problem), if it does not.
+// OtohaImageSizeBasis tells at which tier a size of an image model is priced and why. Some upstreams draw a different
+// size from the one asked for (1024x1024 comes back 1254x1254) and billing charges the tier of what was drawn, so a
+// size is priced at the highest tier billed for it in the last days (Basis "observed", ObservedOutputSize is one
+// output of that tier); with no such record, at the tier of the size itself (Basis "requested").
+type OtohaImageSizeBasis struct {
+	Size               string `json:"size"`
+	RequestedTier      string `json:"requested_tier"`
+	BilledTier         string `json:"billed_tier"`
+	ObservedOutputSize string `json:"observed_output_size,omitempty"`
+	Basis              string `json:"basis"`
+}
+
+// OtohaImageObservation is a size asked for (RequestedSize) of a model whose output billing charged at Tier, with an
+// OutputSize drawn.
+type OtohaImageObservation struct {
+	Model         string
+	RequestedSize string
+	Tier          string
+	OutputSize    string
+}
+
+// OtohaImageObservations is what an image repository can add when it can read the usage log: the tiers billed for
+// the outputs of a group's image requests since a time, most recent first.
+type OtohaImageObservations interface {
+	ObservedImageOutputs(ctx context.Context, groupID int64, since time.Time) ([]OtohaImageObservation, error)
+}
+
+type otohaImageObservationKey struct{ model, size string }
+
+// otohaImageObservationIndex holds the observations by model and requested size, in the order they came.
+type otohaImageObservationIndex map[otohaImageObservationKey][]OtohaImageObservation
+
+type otohaImageObservationCacheEntry struct {
+	index     otohaImageObservationIndex
+	expiresAt time.Time
+}
+
+func normalizeOtohaImageObservationSize(size string) string {
+	return strings.ToLower(strings.TrimSpace(size))
+}
+
+func indexOtohaImageObservations(rows []OtohaImageObservation) otohaImageObservationIndex {
+	index := otohaImageObservationIndex{}
+	for _, row := range rows {
+		if imageTierRank(row.Tier) == 0 {
+			continue
+		}
+		key := otohaImageObservationKey{model: strings.TrimSpace(row.Model), size: normalizeOtohaImageObservationSize(row.RequestedSize)}
+		row.Tier = strings.ToUpper(strings.TrimSpace(row.Tier))
+		row.OutputSize = strings.TrimSpace(row.OutputSize)
+		index[key] = append(index[key], row)
+	}
+	return index
+}
+
+// inferOtohaImageBilledTier decides the tier a requested size of a model is priced at: the highest tier among the
+// outputs billed for it (the first one when several share it, the most recent when rows come newest first), else the
+// tier of the requested size.
+func inferOtohaImageBilledTier(model, size string, index otohaImageObservationIndex) OtohaImageSizeBasis {
+	basis := OtohaImageSizeBasis{Size: size, Basis: OtohaImageBasisRequested}
+	basis.RequestedTier, _ = ClassifyImageBillingTier(size)
+	basis.BilledTier = basis.RequestedTier
+	var best *OtohaImageObservation
+	rows := index[otohaImageObservationKey{model: strings.TrimSpace(model), size: normalizeOtohaImageObservationSize(size)}]
+	for i := range rows {
+		if best == nil || imageTierRank(rows[i].Tier) > imageTierRank(best.Tier) {
+			best = &rows[i]
+		}
+	}
+	if best != nil {
+		basis.BilledTier, basis.ObservedOutputSize, basis.Basis = best.Tier, best.OutputSize, OtohaImageBasisObserved
+	}
+	return basis
+}
+
+// OtohaImageAdminEntry is an image model with what the admin needs to judge it: the price of each size tier, the tier
+// each size is priced at and why, and why the app does not get it (Problem), if it does not.
 type OtohaImageAdminEntry struct {
 	OtohaImageEntry
+	SizeBasis     []OtohaImageSizeBasis `json:"size_basis"`
 	Prices        []OtohaImageTierPrice `json:"prices"`
 	InCatalog     bool                  `json:"in_catalog"`
 	Problem       string                `json:"problem"`
@@ -212,6 +300,8 @@ func (r otohaImageRate) at(rate float64) float64 {
 type otohaImageItem struct {
 	entry    OtohaImageEntry
 	upstream map[string]float64
+	// tiers is the tier each size is priced at (OtohaImageSizeBasis.BilledTier).
+	tiers map[string]string
 }
 
 type otohaImageOverrideCacheEntry struct {
@@ -354,17 +444,18 @@ func (s *OtohaCatalogService) evaluateImages(ctx context.Context, group *Group, 
 	out := make([]OtohaImageAdminEntry, 0, len(entries))
 	items := make([]otohaImageItem, 0, len(entries))
 	imageRate := otohaImageRateOf(group).at(group.RateMultiplier)
+	observations, observationsRead := s.imageObservations(ctx, group.ID, len(entries) > 0)
 	for _, entry := range entries {
 		if entry.ManualFields == nil {
 			entry.ManualFields = []string{}
 		}
-		item := OtohaImageAdminEntry{OtohaImageEntry: entry, Prices: []OtohaImageTierPrice{}}
+		item := OtohaImageAdminEntry{OtohaImageEntry: entry, Prices: []OtohaImageTierPrice{}, SizeBasis: []OtohaImageSizeBasis{}}
 		route := OtohaModelRoute{}
 		if s.imageRouting != nil {
 			route = s.imageRouting.ImageRoute(ctx, group, entry.ModelID)
 		}
 		item.RoutePlatform = route.Platform
-		item.lookupFailed = route.Failed
+		item.lookupFailed = route.Failed || !observationsRead
 
 		upstream := map[string]float64{}
 		for _, tier := range otohaImageTiers {
@@ -381,10 +472,14 @@ func (s *OtohaCatalogService) evaluateImages(ctx context.Context, group *Group, 
 			})
 		}
 		priced := true
+		tiers := map[string]string{}
 		for _, size := range entry.Sizes {
-			if tier, ok := ClassifyImageBillingTier(size); !ok {
+			basis := inferOtohaImageBilledTier(entry.ModelID, size, observations)
+			item.SizeBasis = append(item.SizeBasis, basis)
+			tiers[size] = basis.BilledTier
+			if basis.BilledTier == "" {
 				priced = false
-			} else if _, has := upstream[tier]; !has {
+			} else if _, has := upstream[basis.BilledTier]; !has {
 				priced = false
 			}
 		}
@@ -403,11 +498,38 @@ func (s *OtohaCatalogService) evaluateImages(ctx context.Context, group *Group, 
 			item.Problem = OtohaCatalogProblemNoPrice
 		default:
 			item.InCatalog = true
-			items = append(items, otohaImageItem{entry: entry, upstream: upstream})
+			items = append(items, otohaImageItem{entry: entry, upstream: upstream, tiers: tiers})
 		}
 		out = append(out, item)
 	}
 	return out, items
+}
+
+// imageObservations reads which tiers billing charged for the outputs of the group's image requests in the last days,
+// kept for a few minutes; false when the usage log could not be read (the sizes are then priced by their own size and
+// the catalog is not remembered). A repository that cannot read it gives none.
+func (s *OtohaCatalogService) imageObservations(ctx context.Context, groupID int64, needed bool) (otohaImageObservationIndex, bool) {
+	observer, ok := s.images.(OtohaImageObservations)
+	if !needed || !ok {
+		return otohaImageObservationIndex{}, true
+	}
+	now := s.now()
+	s.cacheMu.Lock()
+	cached, found := s.imageObs[groupID]
+	s.cacheMu.Unlock()
+	if found && now.Before(cached.expiresAt) {
+		return cached.index, true
+	}
+	rows, err := observer.ObservedImageOutputs(ctx, groupID, now.AddDate(0, 0, -otohaImageObservationDays))
+	if err != nil {
+		logger.L().Warn("otoha_catalog.billed_image_tiers_failed", zap.Int64("group_id", groupID), zap.Error(err))
+		return otohaImageObservationIndex{}, false
+	}
+	index := indexOtohaImageObservations(rows)
+	s.cacheMu.Lock()
+	s.imageObs[groupID] = otohaImageObservationCacheEntry{index: index, expiresAt: now.Add(otohaImageObservationTTL)}
+	s.cacheMu.Unlock()
+	return index, true
 }
 
 // imageTierPrice is the price of one image of a tier before the group's rate: the admin's on the model, else what
@@ -452,7 +574,7 @@ func buildOtohaImageModels(items []otohaImageItem, rate float64) []OtohaImageMod
 			model.Name = entry.ModelID
 		}
 		for _, size := range entry.Sizes {
-			tier, _ := ClassifyImageBillingTier(size)
+			tier := item.tiers[size]
 			model.Sizes = append(model.Sizes, OtohaImageSize{Size: size, Tier: tier, Price: roundOtohaImagePrice(item.upstream[tier] * rate)})
 		}
 		models = append(models, model)

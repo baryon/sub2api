@@ -380,9 +380,11 @@ type OtohaCatalogService struct {
 	cache   map[int64]otohaCatalogCacheEntry
 	// imageOverrides are the prices the admin set on image models, by group, for billing to read.
 	imageOverrides map[int64]otohaImageOverrideCacheEntry
-	generation     map[int64]uint64
-	rebuilds       singleflight.Group
-	now            func() time.Time
+	// imageObs are the tiers billing charged for the outputs of a group's image requests (TASK-77).
+	imageObs   map[int64]otohaImageObservationCacheEntry
+	generation map[int64]uint64
+	rebuilds   singleflight.Group
+	now        func() time.Time
 }
 
 // otohaCatalogItem is an entry that passes into the app's catalog, with its price before any rate.
@@ -440,6 +442,7 @@ func NewOtohaCatalogServiceWithDeps(
 		now:        time.Now,
 
 		imageOverrides: map[int64]otohaImageOverrideCacheEntry{},
+		imageObs:       map[int64]otohaImageObservationCacheEntry{},
 	}
 }
 

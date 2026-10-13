@@ -146,6 +146,18 @@ export interface OtohaImageTierPrice {
   set?: boolean
 }
 
+/**
+ * At which tier a size is priced and why: `observed` when billing recently charged that tier for what the upstream
+ * actually drew (`observed_output_size`), `requested` when there is no such record and the size itself decides.
+ */
+export interface OtohaImageSizeBasis {
+  size: string
+  requested_tier: '1K' | '2K' | '4K'
+  billed_tier: '1K' | '2K' | '4K'
+  observed_output_size?: string
+  basis: 'observed' | 'requested'
+}
+
 export interface OtohaImageAdminEntry extends OtohaImageEntryInput {
   id: number
   group_id: number
@@ -153,6 +165,8 @@ export interface OtohaImageAdminEntry extends OtohaImageEntryInput {
   created_at: string
   updated_at: string
   prices: OtohaImageTierPrice[]
+  /** The tier each size is priced at, and why. */
+  size_basis: OtohaImageSizeBasis[]
   in_catalog: boolean
   problem: OtohaCatalogProblem | 'images_not_allowed'
   route_platform: string

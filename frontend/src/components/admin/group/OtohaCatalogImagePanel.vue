@@ -131,8 +131,14 @@
                   v-for="size in entry.sizes"
                   :key="size"
                   class="whitespace-nowrap rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-700 dark:bg-dark-600 dark:text-gray-300"
+                  :title="sizeTitle(entry, size)"
                 >{{ size }}</span>
               </div>
+              <ul v-if="observedBases(entry).length" class="mt-1 space-y-0.5 text-xs text-gray-500 dark:text-gray-400" data-testid="otoha-catalog-image-billed-basis">
+                <li v-for="basis in observedBases(entry)" :key="basis.size" class="leading-snug">
+                  {{ t('admin.otohaCatalog.images.billedAsObserved', { size: displaySize(basis.size), tier: basis.billed_tier, output: displaySize(basis.observed_output_size!) }) }}
+                </li>
+              </ul>
               <div v-if="entry.qualities.length" class="mt-1 text-xs text-gray-500 dark:text-gray-400">
                 {{ t('admin.otohaCatalog.images.qualitiesLine', { qualities: entry.qualities.join(t('admin.otohaCatalog.preview.separator')) }) }}
               </div>
@@ -324,7 +330,9 @@ import {
   imageSwitchNotice,
   imageUpstreamMissing,
   imagePriceFromText,
-  imageSizeTier,
+  billedImageTier,
+  displayImageSize,
+  observedImageBases,
   parseImageList,
   type ImageTier
 } from '@/views/admin/otohaCatalogPage'
@@ -482,14 +490,30 @@ function formatMoney(value: number): string {
   return '$' + String(Math.round(value * 1e6) / 1e6)
 }
 
-// The tiers the model's sizes fall in, with their prices: the ones the app can be charged.
+// The tiers the model's sizes are charged at, with their prices: the ones the app can be charged. A size is charged
+// at the tier billing recently charged for it, which can be above its own when the upstream draws a larger picture.
 function usedPrices(entry: OtohaImageAdminEntry): OtohaImageTierPrice[] {
-  const used = new Set(entry.sizes.map((size) => imageSizeTier(size)))
+  const used = new Set(entry.sizes.map((size) => billedImageTier(size, entry.size_basis)))
   return (entry.prices ?? []).filter((price) => used.has(price.tier))
 }
 
+function observedBases(entry: OtohaImageAdminEntry) {
+  return observedImageBases(entry.size_basis)
+}
+
+const displaySize = displayImageSize
+
+function sizeTitle(entry: OtohaImageAdminEntry, size: string): string {
+  const basis = (entry.size_basis ?? []).find((b) => b.size === size)
+  if (!basis) return ''
+  return basis.basis === 'observed' && basis.observed_output_size
+    ? t('admin.otohaCatalog.images.billedAsObserved', { size: displaySize(size), tier: basis.billed_tier, output: displaySize(basis.observed_output_size) })
+    : t('admin.otohaCatalog.images.billedAsRequested', { size: displaySize(size), tier: basis.billed_tier })
+}
+
 function sizesInTier(tier: ImageTier): string[] {
-  return parseImageList(sizesText.value).filter((size) => imageSizeTier(size) === tier)
+  const basis = props.entries.find((e) => e.id === editingId.value)?.size_basis
+  return parseImageList(sizesText.value).filter((size) => billedImageTier(size, basis) === tier)
 }
 
 function shownPrice(tier: ImageTier): OtohaImageTierPrice | undefined {
