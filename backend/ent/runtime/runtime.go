@@ -1360,6 +1360,12 @@ func init() {
 	otohacatalogimagemodelDescEdits := otohacatalogimagemodelFields[8].Descriptor()
 	// otohacatalogimagemodel.DefaultEdits holds the default value on creation for the edits field.
 	otohacatalogimagemodel.DefaultEdits = otohacatalogimagemodelDescEdits.Default.(bool)
+	// otohacatalogimagemodelDescSource is the schema descriptor for source field.
+	otohacatalogimagemodelDescSource := otohacatalogimagemodelFields[12].Descriptor()
+	// otohacatalogimagemodel.DefaultSource holds the default value on creation for the source field.
+	otohacatalogimagemodel.DefaultSource = otohacatalogimagemodelDescSource.Default.(string)
+	// otohacatalogimagemodel.SourceValidator is a validator for the "source" field. It is called by the builders before save.
+	otohacatalogimagemodel.SourceValidator = otohacatalogimagemodelDescSource.Validators[0].(func(string) error)
 	otohacatalogmodelMixin := schema.OtohaCatalogModel{}.Mixin()
 	otohacatalogmodelMixinFields0 := otohacatalogmodelMixin[0].Fields()
 	_ = otohacatalogmodelMixinFields0

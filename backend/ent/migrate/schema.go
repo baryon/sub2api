@@ -1114,6 +1114,9 @@ var (
 		{Name: "price_1k", Type: field.TypeFloat64, Nullable: true},
 		{Name: "price_2k", Type: field.TypeFloat64, Nullable: true},
 		{Name: "price_4k", Type: field.TypeFloat64, Nullable: true},
+		{Name: "source", Type: field.TypeString, Size: 16, Default: "manual"},
+		{Name: "manual_fields", Type: field.TypeJSON, Nullable: true},
+		{Name: "unavailable_since", Type: field.TypeTime, Nullable: true},
 		{Name: "group_id", Type: field.TypeInt64},
 	}
 	// OtohaCatalogImageModelsTable holds the schema information for the "otoha_catalog_image_models" table.
@@ -1124,7 +1127,7 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "otoha_catalog_image_models_groups_group",
-				Columns:    []*schema.Column{OtohaCatalogImageModelsColumns[14]},
+				Columns:    []*schema.Column{OtohaCatalogImageModelsColumns[17]},
 				RefColumns: []*schema.Column{GroupsColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
@@ -1133,12 +1136,12 @@ var (
 			{
 				Name:    "otohacatalogimagemodel_group_id_model_id",
 				Unique:  true,
-				Columns: []*schema.Column{OtohaCatalogImageModelsColumns[14], OtohaCatalogImageModelsColumns[3]},
+				Columns: []*schema.Column{OtohaCatalogImageModelsColumns[17], OtohaCatalogImageModelsColumns[3]},
 			},
 			{
 				Name:    "otohacatalogimagemodel_group_id_sort_order",
 				Unique:  false,
-				Columns: []*schema.Column{OtohaCatalogImageModelsColumns[14], OtohaCatalogImageModelsColumns[7]},
+				Columns: []*schema.Column{OtohaCatalogImageModelsColumns[17], OtohaCatalogImageModelsColumns[7]},
 			},
 		},
 	}

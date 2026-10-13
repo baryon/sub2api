@@ -52,6 +52,9 @@ func (r *otohaCatalogImageRepository) CreateImage(ctx context.Context, entry *se
 		SetNillablePrice1k(entry.Price1K).
 		SetNillablePrice2k(entry.Price2K).
 		SetNillablePrice4k(entry.Price4K).
+		SetSource(sourceOrManual(entry.Source)).
+		SetManualFields(entry.ManualFields).
+		SetNillableUnavailableSince(entry.UnavailableSince).
 		Save(ctx)
 	if err != nil {
 		return translatePersistenceError(err, nil, service.ErrOtohaCatalogEntryExists)
@@ -72,7 +75,14 @@ func (r *otohaCatalogImageRepository) UpdateImage(ctx context.Context, entry *se
 		SetSortOrder(entry.SortOrder).
 		SetSizes(entry.Sizes).
 		SetQualities(entry.Qualities).
-		SetEdits(entry.Edits)
+		SetEdits(entry.Edits).
+		SetSource(sourceOrManual(entry.Source)).
+		SetManualFields(entry.ManualFields)
+	if entry.UnavailableSince != nil {
+		update = update.SetUnavailableSince(*entry.UnavailableSince)
+	} else {
+		update = update.ClearUnavailableSince()
+	}
 	if entry.Price1K != nil {
 		update = update.SetPrice1k(*entry.Price1K)
 	} else {
@@ -101,7 +111,18 @@ func (r *otohaCatalogImageRepository) DeleteImage(ctx context.Context, id int64)
 	return translatePersistenceError(err, service.ErrOtohaCatalogEntryNotFound, nil)
 }
 
+func sourceOrManual(source string) string {
+	if source == "" {
+		return service.OtohaImageSourceManual
+	}
+	return source
+}
+
 func otohaImageEntityToService(row *dbent.OtohaCatalogImageModel) service.OtohaImageEntry {
+	manualFields := row.ManualFields
+	if manualFields == nil {
+		manualFields = []string{}
+	}
 	return service.OtohaImageEntry{
 		ID:          row.ID,
 		GroupID:     row.GroupID,
@@ -116,7 +137,11 @@ func otohaImageEntityToService(row *dbent.OtohaCatalogImageModel) service.OtohaI
 		Price1K:     row.Price1k,
 		Price2K:     row.Price2k,
 		Price4K:     row.Price4k,
-		CreatedAt:   row.CreatedAt,
-		UpdatedAt:   row.UpdatedAt,
+
+		Source:           row.Source,
+		ManualFields:     manualFields,
+		UnavailableSince: row.UnavailableSince,
+		CreatedAt:        row.CreatedAt,
+		UpdatedAt:        row.UpdatedAt,
 	}
 }

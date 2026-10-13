@@ -222,7 +222,11 @@ type OtohaCatalogAdminView struct {
 	Entries        []OtohaCatalogAdminEntry `json:"entries"`
 	// ImageEntries are the group's image models with their prices and problems (TASK-73).
 	ImageEntries []OtohaImageAdminEntry `json:"image_entries"`
-	Preview      *OtohaCatalog          `json:"preview"`
+	// ImageDiscovery is what the last check of the group's accounts found; nil before the first check.
+	ImageDiscovery *OtohaImageDiscovery `json:"image_discovery"`
+	// GroupAllowImageGeneration is the group's own switch for image generation, which stays the admin's.
+	GroupAllowImageGeneration bool          `json:"group_allow_image_generation"`
+	Preview                   *OtohaCatalog `json:"preview"`
 }
 
 // OtohaCatalogPrefill is a draft entry filled from upstream metadata, with the prices it would sell at.
@@ -369,6 +373,8 @@ type OtohaCatalogService struct {
 	images       OtohaImageRepository
 	imagePricer  OtohaImagePricer
 	imageRouting OtohaImageRouting
+	// discovery makes the image entries from the group's accounts (TASK-76); set with WithDiscovery.
+	discovery *otohaImageDiscoveryState
 
 	cacheMu sync.Mutex
 	cache   map[int64]otohaCatalogCacheEntry
@@ -556,6 +562,9 @@ func (s *OtohaCatalogService) AdminView(ctx context.Context, groupID int64) (*Ot
 		GroupPlatform:  group.Platform,
 		RateMultiplier: group.RateMultiplier,
 		Entries:        []OtohaCatalogAdminEntry{},
+
+		GroupAllowImageGeneration: group.AllowImageGeneration,
+		ImageDiscovery:            s.lastImageDiscovery(ctx, groupID),
 	}
 	imageEntries, err := s.listImages(ctx, groupID)
 	if err != nil {

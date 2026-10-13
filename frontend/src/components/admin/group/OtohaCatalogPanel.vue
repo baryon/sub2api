@@ -183,7 +183,14 @@
       </table>
     </div>
 
-    <OtohaCatalogImagePanel v-if="view" :group-id="group.id" :entries="view.image_entries ?? []" @changed="load" />
+    <OtohaCatalogImagePanel
+      v-if="view"
+      :group-id="group.id"
+      :entries="view.image_entries ?? []"
+      :discovery="view.image_discovery ?? null"
+      :group-allows-images="view.group_allow_image_generation !== false"
+      @changed="load"
+    />
 
     <section v-if="view" class="rounded-lg border border-gray-200 p-4 dark:border-dark-600" data-testid="otoha-catalog-preview">
       <div class="mb-2 flex flex-wrap items-baseline gap-2">

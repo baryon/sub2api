@@ -67,6 +67,17 @@ func (OtohaCatalogImageModel) Fields() []ent.Field {
 		field.Float("price_4k").
 			Optional().
 			Nillable(),
+		field.String("source").
+			MaxLen(16).
+			Default("manual").
+			Comment("manual: the admin added it; auto: made from the group's accounts (TASK-76)."),
+		field.JSON("manual_fields", []string{}).
+			Optional().
+			Comment("Fields the admin changed on an auto entry; a refresh from the accounts leaves them."),
+		field.Time("unavailable_since").
+			Optional().
+			Nillable().
+			Comment("When the group's accounts stopped listing the model; NULL while they list it."),
 	}
 }
 

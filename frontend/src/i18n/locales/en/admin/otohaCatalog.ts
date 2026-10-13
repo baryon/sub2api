@@ -68,7 +68,8 @@ export default {
       channel_restricted: 'Channel does not allow it',
       no_account: 'No account for it',
       no_price: 'No price',
-      images_not_allowed: 'Drawing not allowed in group'
+      images_not_allowed: 'Drawing not allowed in group',
+      upstream_missing: 'No longer offered by the accounts'
     },
     statusHint: {
       not_allowed: 'Add this model to the group\'s model allowlist to show it.',
@@ -83,6 +84,66 @@ export default {
       no_price: 'The price table has no price for this model. Set one in the group\'s per-model pricing.'
     },
     images: {
+      auto: 'Automatic',
+      autoHint: 'Added automatically from the model lists of the group\'s accounts',
+      autoEditNote: 'This model was added automatically from the accounts\' model lists. What you change stays and is not overwritten when the upstream is checked again.',
+      deleteAutoMessage: 'Remove {model} from the catalog? It is added again the next time the upstream is checked. To hide it for now, turn it off instead.',
+      switchNotice: {
+        title: 'Image models are set up, but the group does not allow drawing yet',
+        body: 'Users cannot draw yet. Once you turn it on, the image models in the catalog work right away.',
+        turnOn: 'Allow drawing',
+        turningOn: 'Turning on…',
+        done: 'The group now allows drawing.',
+        failed: 'Could not turn on drawing. Please try again later.'
+      },
+      discovery: {
+        title: 'Found from accounts',
+        intro: 'The system looks at the models each account in the group offers, adds the image models to the catalog, and sets their sizes and price per picture. What you changed is never overwritten; models the accounts stop offering are taken down for now.',
+        never: 'Not checked yet.',
+        checked: 'Last checked: {time}',
+        checkedAuto: 'Last checked: {time} (automatic)',
+        check: 'Check accounts again',
+        checking: 'Checking…',
+        failed: 'The check failed. Please try again later.',
+        nothingFound: 'No image models were found in the accounts\' model lists.',
+        accountCounts: '{listed} models, {images} of them image models',
+        missing: 'No longer offered by the accounts, taken down for now: {models}',
+        columns: {
+          accounts: 'From accounts',
+          how: 'How it was recognised',
+          result: 'Result'
+        },
+        evidence: {
+          declared: 'The model list says it is an image model',
+          knownFamily: 'The model list gives no type; recognised as a known image model family',
+          builtinCatalog: 'This kind of sign-in has no image model list; judged by the gateway\'s built-in list',
+          unknown: 'Unknown'
+        },
+        result: {
+          added: 'Added',
+          updated: 'Updated',
+          unchanged: 'No change',
+          manualKept: 'Your settings were kept',
+          restored: 'Available again',
+          notAdded: 'Not added',
+          unknown: 'Unknown'
+        },
+        reason: {
+          gatewayNotSupported: 'The gateway\'s image endpoint does not support this model yet',
+          blockedByGroupModels: 'The group\'s model allowlist does not include it',
+          noAccount: 'No account in the group offers this model',
+          channelRestricted: 'The channel restricts this model',
+          noRoute: 'The group cannot reach this model'
+        },
+        accountError: {
+          listFailed: 'Could not get this account\'s model list',
+          unsupported: 'This kind of account has no model list'
+        },
+        skipped: {
+          groupPlatform: 'This kind of group cannot draw, so nothing was checked.',
+          noAccounts: 'The group has no accounts yet, so nothing was checked.'
+        }
+      },
       title: 'Image models',
       intro: 'The Otoha app draws with these models. Choose which sizes it may ask for and what one picture costs.',
       addPlaceholder: 'Enter an image model, for example gpt-image-2',
@@ -132,6 +193,7 @@ export default {
       },
       statusHint: {
         images_not_allowed: 'The group does not allow drawing. Turn on image generation in the group settings.',
+        upstream_missing: 'The accounts\' model lists no longer show this model, so the catalog does not offer it for now.',
         not_allowed: 'Add this model to the group\'s model allowlist to show it.',
         no_route: 'The group cannot tell which provider should draw with this model. Set its provider in the group\'s Composite Routes.',
         channel_restricted: 'The group\'s channel allows only the models it prices, and this is not one of them. Add it to the channel pricing.',

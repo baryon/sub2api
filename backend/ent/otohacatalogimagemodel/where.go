@@ -115,6 +115,16 @@ func Price4k(v float64) predicate.OtohaCatalogImageModel {
 	return predicate.OtohaCatalogImageModel(sql.FieldEQ(FieldPrice4k, v))
 }
 
+// Source applies equality check predicate on the "source" field. It's identical to SourceEQ.
+func Source(v string) predicate.OtohaCatalogImageModel {
+	return predicate.OtohaCatalogImageModel(sql.FieldEQ(FieldSource, v))
+}
+
+// UnavailableSince applies equality check predicate on the "unavailable_since" field. It's identical to UnavailableSinceEQ.
+func UnavailableSince(v time.Time) predicate.OtohaCatalogImageModel {
+	return predicate.OtohaCatalogImageModel(sql.FieldEQ(FieldUnavailableSince, v))
+}
+
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.
 func CreatedAtEQ(v time.Time) predicate.OtohaCatalogImageModel {
 	return predicate.OtohaCatalogImageModel(sql.FieldEQ(FieldCreatedAt, v))
@@ -638,6 +648,131 @@ func Price4kIsNil() predicate.OtohaCatalogImageModel {
 // Price4kNotNil applies the NotNil predicate on the "price_4k" field.
 func Price4kNotNil() predicate.OtohaCatalogImageModel {
 	return predicate.OtohaCatalogImageModel(sql.FieldNotNull(FieldPrice4k))
+}
+
+// SourceEQ applies the EQ predicate on the "source" field.
+func SourceEQ(v string) predicate.OtohaCatalogImageModel {
+	return predicate.OtohaCatalogImageModel(sql.FieldEQ(FieldSource, v))
+}
+
+// SourceNEQ applies the NEQ predicate on the "source" field.
+func SourceNEQ(v string) predicate.OtohaCatalogImageModel {
+	return predicate.OtohaCatalogImageModel(sql.FieldNEQ(FieldSource, v))
+}
+
+// SourceIn applies the In predicate on the "source" field.
+func SourceIn(vs ...string) predicate.OtohaCatalogImageModel {
+	return predicate.OtohaCatalogImageModel(sql.FieldIn(FieldSource, vs...))
+}
+
+// SourceNotIn applies the NotIn predicate on the "source" field.
+func SourceNotIn(vs ...string) predicate.OtohaCatalogImageModel {
+	return predicate.OtohaCatalogImageModel(sql.FieldNotIn(FieldSource, vs...))
+}
+
+// SourceGT applies the GT predicate on the "source" field.
+func SourceGT(v string) predicate.OtohaCatalogImageModel {
+	return predicate.OtohaCatalogImageModel(sql.FieldGT(FieldSource, v))
+}
+
+// SourceGTE applies the GTE predicate on the "source" field.
+func SourceGTE(v string) predicate.OtohaCatalogImageModel {
+	return predicate.OtohaCatalogImageModel(sql.FieldGTE(FieldSource, v))
+}
+
+// SourceLT applies the LT predicate on the "source" field.
+func SourceLT(v string) predicate.OtohaCatalogImageModel {
+	return predicate.OtohaCatalogImageModel(sql.FieldLT(FieldSource, v))
+}
+
+// SourceLTE applies the LTE predicate on the "source" field.
+func SourceLTE(v string) predicate.OtohaCatalogImageModel {
+	return predicate.OtohaCatalogImageModel(sql.FieldLTE(FieldSource, v))
+}
+
+// SourceContains applies the Contains predicate on the "source" field.
+func SourceContains(v string) predicate.OtohaCatalogImageModel {
+	return predicate.OtohaCatalogImageModel(sql.FieldContains(FieldSource, v))
+}
+
+// SourceHasPrefix applies the HasPrefix predicate on the "source" field.
+func SourceHasPrefix(v string) predicate.OtohaCatalogImageModel {
+	return predicate.OtohaCatalogImageModel(sql.FieldHasPrefix(FieldSource, v))
+}
+
+// SourceHasSuffix applies the HasSuffix predicate on the "source" field.
+func SourceHasSuffix(v string) predicate.OtohaCatalogImageModel {
+	return predicate.OtohaCatalogImageModel(sql.FieldHasSuffix(FieldSource, v))
+}
+
+// SourceEqualFold applies the EqualFold predicate on the "source" field.
+func SourceEqualFold(v string) predicate.OtohaCatalogImageModel {
+	return predicate.OtohaCatalogImageModel(sql.FieldEqualFold(FieldSource, v))
+}
+
+// SourceContainsFold applies the ContainsFold predicate on the "source" field.
+func SourceContainsFold(v string) predicate.OtohaCatalogImageModel {
+	return predicate.OtohaCatalogImageModel(sql.FieldContainsFold(FieldSource, v))
+}
+
+// ManualFieldsIsNil applies the IsNil predicate on the "manual_fields" field.
+func ManualFieldsIsNil() predicate.OtohaCatalogImageModel {
+	return predicate.OtohaCatalogImageModel(sql.FieldIsNull(FieldManualFields))
+}
+
+// ManualFieldsNotNil applies the NotNil predicate on the "manual_fields" field.
+func ManualFieldsNotNil() predicate.OtohaCatalogImageModel {
+	return predicate.OtohaCatalogImageModel(sql.FieldNotNull(FieldManualFields))
+}
+
+// UnavailableSinceEQ applies the EQ predicate on the "unavailable_since" field.
+func UnavailableSinceEQ(v time.Time) predicate.OtohaCatalogImageModel {
+	return predicate.OtohaCatalogImageModel(sql.FieldEQ(FieldUnavailableSince, v))
+}
+
+// UnavailableSinceNEQ applies the NEQ predicate on the "unavailable_since" field.
+func UnavailableSinceNEQ(v time.Time) predicate.OtohaCatalogImageModel {
+	return predicate.OtohaCatalogImageModel(sql.FieldNEQ(FieldUnavailableSince, v))
+}
+
+// UnavailableSinceIn applies the In predicate on the "unavailable_since" field.
+func UnavailableSinceIn(vs ...time.Time) predicate.OtohaCatalogImageModel {
+	return predicate.OtohaCatalogImageModel(sql.FieldIn(FieldUnavailableSince, vs...))
+}
+
+// UnavailableSinceNotIn applies the NotIn predicate on the "unavailable_since" field.
+func UnavailableSinceNotIn(vs ...time.Time) predicate.OtohaCatalogImageModel {
+	return predicate.OtohaCatalogImageModel(sql.FieldNotIn(FieldUnavailableSince, vs...))
+}
+
+// UnavailableSinceGT applies the GT predicate on the "unavailable_since" field.
+func UnavailableSinceGT(v time.Time) predicate.OtohaCatalogImageModel {
+	return predicate.OtohaCatalogImageModel(sql.FieldGT(FieldUnavailableSince, v))
+}
+
+// UnavailableSinceGTE applies the GTE predicate on the "unavailable_since" field.
+func UnavailableSinceGTE(v time.Time) predicate.OtohaCatalogImageModel {
+	return predicate.OtohaCatalogImageModel(sql.FieldGTE(FieldUnavailableSince, v))
+}
+
+// UnavailableSinceLT applies the LT predicate on the "unavailable_since" field.
+func UnavailableSinceLT(v time.Time) predicate.OtohaCatalogImageModel {
+	return predicate.OtohaCatalogImageModel(sql.FieldLT(FieldUnavailableSince, v))
+}
+
+// UnavailableSinceLTE applies the LTE predicate on the "unavailable_since" field.
+func UnavailableSinceLTE(v time.Time) predicate.OtohaCatalogImageModel {
+	return predicate.OtohaCatalogImageModel(sql.FieldLTE(FieldUnavailableSince, v))
+}
+
+// UnavailableSinceIsNil applies the IsNil predicate on the "unavailable_since" field.
+func UnavailableSinceIsNil() predicate.OtohaCatalogImageModel {
+	return predicate.OtohaCatalogImageModel(sql.FieldIsNull(FieldUnavailableSince))
+}
+
+// UnavailableSinceNotNil applies the NotNil predicate on the "unavailable_since" field.
+func UnavailableSinceNotNil() predicate.OtohaCatalogImageModel {
+	return predicate.OtohaCatalogImageModel(sql.FieldNotNull(FieldUnavailableSince))
 }
 
 // HasGroup applies the HasEdge predicate on the "group" edge.

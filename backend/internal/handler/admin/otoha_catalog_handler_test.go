@@ -23,6 +23,7 @@ type otohaCatalogAdminStub struct {
 	view     *service.OtohaCatalogAdminView
 	lastCall string
 	imageIn  service.OtohaImageEntryInput
+	trigger  string
 }
 
 func (s *otohaCatalogAdminStub) AdminView(_ context.Context, groupID int64) (*service.OtohaCatalogAdminView, error) {
@@ -85,6 +86,14 @@ func (s *otohaCatalogAdminStub) DeleteImageEntry(_ context.Context, groupID, ent
 	return s.err
 }
 
+func (s *otohaCatalogAdminStub) DiscoverImages(_ context.Context, groupID int64, trigger string) (*service.OtohaImageDiscovery, error) {
+	s.groupID, s.trigger, s.lastCall = groupID, trigger, "discover-images"
+	if s.err != nil {
+		return nil, s.err
+	}
+	return &service.OtohaImageDiscovery{Trigger: trigger, Accounts: []service.OtohaImageDiscoveryAccount{}, Candidates: []service.OtohaImageDiscoveryCandidate{}, Missing: []string{}}, nil
+}
+
 func otohaAdminRouter(stub *otohaCatalogAdminStub) *gin.Engine {
 	return otohaAdminRouterFor(stub, 0)
 }
@@ -104,6 +113,7 @@ func otohaAdminRouterFor(stub *otohaCatalogAdminStub, otohaGroupID int64) *gin.E
 	g.POST("/image-entries", h.CreateImageEntry)
 	g.PUT("/image-entries/:entry_id", h.UpdateImageEntry)
 	g.DELETE("/image-entries/:entry_id", h.DeleteImageEntry)
+	g.POST("/image-discovery", h.DiscoverImages)
 	return r
 }
 
@@ -333,4 +343,24 @@ func TestOtohaCatalogAdminViewCarriesTheImageEntries(t *testing.T) {
 	require.Equal(t, true, entry["in_catalog"])
 	require.Equal(t, "", entry["problem"])
 	require.Equal(t, []any{map[string]any{"tier": "1K", "upstream": 0.04, "sale": 0.06}}, entry["prices"])
+}
+
+func TestOtohaCatalogAdminImageDiscoveryRunsForTheGroupAsAnAdminCheck(t *testing.T) {
+	stub := &otohaCatalogAdminStub{}
+	rec := otohaAdminDo(otohaAdminRouter(stub), http.MethodPost, "/groups/7/otoha-catalog/image-discovery", "")
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	require.Equal(t, "discover-images", stub.lastCall)
+	require.Equal(t, int64(7), stub.groupID)
+	require.Equal(t, service.OtohaImageTriggerAdmin, stub.trigger)
+	require.Contains(t, rec.Body.String(), `"candidates":[]`)
+}
+
+func TestOtohaCatalogAdminImageDiscoveryErrorsAreMappedNotLeaked(t *testing.T) {
+	stub := &otohaCatalogAdminStub{err: service.ErrOtohaImageDiscoveryUnavailable}
+	rec := otohaAdminDo(otohaAdminRouter(stub), http.MethodPost, "/groups/7/otoha-catalog/image-discovery", "")
+	require.GreaterOrEqual(t, rec.Code, http.StatusBadRequest)
+	require.NotContains(t, rec.Body.String(), "panic")
+
+	bad := otohaAdminDo(otohaAdminRouter(&otohaCatalogAdminStub{}), http.MethodPost, "/groups/abc/otoha-catalog/image-discovery", "")
+	require.Equal(t, http.StatusBadRequest, bad.Code)
 }

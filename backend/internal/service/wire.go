@@ -416,6 +416,17 @@ func ProvideOpenAICodexVersionSyncService(
 	return svc
 }
 
+// ProvideOtohaImageDiscoveryRunner starts the scheduled check of the Otoha group's accounts for image models (TASK-76).
+func ProvideOtohaImageDiscoveryRunner(catalog *OtohaCatalogService, cfg *config.Config) *OtohaImageDiscoveryRunner {
+	var groupID int64
+	if cfg != nil {
+		groupID = cfg.Otoha.GroupID
+	}
+	runner := NewOtohaImageDiscoveryRunner(catalog, groupID)
+	runner.Start()
+	return runner
+}
+
 // ProvideClaudeCodeVersionSyncService creates and starts ClaudeCodeVersionSyncService.
 // 出站 Claude Code 身份的版本号靠它跟随官方发布，无需为了跟版本而发新版本；面板可关闭。
 func ProvideClaudeCodeVersionSyncService(
@@ -942,6 +953,7 @@ var ProviderSet = wire.NewSet(
 	wire.Bind(new(GrokOAuthReconciler), new(*TokenRefreshService)),
 	ProvideAccountExpiryService,
 	ProvideOpenAICodexVersionSyncService,
+	ProvideOtohaImageDiscoveryRunner,
 	ProvideClaudeCodeVersionSyncService,
 	ProvideProxyExpiryService,
 	ProvideSubscriptionExpiryService,

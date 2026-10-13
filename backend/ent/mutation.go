@@ -29617,34 +29617,38 @@ func (m *IdentityAdoptionDecisionMutation) ResetEdge(name string) error {
 // OtohaCatalogImageModelMutation represents an operation that mutates the OtohaCatalogImageModel nodes in the graph.
 type OtohaCatalogImageModelMutation struct {
 	config
-	op              Op
-	typ             string
-	id              *int64
-	created_at      *time.Time
-	updated_at      *time.Time
-	model_id        *string
-	name            *string
-	description     *string
-	enabled         *bool
-	sort_order      *int
-	addsort_order   *int
-	sizes           *[]string
-	appendsizes     []string
-	qualities       *[]string
-	appendqualities []string
-	edits           *bool
-	price_1k        *float64
-	addprice_1k     *float64
-	price_2k        *float64
-	addprice_2k     *float64
-	price_4k        *float64
-	addprice_4k     *float64
-	clearedFields   map[string]struct{}
-	group           *int64
-	clearedgroup    bool
-	done            bool
-	oldValue        func(context.Context) (*OtohaCatalogImageModel, error)
-	predicates      []predicate.OtohaCatalogImageModel
+	op                  Op
+	typ                 string
+	id                  *int64
+	created_at          *time.Time
+	updated_at          *time.Time
+	model_id            *string
+	name                *string
+	description         *string
+	enabled             *bool
+	sort_order          *int
+	addsort_order       *int
+	sizes               *[]string
+	appendsizes         []string
+	qualities           *[]string
+	appendqualities     []string
+	edits               *bool
+	price_1k            *float64
+	addprice_1k         *float64
+	price_2k            *float64
+	addprice_2k         *float64
+	price_4k            *float64
+	addprice_4k         *float64
+	source              *string
+	manual_fields       *[]string
+	appendmanual_fields []string
+	unavailable_since   *time.Time
+	clearedFields       map[string]struct{}
+	group               *int64
+	clearedgroup        bool
+	done                bool
+	oldValue            func(context.Context) (*OtohaCatalogImageModel, error)
+	predicates          []predicate.OtohaCatalogImageModel
 }
 
 var _ ent.Mutation = (*OtohaCatalogImageModelMutation)(nil)
@@ -30429,6 +30433,156 @@ func (m *OtohaCatalogImageModelMutation) ResetPrice4k() {
 	delete(m.clearedFields, otohacatalogimagemodel.FieldPrice4k)
 }
 
+// SetSource sets the "source" field.
+func (m *OtohaCatalogImageModelMutation) SetSource(s string) {
+	m.source = &s
+}
+
+// Source returns the value of the "source" field in the mutation.
+func (m *OtohaCatalogImageModelMutation) Source() (r string, exists bool) {
+	v := m.source
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSource returns the old "source" field's value of the OtohaCatalogImageModel entity.
+// If the OtohaCatalogImageModel object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *OtohaCatalogImageModelMutation) OldSource(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSource is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSource requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSource: %w", err)
+	}
+	return oldValue.Source, nil
+}
+
+// ResetSource resets all changes to the "source" field.
+func (m *OtohaCatalogImageModelMutation) ResetSource() {
+	m.source = nil
+}
+
+// SetManualFields sets the "manual_fields" field.
+func (m *OtohaCatalogImageModelMutation) SetManualFields(s []string) {
+	m.manual_fields = &s
+	m.appendmanual_fields = nil
+}
+
+// ManualFields returns the value of the "manual_fields" field in the mutation.
+func (m *OtohaCatalogImageModelMutation) ManualFields() (r []string, exists bool) {
+	v := m.manual_fields
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldManualFields returns the old "manual_fields" field's value of the OtohaCatalogImageModel entity.
+// If the OtohaCatalogImageModel object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *OtohaCatalogImageModelMutation) OldManualFields(ctx context.Context) (v []string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldManualFields is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldManualFields requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldManualFields: %w", err)
+	}
+	return oldValue.ManualFields, nil
+}
+
+// AppendManualFields adds s to the "manual_fields" field.
+func (m *OtohaCatalogImageModelMutation) AppendManualFields(s []string) {
+	m.appendmanual_fields = append(m.appendmanual_fields, s...)
+}
+
+// AppendedManualFields returns the list of values that were appended to the "manual_fields" field in this mutation.
+func (m *OtohaCatalogImageModelMutation) AppendedManualFields() ([]string, bool) {
+	if len(m.appendmanual_fields) == 0 {
+		return nil, false
+	}
+	return m.appendmanual_fields, true
+}
+
+// ClearManualFields clears the value of the "manual_fields" field.
+func (m *OtohaCatalogImageModelMutation) ClearManualFields() {
+	m.manual_fields = nil
+	m.appendmanual_fields = nil
+	m.clearedFields[otohacatalogimagemodel.FieldManualFields] = struct{}{}
+}
+
+// ManualFieldsCleared returns if the "manual_fields" field was cleared in this mutation.
+func (m *OtohaCatalogImageModelMutation) ManualFieldsCleared() bool {
+	_, ok := m.clearedFields[otohacatalogimagemodel.FieldManualFields]
+	return ok
+}
+
+// ResetManualFields resets all changes to the "manual_fields" field.
+func (m *OtohaCatalogImageModelMutation) ResetManualFields() {
+	m.manual_fields = nil
+	m.appendmanual_fields = nil
+	delete(m.clearedFields, otohacatalogimagemodel.FieldManualFields)
+}
+
+// SetUnavailableSince sets the "unavailable_since" field.
+func (m *OtohaCatalogImageModelMutation) SetUnavailableSince(t time.Time) {
+	m.unavailable_since = &t
+}
+
+// UnavailableSince returns the value of the "unavailable_since" field in the mutation.
+func (m *OtohaCatalogImageModelMutation) UnavailableSince() (r time.Time, exists bool) {
+	v := m.unavailable_since
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUnavailableSince returns the old "unavailable_since" field's value of the OtohaCatalogImageModel entity.
+// If the OtohaCatalogImageModel object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *OtohaCatalogImageModelMutation) OldUnavailableSince(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUnavailableSince is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUnavailableSince requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUnavailableSince: %w", err)
+	}
+	return oldValue.UnavailableSince, nil
+}
+
+// ClearUnavailableSince clears the value of the "unavailable_since" field.
+func (m *OtohaCatalogImageModelMutation) ClearUnavailableSince() {
+	m.unavailable_since = nil
+	m.clearedFields[otohacatalogimagemodel.FieldUnavailableSince] = struct{}{}
+}
+
+// UnavailableSinceCleared returns if the "unavailable_since" field was cleared in this mutation.
+func (m *OtohaCatalogImageModelMutation) UnavailableSinceCleared() bool {
+	_, ok := m.clearedFields[otohacatalogimagemodel.FieldUnavailableSince]
+	return ok
+}
+
+// ResetUnavailableSince resets all changes to the "unavailable_since" field.
+func (m *OtohaCatalogImageModelMutation) ResetUnavailableSince() {
+	m.unavailable_since = nil
+	delete(m.clearedFields, otohacatalogimagemodel.FieldUnavailableSince)
+}
+
 // ClearGroup clears the "group" edge to the Group entity.
 func (m *OtohaCatalogImageModelMutation) ClearGroup() {
 	m.clearedgroup = true
@@ -30490,7 +30644,7 @@ func (m *OtohaCatalogImageModelMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *OtohaCatalogImageModelMutation) Fields() []string {
-	fields := make([]string, 0, 14)
+	fields := make([]string, 0, 17)
 	if m.created_at != nil {
 		fields = append(fields, otohacatalogimagemodel.FieldCreatedAt)
 	}
@@ -30533,6 +30687,15 @@ func (m *OtohaCatalogImageModelMutation) Fields() []string {
 	if m.price_4k != nil {
 		fields = append(fields, otohacatalogimagemodel.FieldPrice4k)
 	}
+	if m.source != nil {
+		fields = append(fields, otohacatalogimagemodel.FieldSource)
+	}
+	if m.manual_fields != nil {
+		fields = append(fields, otohacatalogimagemodel.FieldManualFields)
+	}
+	if m.unavailable_since != nil {
+		fields = append(fields, otohacatalogimagemodel.FieldUnavailableSince)
+	}
 	return fields
 }
 
@@ -30569,6 +30732,12 @@ func (m *OtohaCatalogImageModelMutation) Field(name string) (ent.Value, bool) {
 		return m.Price2k()
 	case otohacatalogimagemodel.FieldPrice4k:
 		return m.Price4k()
+	case otohacatalogimagemodel.FieldSource:
+		return m.Source()
+	case otohacatalogimagemodel.FieldManualFields:
+		return m.ManualFields()
+	case otohacatalogimagemodel.FieldUnavailableSince:
+		return m.UnavailableSince()
 	}
 	return nil, false
 }
@@ -30606,6 +30775,12 @@ func (m *OtohaCatalogImageModelMutation) OldField(ctx context.Context, name stri
 		return m.OldPrice2k(ctx)
 	case otohacatalogimagemodel.FieldPrice4k:
 		return m.OldPrice4k(ctx)
+	case otohacatalogimagemodel.FieldSource:
+		return m.OldSource(ctx)
+	case otohacatalogimagemodel.FieldManualFields:
+		return m.OldManualFields(ctx)
+	case otohacatalogimagemodel.FieldUnavailableSince:
+		return m.OldUnavailableSince(ctx)
 	}
 	return nil, fmt.Errorf("unknown OtohaCatalogImageModel field %s", name)
 }
@@ -30713,6 +30888,27 @@ func (m *OtohaCatalogImageModelMutation) SetField(name string, value ent.Value) 
 		}
 		m.SetPrice4k(v)
 		return nil
+	case otohacatalogimagemodel.FieldSource:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSource(v)
+		return nil
+	case otohacatalogimagemodel.FieldManualFields:
+		v, ok := value.([]string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetManualFields(v)
+		return nil
+	case otohacatalogimagemodel.FieldUnavailableSince:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUnavailableSince(v)
+		return nil
 	}
 	return fmt.Errorf("unknown OtohaCatalogImageModel field %s", name)
 }
@@ -30809,6 +31005,12 @@ func (m *OtohaCatalogImageModelMutation) ClearedFields() []string {
 	if m.FieldCleared(otohacatalogimagemodel.FieldPrice4k) {
 		fields = append(fields, otohacatalogimagemodel.FieldPrice4k)
 	}
+	if m.FieldCleared(otohacatalogimagemodel.FieldManualFields) {
+		fields = append(fields, otohacatalogimagemodel.FieldManualFields)
+	}
+	if m.FieldCleared(otohacatalogimagemodel.FieldUnavailableSince) {
+		fields = append(fields, otohacatalogimagemodel.FieldUnavailableSince)
+	}
 	return fields
 }
 
@@ -30837,6 +31039,12 @@ func (m *OtohaCatalogImageModelMutation) ClearField(name string) error {
 		return nil
 	case otohacatalogimagemodel.FieldPrice4k:
 		m.ClearPrice4k()
+		return nil
+	case otohacatalogimagemodel.FieldManualFields:
+		m.ClearManualFields()
+		return nil
+	case otohacatalogimagemodel.FieldUnavailableSince:
+		m.ClearUnavailableSince()
 		return nil
 	}
 	return fmt.Errorf("unknown OtohaCatalogImageModel nullable field %s", name)
@@ -30887,6 +31095,15 @@ func (m *OtohaCatalogImageModelMutation) ResetField(name string) error {
 		return nil
 	case otohacatalogimagemodel.FieldPrice4k:
 		m.ResetPrice4k()
+		return nil
+	case otohacatalogimagemodel.FieldSource:
+		m.ResetSource()
+		return nil
+	case otohacatalogimagemodel.FieldManualFields:
+		m.ResetManualFields()
+		return nil
+	case otohacatalogimagemodel.FieldUnavailableSince:
+		m.ResetUnavailableSince()
 		return nil
 	}
 	return fmt.Errorf("unknown OtohaCatalogImageModel field %s", name)

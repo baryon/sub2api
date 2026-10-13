@@ -6,6 +6,13 @@ import {
   formatCatalogTokens,
   imagePriceFromText,
   imageSizeTier,
+  imageSwitchNotice,
+  imageUpstreamMissing,
+  discoveryEvidenceKey,
+  discoveryResultKey,
+  discoveryReasonKey,
+  discoveryAccountErrorKey,
+  discoverySkippedKey,
   parseImageList,
   initialCatalogGroupId,
   priceTierLines,
@@ -229,5 +236,48 @@ describe('image models', () => {
     expect(imagePriceFromText('-1')).toEqual({ error: 'number' })
     expect(imagePriceFromText('abc')).toEqual({ error: 'number' })
     expect(imagePriceFromText('5000')).toEqual({ error: 'number' })
+  })
+})
+
+describe('image model discovery', () => {
+  it('tells the admin to turn drawing on only when the switch is off and something waits for it', () => {
+    const waiting = [{ problem: 'images_not_allowed' }]
+    expect(imageSwitchNotice(false, waiting, null)).toBe(true)
+    expect(imageSwitchNotice(true, waiting, null)).toBe(false)
+    expect(imageSwitchNotice(undefined, waiting, null)).toBe(false)
+    expect(imageSwitchNotice(false, [{ problem: 'no_account' }], null)).toBe(false)
+    expect(imageSwitchNotice(false, [], null)).toBe(false)
+    expect(imageSwitchNotice(false, [], { candidates: [{ result: 'added' }] })).toBe(true)
+    expect(imageSwitchNotice(false, [], { candidates: [{ result: 'unchanged' }] })).toBe(true)
+    expect(imageSwitchNotice(false, [], { candidates: [{ result: 'not_added' }] })).toBe(false)
+  })
+
+  it('knows an entry whose model the accounts no longer list', () => {
+    expect(imageUpstreamMissing({ problem: 'upstream_missing' })).toBe(true)
+    expect(imageUpstreamMissing({ problem: '', unavailable_since: '2026-10-13T00:00:00Z' })).toBe(true)
+    expect(imageUpstreamMissing({ problem: 'disabled', unavailable_since: null })).toBe(false)
+  })
+
+  it('maps evidence, results, reasons and account errors to plain texts', () => {
+    expect(discoveryEvidenceKey('declared')).toBe('evidence.declared')
+    expect(discoveryEvidenceKey('known_family')).toBe('evidence.knownFamily')
+    expect(discoveryEvidenceKey('builtin_catalog')).toBe('evidence.builtinCatalog')
+    expect(discoveryEvidenceKey('x')).toBe('evidence.unknown')
+    expect(discoveryResultKey('manual_kept')).toBe('result.manualKept')
+    expect(discoveryResultKey('not_added')).toBe('result.notAdded')
+    expect(discoveryResultKey('restored')).toBe('result.restored')
+    expect(discoveryResultKey('x')).toBe('result.unknown')
+    expect(discoveryReasonKey('gateway_not_supported')).toBe('reason.gatewayNotSupported')
+    expect(discoveryReasonKey('blocked_by_group_models')).toBe('reason.blockedByGroupModels')
+    expect(discoveryReasonKey('no_account')).toBe('reason.noAccount')
+    expect(discoveryReasonKey('channel_restricted')).toBe('reason.channelRestricted')
+    expect(discoveryReasonKey('no_route')).toBe('reason.noRoute')
+    expect(discoveryReasonKey('')).toBe('')
+    expect(discoveryAccountErrorKey('list_failed')).toBe('accountError.listFailed')
+    expect(discoveryAccountErrorKey('unsupported')).toBe('accountError.unsupported')
+    expect(discoveryAccountErrorKey('')).toBe('')
+    expect(discoverySkippedKey('group_platform')).toBe('skipped.groupPlatform')
+    expect(discoverySkippedKey('no_accounts')).toBe('skipped.noAccounts')
+    expect(discoverySkippedKey('')).toBe('')
   })
 })

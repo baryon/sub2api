@@ -105,3 +105,47 @@ func TestOtohaCatalogRepositoryRoundTrip(t *testing.T) {
 	require.NoError(t, err)
 	require.Empty(t, list, "a deleted group takes its catalog with it")
 }
+
+// An image entry keeps who made it, the fields the admin changed and when the upstream stopped listing it.
+func TestOtohaCatalogImageRepositoryKeepsDiscoveryState(t *testing.T) {
+	ctx := context.Background()
+	group := mustCreateGroup(t, integrationEntClient, &service.Group{
+		Name: fmt.Sprintf("otoha-catalog-images-%d", time.Now().UnixNano()), Platform: service.PlatformOpenAI, RateMultiplier: 1,
+	})
+	t.Cleanup(func() {
+		_, _ = integrationDB.ExecContext(ctx, "DELETE FROM otoha_catalog_image_models WHERE group_id = $1", group.ID)
+		_, _ = integrationDB.ExecContext(ctx, "DELETE FROM groups WHERE id = $1", group.ID)
+	})
+	repo := NewOtohaCatalogImageRepository(integrationEntClient)
+
+	manual := &service.OtohaImageEntry{GroupID: group.ID, ModelID: "gpt-image-1", Name: "by hand", Enabled: true, Sizes: []string{"1024x1024"}, SortOrder: 10}
+	require.NoError(t, repo.CreateImage(ctx, manual))
+	require.Equal(t, service.OtohaImageSourceManual, manual.Source, "an entry without a source is the admin's")
+	require.Empty(t, manual.ManualFields)
+	require.Nil(t, manual.UnavailableSince)
+
+	auto := &service.OtohaImageEntry{
+		GroupID: group.ID, ModelID: "gpt-image-2", Name: "GPT Image 2", Enabled: true, Sizes: []string{"1024x1024"}, SortOrder: 20,
+		Source: service.OtohaImageSourceAuto, ManualFields: []string{"name"},
+	}
+	require.NoError(t, repo.CreateImage(ctx, auto))
+
+	since := time.Date(2026, 10, 13, 9, 0, 0, 0, time.UTC)
+	auto.UnavailableSince = &since
+	auto.ManualFields = []string{"name", "sizes"}
+	require.NoError(t, repo.UpdateImage(ctx, auto))
+
+	list, err := repo.ListImagesByGroup(ctx, group.ID)
+	require.NoError(t, err)
+	require.Len(t, list, 2)
+	require.Equal(t, service.OtohaImageSourceAuto, list[1].Source)
+	require.Equal(t, []string{"name", "sizes"}, list[1].ManualFields)
+	require.NotNil(t, list[1].UnavailableSince)
+	require.True(t, since.Equal(*list[1].UnavailableSince))
+
+	auto.UnavailableSince = nil
+	require.NoError(t, repo.UpdateImage(ctx, auto))
+	list, err = repo.ListImagesByGroup(ctx, group.ID)
+	require.NoError(t, err)
+	require.Nil(t, list[1].UnavailableSince, "back in the upstream list")
+}

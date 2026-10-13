@@ -5,6 +5,78 @@
       <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">{{ t('admin.otohaCatalog.images.intro') }}</p>
     </div>
 
+    <div
+      v-if="showSwitchNotice"
+      class="flex flex-col gap-3 rounded-lg border border-amber-300 bg-amber-50 p-3 sm:flex-row sm:items-center sm:justify-between dark:border-amber-700 dark:bg-amber-900/20"
+      role="status"
+      data-testid="otoha-catalog-image-switch-notice"
+    >
+      <div class="min-w-0">
+        <p class="font-medium text-amber-900 dark:text-amber-200">{{ t('admin.otohaCatalog.images.switchNotice.title') }}</p>
+        <p class="mt-1 text-sm text-amber-800 dark:text-amber-300">{{ t('admin.otohaCatalog.images.switchNotice.body') }}</p>
+      </div>
+      <button type="button" class="btn btn-primary shrink-0" :disabled="enablingImages" data-testid="otoha-catalog-image-switch-on" @click="turnOnDrawing">
+        {{ enablingImages ? t('admin.otohaCatalog.images.switchNotice.turningOn') : t('admin.otohaCatalog.images.switchNotice.turnOn') }}
+      </button>
+    </div>
+
+    <div class="space-y-3 rounded-lg bg-gray-50 p-3 dark:bg-dark-700" data-testid="otoha-catalog-image-discovery">
+      <div class="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+        <div class="min-w-0">
+          <h5 class="text-sm font-semibold text-gray-800 dark:text-gray-100">{{ t('admin.otohaCatalog.images.discovery.title') }}</h5>
+          <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">{{ t('admin.otohaCatalog.images.discovery.intro') }}</p>
+          <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ checkedLine }}</p>
+        </div>
+        <button type="button" class="btn btn-secondary shrink-0" :disabled="checking" data-testid="otoha-catalog-image-discover" @click="checkUpstream">
+          {{ checking ? t('admin.otohaCatalog.images.discovery.checking') : t('admin.otohaCatalog.images.discovery.check') }}
+        </button>
+      </div>
+
+      <template v-if="discovery && discovery.ran_at">
+        <p v-if="skippedText" class="text-sm text-gray-700 dark:text-gray-300">{{ skippedText }}</p>
+        <template v-else>
+          <ul v-if="discovery.accounts.length" class="space-y-1 text-sm text-gray-700 dark:text-gray-300">
+            <li v-for="account in discovery.accounts" :key="account.id">
+              <span class="font-medium">{{ account.name }}</span>
+              <span class="text-gray-500 dark:text-gray-400">
+                {{ account.error ? ' · ' + accountErrorText(account.error) : ' · ' + t('admin.otohaCatalog.images.discovery.accountCounts', { listed: account.listed, images: account.image_models }) }}
+              </span>
+            </li>
+          </ul>
+          <p v-if="discovery.candidates.length === 0" class="text-sm text-gray-600 dark:text-gray-400">{{ t('admin.otohaCatalog.images.discovery.nothingFound') }}</p>
+          <div v-else class="overflow-x-auto rounded-lg border border-gray-200 bg-white dark:border-dark-600 dark:bg-dark-800">
+            <table class="min-w-full divide-y divide-gray-200 text-sm dark:divide-dark-600">
+              <thead class="bg-gray-50 dark:bg-dark-700">
+                <tr class="text-left text-xs font-medium tracking-wide text-gray-500 dark:text-gray-400">
+                  <th class="px-3 py-2">{{ t('admin.otohaCatalog.columns.model') }}</th>
+                  <th class="px-3 py-2">{{ t('admin.otohaCatalog.images.discovery.columns.accounts') }}</th>
+                  <th class="px-3 py-2">{{ t('admin.otohaCatalog.images.discovery.columns.how') }}</th>
+                  <th class="px-3 py-2">{{ t('admin.otohaCatalog.images.discovery.columns.result') }}</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-gray-100 dark:divide-dark-700">
+                <tr v-for="candidate in discovery.candidates" :key="candidate.model_id" :data-testid="`otoha-catalog-image-candidate-${candidate.model_id}`">
+                  <td class="whitespace-nowrap px-3 py-2">
+                    <div class="font-medium text-gray-900 dark:text-white">{{ candidate.name || candidate.model_id }}</div>
+                    <div class="font-mono text-xs text-gray-500 dark:text-gray-400">{{ candidate.model_id }}</div>
+                  </td>
+                  <td class="px-3 py-2 text-gray-700 dark:text-gray-300">{{ candidate.accounts.join(t('admin.otohaCatalog.preview.separator')) }}</td>
+                  <td class="min-w-[12rem] px-3 py-2 text-gray-700 dark:text-gray-300">{{ evidenceText(candidate.evidence) }}</td>
+                  <td class="min-w-[12rem] px-3 py-2">
+                    <span :class="['badge whitespace-nowrap', candidate.result === 'not_added' ? 'badge-warning' : 'badge-gray']">{{ resultText(candidate.result) }}</span>
+                    <p v-if="candidate.result === 'not_added' && reasonText(candidate.reason)" class="mt-1 max-w-xs text-xs text-gray-500 dark:text-gray-400">{{ reasonText(candidate.reason) }}</p>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p v-if="discovery.missing.length" class="text-sm text-gray-700 dark:text-gray-300">
+            {{ t('admin.otohaCatalog.images.discovery.missing', { models: discovery.missing.join(t('admin.otohaCatalog.preview.separator')) }) }}
+          </p>
+        </template>
+      </template>
+    </div>
+
     <form class="flex flex-col gap-2 sm:flex-row" @submit.prevent="openCreate">
       <input
         v-model="newModelId"
@@ -48,6 +120,10 @@
               <div class="font-medium text-gray-900 dark:text-white">{{ entry.name || entry.model_id }}</div>
               <div class="font-mono text-xs text-gray-500 dark:text-gray-400">{{ entry.model_id }}</div>
               <div v-if="entry.edits" class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.otohaCatalog.images.canEdit') }}</div>
+              <div v-if="entry.source === 'auto' || imageUpstreamMissing(entry)" class="mt-1 flex flex-wrap gap-1">
+                <span v-if="entry.source === 'auto'" class="badge badge-primary whitespace-nowrap" :title="t('admin.otohaCatalog.images.autoHint')">{{ t('admin.otohaCatalog.images.auto') }}</span>
+                <span v-if="imageUpstreamMissing(entry)" class="badge badge-warning whitespace-nowrap" :title="t('admin.otohaCatalog.images.statusHint.upstream_missing')">{{ t('admin.otohaCatalog.status.upstream_missing') }}</span>
+              </div>
             </td>
             <td class="px-3 py-2">
               <div class="flex max-w-[16rem] flex-wrap gap-1">
@@ -117,6 +193,10 @@
     @close="closeEditor"
   >
     <form id="otoha-catalog-image-editor" class="space-y-6" data-testid="otoha-catalog-image-editor" @submit.prevent="save">
+      <p v-if="editingAuto" class="rounded-lg bg-blue-50 p-3 text-sm text-blue-800 dark:bg-blue-900/20 dark:text-blue-200" data-testid="otoha-catalog-image-auto-note">
+        {{ t('admin.otohaCatalog.images.autoEditNote') }}
+      </p>
+
       <section class="space-y-3">
         <div class="grid gap-3 sm:grid-cols-2">
           <label class="block">
@@ -207,7 +287,7 @@
   <ConfirmDialog
     :show="pendingDelete !== null"
     :title="t('admin.otohaCatalog.deleteTitle')"
-    :message="t('admin.otohaCatalog.deleteMessage', { model: pendingDelete?.name || pendingDelete?.model_id || '' })"
+    :message="deleteMessage"
     :confirm-text="t('common.delete')"
     danger
     @confirm="confirmDelete"
@@ -216,20 +296,33 @@
 </template>
 
 <script setup lang="ts">
-import { reactive, ref } from 'vue'
+import { computed, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { adminAPI } from '@/api/admin'
-import type { OtohaImageAdminEntry, OtohaImageEntryInput, OtohaImageTierPrice } from '@/api/admin/otohaCatalog'
+import type {
+  OtohaImageAdminEntry,
+  OtohaImageDiscovery,
+  OtohaImageEntryInput,
+  OtohaImageTierPrice
+} from '@/api/admin/otohaCatalog'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import Toggle from '@/components/common/Toggle.vue'
 import Icon from '@/components/icons/Icon.vue'
+import { formatDateTime } from '@/utils/format'
 import { extractApiErrorCode, extractApiErrorMessage } from '@/utils/apiError'
 import { platformLabel } from '@/utils/platformColors'
 import {
   IMAGE_TIERS,
   checkImageSizes,
+  discoveryAccountErrorKey,
+  discoveryEvidenceKey,
+  discoveryReasonKey,
+  discoveryResultKey,
+  discoverySkippedKey,
+  imageSwitchNotice,
+  imageUpstreamMissing,
   imagePriceFromText,
   imageSizeTier,
   parseImageList,
@@ -244,6 +337,8 @@ const QUALITY = /^[a-z][a-z0-9_-]{0,31}$/
 const props = defineProps<{
   groupId: number
   entries: OtohaImageAdminEntry[]
+  discovery: OtohaImageDiscovery | null
+  groupAllowsImages: boolean
 }>()
 
 const emit = defineEmits<{
@@ -253,7 +348,11 @@ const emit = defineEmits<{
 const { t } = useI18n()
 const appStore = useAppStore()
 
+const DISCOVERY = 'admin.otohaCatalog.images.discovery.'
+
 const newModelId = ref('')
+const checking = ref(false)
+const enablingImages = ref(false)
 const busyIds = reactive(new Set<number>())
 const pendingDelete = ref<OtohaImageAdminEntry | null>(null)
 
@@ -267,6 +366,67 @@ const qualitiesText = ref('')
 // The tiers' prices as typed (empty follows billing) and what billing charges now, for the edited model.
 const priceRows = reactive<{ tier: ImageTier; text: string | number }[]>(IMAGE_TIERS.map((tier) => ({ tier, text: '' })))
 const editorPrices = ref<OtohaImageTierPrice[]>([])
+
+const showSwitchNotice = computed(() => imageSwitchNotice(props.groupAllowsImages, props.entries, props.discovery))
+const editingAuto = computed(() => props.entries.find((e) => e.id === editingId.value)?.source === 'auto')
+const deleteMessage = computed(() => {
+  const entry = pendingDelete.value
+  const model = entry?.name || entry?.model_id || ''
+  return entry?.source === 'auto'
+    ? t('admin.otohaCatalog.images.deleteAutoMessage', { model })
+    : t('admin.otohaCatalog.deleteMessage', { model })
+})
+const checkedLine = computed(() => {
+  const ranAt = props.discovery?.ran_at
+  if (!ranAt) return t(DISCOVERY + 'never')
+  return t(DISCOVERY + (props.discovery?.trigger === 'schedule' ? 'checkedAuto' : 'checked'), { time: formatDateTime(ranAt) })
+})
+const skippedText = computed(() => {
+  const key = discoverySkippedKey(props.discovery?.skipped_reason ?? '')
+  return key ? t(DISCOVERY + key) : ''
+})
+
+function evidenceText(evidence: string): string {
+  return t(DISCOVERY + discoveryEvidenceKey(evidence))
+}
+function resultText(result: string): string {
+  return t(DISCOVERY + discoveryResultKey(result))
+}
+function reasonText(reason: string): string {
+  const key = discoveryReasonKey(reason)
+  return key ? t(DISCOVERY + key) : ''
+}
+function accountErrorText(error: string): string {
+  const key = discoveryAccountErrorKey(error)
+  return key ? t(DISCOVERY + key) : ''
+}
+
+async function checkUpstream() {
+  checking.value = true
+  try {
+    await adminAPI.otohaCatalog.discoverImages(props.groupId)
+    emit('changed')
+  } catch (error) {
+    console.error('Failed to check the upstream accounts for image models:', error)
+    appStore.showError(t(DISCOVERY + 'failed'))
+  } finally {
+    checking.value = false
+  }
+}
+
+async function turnOnDrawing() {
+  enablingImages.value = true
+  try {
+    await adminAPI.groups.update(props.groupId, { allow_image_generation: true })
+    appStore.showSuccess(t('admin.otohaCatalog.images.switchNotice.done'))
+    emit('changed')
+  } catch (error) {
+    console.error('Failed to turn on image generation for the group:', error)
+    appStore.showError(t('admin.otohaCatalog.images.switchNotice.failed'))
+  } finally {
+    enablingImages.value = false
+  }
+}
 
 function emptyInput(modelId: string): OtohaImageEntryInput {
   return {
@@ -358,7 +518,8 @@ function statusHint(entry: OtohaImageAdminEntry): string {
         ? t('admin.otohaCatalog.statusHint.no_account_at', { provider: platformLabel(entry.route_platform) })
         : t('admin.otohaCatalog.statusHint.no_account')
     case 'no_price':
-      return t('admin.otohaCatalog.images.statusHint.no_price')
+    case 'upstream_missing':
+      return t('admin.otohaCatalog.images.statusHint.' + entry.problem)
     default:
       return ''
   }

@@ -258,6 +258,58 @@ func (_u *OtohaCatalogImageModelUpdate) ClearPrice4k() *OtohaCatalogImageModelUp
 	return _u
 }
 
+// SetSource sets the "source" field.
+func (_u *OtohaCatalogImageModelUpdate) SetSource(v string) *OtohaCatalogImageModelUpdate {
+	_u.mutation.SetSource(v)
+	return _u
+}
+
+// SetNillableSource sets the "source" field if the given value is not nil.
+func (_u *OtohaCatalogImageModelUpdate) SetNillableSource(v *string) *OtohaCatalogImageModelUpdate {
+	if v != nil {
+		_u.SetSource(*v)
+	}
+	return _u
+}
+
+// SetManualFields sets the "manual_fields" field.
+func (_u *OtohaCatalogImageModelUpdate) SetManualFields(v []string) *OtohaCatalogImageModelUpdate {
+	_u.mutation.SetManualFields(v)
+	return _u
+}
+
+// AppendManualFields appends value to the "manual_fields" field.
+func (_u *OtohaCatalogImageModelUpdate) AppendManualFields(v []string) *OtohaCatalogImageModelUpdate {
+	_u.mutation.AppendManualFields(v)
+	return _u
+}
+
+// ClearManualFields clears the value of the "manual_fields" field.
+func (_u *OtohaCatalogImageModelUpdate) ClearManualFields() *OtohaCatalogImageModelUpdate {
+	_u.mutation.ClearManualFields()
+	return _u
+}
+
+// SetUnavailableSince sets the "unavailable_since" field.
+func (_u *OtohaCatalogImageModelUpdate) SetUnavailableSince(v time.Time) *OtohaCatalogImageModelUpdate {
+	_u.mutation.SetUnavailableSince(v)
+	return _u
+}
+
+// SetNillableUnavailableSince sets the "unavailable_since" field if the given value is not nil.
+func (_u *OtohaCatalogImageModelUpdate) SetNillableUnavailableSince(v *time.Time) *OtohaCatalogImageModelUpdate {
+	if v != nil {
+		_u.SetUnavailableSince(*v)
+	}
+	return _u
+}
+
+// ClearUnavailableSince clears the value of the "unavailable_since" field.
+func (_u *OtohaCatalogImageModelUpdate) ClearUnavailableSince() *OtohaCatalogImageModelUpdate {
+	_u.mutation.ClearUnavailableSince()
+	return _u
+}
+
 // SetGroup sets the "group" edge to the Group entity.
 func (_u *OtohaCatalogImageModelUpdate) SetGroup(v *Group) *OtohaCatalogImageModelUpdate {
 	return _u.SetGroupID(v.ID)
@@ -320,6 +372,11 @@ func (_u *OtohaCatalogImageModelUpdate) check() error {
 	if v, ok := _u.mutation.Name(); ok {
 		if err := otohacatalogimagemodel.NameValidator(v); err != nil {
 			return &ValidationError{Name: "name", err: fmt.Errorf(`ent: validator failed for field "OtohaCatalogImageModel.name": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.Source(); ok {
+		if err := otohacatalogimagemodel.SourceValidator(v); err != nil {
+			return &ValidationError{Name: "source", err: fmt.Errorf(`ent: validator failed for field "OtohaCatalogImageModel.source": %w`, err)}
 		}
 	}
 	if _u.mutation.GroupCleared() && len(_u.mutation.GroupIDs()) > 0 {
@@ -412,6 +469,26 @@ func (_u *OtohaCatalogImageModelUpdate) sqlSave(ctx context.Context) (_node int,
 	}
 	if _u.mutation.Price4kCleared() {
 		_spec.ClearField(otohacatalogimagemodel.FieldPrice4k, field.TypeFloat64)
+	}
+	if value, ok := _u.mutation.Source(); ok {
+		_spec.SetField(otohacatalogimagemodel.FieldSource, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.ManualFields(); ok {
+		_spec.SetField(otohacatalogimagemodel.FieldManualFields, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedManualFields(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, otohacatalogimagemodel.FieldManualFields, value)
+		})
+	}
+	if _u.mutation.ManualFieldsCleared() {
+		_spec.ClearField(otohacatalogimagemodel.FieldManualFields, field.TypeJSON)
+	}
+	if value, ok := _u.mutation.UnavailableSince(); ok {
+		_spec.SetField(otohacatalogimagemodel.FieldUnavailableSince, field.TypeTime, value)
+	}
+	if _u.mutation.UnavailableSinceCleared() {
+		_spec.ClearField(otohacatalogimagemodel.FieldUnavailableSince, field.TypeTime)
 	}
 	if _u.mutation.GroupCleared() {
 		edge := &sqlgraph.EdgeSpec{
@@ -690,6 +767,58 @@ func (_u *OtohaCatalogImageModelUpdateOne) ClearPrice4k() *OtohaCatalogImageMode
 	return _u
 }
 
+// SetSource sets the "source" field.
+func (_u *OtohaCatalogImageModelUpdateOne) SetSource(v string) *OtohaCatalogImageModelUpdateOne {
+	_u.mutation.SetSource(v)
+	return _u
+}
+
+// SetNillableSource sets the "source" field if the given value is not nil.
+func (_u *OtohaCatalogImageModelUpdateOne) SetNillableSource(v *string) *OtohaCatalogImageModelUpdateOne {
+	if v != nil {
+		_u.SetSource(*v)
+	}
+	return _u
+}
+
+// SetManualFields sets the "manual_fields" field.
+func (_u *OtohaCatalogImageModelUpdateOne) SetManualFields(v []string) *OtohaCatalogImageModelUpdateOne {
+	_u.mutation.SetManualFields(v)
+	return _u
+}
+
+// AppendManualFields appends value to the "manual_fields" field.
+func (_u *OtohaCatalogImageModelUpdateOne) AppendManualFields(v []string) *OtohaCatalogImageModelUpdateOne {
+	_u.mutation.AppendManualFields(v)
+	return _u
+}
+
+// ClearManualFields clears the value of the "manual_fields" field.
+func (_u *OtohaCatalogImageModelUpdateOne) ClearManualFields() *OtohaCatalogImageModelUpdateOne {
+	_u.mutation.ClearManualFields()
+	return _u
+}
+
+// SetUnavailableSince sets the "unavailable_since" field.
+func (_u *OtohaCatalogImageModelUpdateOne) SetUnavailableSince(v time.Time) *OtohaCatalogImageModelUpdateOne {
+	_u.mutation.SetUnavailableSince(v)
+	return _u
+}
+
+// SetNillableUnavailableSince sets the "unavailable_since" field if the given value is not nil.
+func (_u *OtohaCatalogImageModelUpdateOne) SetNillableUnavailableSince(v *time.Time) *OtohaCatalogImageModelUpdateOne {
+	if v != nil {
+		_u.SetUnavailableSince(*v)
+	}
+	return _u
+}
+
+// ClearUnavailableSince clears the value of the "unavailable_since" field.
+func (_u *OtohaCatalogImageModelUpdateOne) ClearUnavailableSince() *OtohaCatalogImageModelUpdateOne {
+	_u.mutation.ClearUnavailableSince()
+	return _u
+}
+
 // SetGroup sets the "group" edge to the Group entity.
 func (_u *OtohaCatalogImageModelUpdateOne) SetGroup(v *Group) *OtohaCatalogImageModelUpdateOne {
 	return _u.SetGroupID(v.ID)
@@ -765,6 +894,11 @@ func (_u *OtohaCatalogImageModelUpdateOne) check() error {
 	if v, ok := _u.mutation.Name(); ok {
 		if err := otohacatalogimagemodel.NameValidator(v); err != nil {
 			return &ValidationError{Name: "name", err: fmt.Errorf(`ent: validator failed for field "OtohaCatalogImageModel.name": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.Source(); ok {
+		if err := otohacatalogimagemodel.SourceValidator(v); err != nil {
+			return &ValidationError{Name: "source", err: fmt.Errorf(`ent: validator failed for field "OtohaCatalogImageModel.source": %w`, err)}
 		}
 	}
 	if _u.mutation.GroupCleared() && len(_u.mutation.GroupIDs()) > 0 {
@@ -874,6 +1008,26 @@ func (_u *OtohaCatalogImageModelUpdateOne) sqlSave(ctx context.Context) (_node *
 	}
 	if _u.mutation.Price4kCleared() {
 		_spec.ClearField(otohacatalogimagemodel.FieldPrice4k, field.TypeFloat64)
+	}
+	if value, ok := _u.mutation.Source(); ok {
+		_spec.SetField(otohacatalogimagemodel.FieldSource, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.ManualFields(); ok {
+		_spec.SetField(otohacatalogimagemodel.FieldManualFields, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedManualFields(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, otohacatalogimagemodel.FieldManualFields, value)
+		})
+	}
+	if _u.mutation.ManualFieldsCleared() {
+		_spec.ClearField(otohacatalogimagemodel.FieldManualFields, field.TypeJSON)
+	}
+	if value, ok := _u.mutation.UnavailableSince(); ok {
+		_spec.SetField(otohacatalogimagemodel.FieldUnavailableSince, field.TypeTime, value)
+	}
+	if _u.mutation.UnavailableSinceCleared() {
+		_spec.ClearField(otohacatalogimagemodel.FieldUnavailableSince, field.TypeTime)
 	}
 	if _u.mutation.GroupCleared() {
 		edge := &sqlgraph.EdgeSpec{

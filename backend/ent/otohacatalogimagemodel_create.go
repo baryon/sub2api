@@ -187,6 +187,40 @@ func (_c *OtohaCatalogImageModelCreate) SetNillablePrice4k(v *float64) *OtohaCat
 	return _c
 }
 
+// SetSource sets the "source" field.
+func (_c *OtohaCatalogImageModelCreate) SetSource(v string) *OtohaCatalogImageModelCreate {
+	_c.mutation.SetSource(v)
+	return _c
+}
+
+// SetNillableSource sets the "source" field if the given value is not nil.
+func (_c *OtohaCatalogImageModelCreate) SetNillableSource(v *string) *OtohaCatalogImageModelCreate {
+	if v != nil {
+		_c.SetSource(*v)
+	}
+	return _c
+}
+
+// SetManualFields sets the "manual_fields" field.
+func (_c *OtohaCatalogImageModelCreate) SetManualFields(v []string) *OtohaCatalogImageModelCreate {
+	_c.mutation.SetManualFields(v)
+	return _c
+}
+
+// SetUnavailableSince sets the "unavailable_since" field.
+func (_c *OtohaCatalogImageModelCreate) SetUnavailableSince(v time.Time) *OtohaCatalogImageModelCreate {
+	_c.mutation.SetUnavailableSince(v)
+	return _c
+}
+
+// SetNillableUnavailableSince sets the "unavailable_since" field if the given value is not nil.
+func (_c *OtohaCatalogImageModelCreate) SetNillableUnavailableSince(v *time.Time) *OtohaCatalogImageModelCreate {
+	if v != nil {
+		_c.SetUnavailableSince(*v)
+	}
+	return _c
+}
+
 // SetGroup sets the "group" edge to the Group entity.
 func (_c *OtohaCatalogImageModelCreate) SetGroup(v *Group) *OtohaCatalogImageModelCreate {
 	return _c.SetGroupID(v.ID)
@@ -255,6 +289,10 @@ func (_c *OtohaCatalogImageModelCreate) defaults() {
 		v := otohacatalogimagemodel.DefaultEdits
 		_c.mutation.SetEdits(v)
 	}
+	if _, ok := _c.mutation.Source(); !ok {
+		v := otohacatalogimagemodel.DefaultSource
+		_c.mutation.SetSource(v)
+	}
 }
 
 // check runs all checks and user-defined validators on the builder.
@@ -295,6 +333,14 @@ func (_c *OtohaCatalogImageModelCreate) check() error {
 	}
 	if _, ok := _c.mutation.Edits(); !ok {
 		return &ValidationError{Name: "edits", err: errors.New(`ent: missing required field "OtohaCatalogImageModel.edits"`)}
+	}
+	if _, ok := _c.mutation.Source(); !ok {
+		return &ValidationError{Name: "source", err: errors.New(`ent: missing required field "OtohaCatalogImageModel.source"`)}
+	}
+	if v, ok := _c.mutation.Source(); ok {
+		if err := otohacatalogimagemodel.SourceValidator(v); err != nil {
+			return &ValidationError{Name: "source", err: fmt.Errorf(`ent: validator failed for field "OtohaCatalogImageModel.source": %w`, err)}
+		}
 	}
 	if len(_c.mutation.GroupIDs()) == 0 {
 		return &ValidationError{Name: "group", err: errors.New(`ent: missing required edge "OtohaCatalogImageModel.group"`)}
@@ -377,6 +423,18 @@ func (_c *OtohaCatalogImageModelCreate) createSpec() (*OtohaCatalogImageModel, *
 	if value, ok := _c.mutation.Price4k(); ok {
 		_spec.SetField(otohacatalogimagemodel.FieldPrice4k, field.TypeFloat64, value)
 		_node.Price4k = &value
+	}
+	if value, ok := _c.mutation.Source(); ok {
+		_spec.SetField(otohacatalogimagemodel.FieldSource, field.TypeString, value)
+		_node.Source = value
+	}
+	if value, ok := _c.mutation.ManualFields(); ok {
+		_spec.SetField(otohacatalogimagemodel.FieldManualFields, field.TypeJSON, value)
+		_node.ManualFields = value
+	}
+	if value, ok := _c.mutation.UnavailableSince(); ok {
+		_spec.SetField(otohacatalogimagemodel.FieldUnavailableSince, field.TypeTime, value)
+		_node.UnavailableSince = &value
 	}
 	if nodes := _c.mutation.GroupIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
@@ -654,6 +712,54 @@ func (u *OtohaCatalogImageModelUpsert) AddPrice4k(v float64) *OtohaCatalogImageM
 // ClearPrice4k clears the value of the "price_4k" field.
 func (u *OtohaCatalogImageModelUpsert) ClearPrice4k() *OtohaCatalogImageModelUpsert {
 	u.SetNull(otohacatalogimagemodel.FieldPrice4k)
+	return u
+}
+
+// SetSource sets the "source" field.
+func (u *OtohaCatalogImageModelUpsert) SetSource(v string) *OtohaCatalogImageModelUpsert {
+	u.Set(otohacatalogimagemodel.FieldSource, v)
+	return u
+}
+
+// UpdateSource sets the "source" field to the value that was provided on create.
+func (u *OtohaCatalogImageModelUpsert) UpdateSource() *OtohaCatalogImageModelUpsert {
+	u.SetExcluded(otohacatalogimagemodel.FieldSource)
+	return u
+}
+
+// SetManualFields sets the "manual_fields" field.
+func (u *OtohaCatalogImageModelUpsert) SetManualFields(v []string) *OtohaCatalogImageModelUpsert {
+	u.Set(otohacatalogimagemodel.FieldManualFields, v)
+	return u
+}
+
+// UpdateManualFields sets the "manual_fields" field to the value that was provided on create.
+func (u *OtohaCatalogImageModelUpsert) UpdateManualFields() *OtohaCatalogImageModelUpsert {
+	u.SetExcluded(otohacatalogimagemodel.FieldManualFields)
+	return u
+}
+
+// ClearManualFields clears the value of the "manual_fields" field.
+func (u *OtohaCatalogImageModelUpsert) ClearManualFields() *OtohaCatalogImageModelUpsert {
+	u.SetNull(otohacatalogimagemodel.FieldManualFields)
+	return u
+}
+
+// SetUnavailableSince sets the "unavailable_since" field.
+func (u *OtohaCatalogImageModelUpsert) SetUnavailableSince(v time.Time) *OtohaCatalogImageModelUpsert {
+	u.Set(otohacatalogimagemodel.FieldUnavailableSince, v)
+	return u
+}
+
+// UpdateUnavailableSince sets the "unavailable_since" field to the value that was provided on create.
+func (u *OtohaCatalogImageModelUpsert) UpdateUnavailableSince() *OtohaCatalogImageModelUpsert {
+	u.SetExcluded(otohacatalogimagemodel.FieldUnavailableSince)
+	return u
+}
+
+// ClearUnavailableSince clears the value of the "unavailable_since" field.
+func (u *OtohaCatalogImageModelUpsert) ClearUnavailableSince() *OtohaCatalogImageModelUpsert {
+	u.SetNull(otohacatalogimagemodel.FieldUnavailableSince)
 	return u
 }
 
@@ -944,6 +1050,62 @@ func (u *OtohaCatalogImageModelUpsertOne) UpdatePrice4k() *OtohaCatalogImageMode
 func (u *OtohaCatalogImageModelUpsertOne) ClearPrice4k() *OtohaCatalogImageModelUpsertOne {
 	return u.Update(func(s *OtohaCatalogImageModelUpsert) {
 		s.ClearPrice4k()
+	})
+}
+
+// SetSource sets the "source" field.
+func (u *OtohaCatalogImageModelUpsertOne) SetSource(v string) *OtohaCatalogImageModelUpsertOne {
+	return u.Update(func(s *OtohaCatalogImageModelUpsert) {
+		s.SetSource(v)
+	})
+}
+
+// UpdateSource sets the "source" field to the value that was provided on create.
+func (u *OtohaCatalogImageModelUpsertOne) UpdateSource() *OtohaCatalogImageModelUpsertOne {
+	return u.Update(func(s *OtohaCatalogImageModelUpsert) {
+		s.UpdateSource()
+	})
+}
+
+// SetManualFields sets the "manual_fields" field.
+func (u *OtohaCatalogImageModelUpsertOne) SetManualFields(v []string) *OtohaCatalogImageModelUpsertOne {
+	return u.Update(func(s *OtohaCatalogImageModelUpsert) {
+		s.SetManualFields(v)
+	})
+}
+
+// UpdateManualFields sets the "manual_fields" field to the value that was provided on create.
+func (u *OtohaCatalogImageModelUpsertOne) UpdateManualFields() *OtohaCatalogImageModelUpsertOne {
+	return u.Update(func(s *OtohaCatalogImageModelUpsert) {
+		s.UpdateManualFields()
+	})
+}
+
+// ClearManualFields clears the value of the "manual_fields" field.
+func (u *OtohaCatalogImageModelUpsertOne) ClearManualFields() *OtohaCatalogImageModelUpsertOne {
+	return u.Update(func(s *OtohaCatalogImageModelUpsert) {
+		s.ClearManualFields()
+	})
+}
+
+// SetUnavailableSince sets the "unavailable_since" field.
+func (u *OtohaCatalogImageModelUpsertOne) SetUnavailableSince(v time.Time) *OtohaCatalogImageModelUpsertOne {
+	return u.Update(func(s *OtohaCatalogImageModelUpsert) {
+		s.SetUnavailableSince(v)
+	})
+}
+
+// UpdateUnavailableSince sets the "unavailable_since" field to the value that was provided on create.
+func (u *OtohaCatalogImageModelUpsertOne) UpdateUnavailableSince() *OtohaCatalogImageModelUpsertOne {
+	return u.Update(func(s *OtohaCatalogImageModelUpsert) {
+		s.UpdateUnavailableSince()
+	})
+}
+
+// ClearUnavailableSince clears the value of the "unavailable_since" field.
+func (u *OtohaCatalogImageModelUpsertOne) ClearUnavailableSince() *OtohaCatalogImageModelUpsertOne {
+	return u.Update(func(s *OtohaCatalogImageModelUpsert) {
+		s.ClearUnavailableSince()
 	})
 }
 
@@ -1400,6 +1562,62 @@ func (u *OtohaCatalogImageModelUpsertBulk) UpdatePrice4k() *OtohaCatalogImageMod
 func (u *OtohaCatalogImageModelUpsertBulk) ClearPrice4k() *OtohaCatalogImageModelUpsertBulk {
 	return u.Update(func(s *OtohaCatalogImageModelUpsert) {
 		s.ClearPrice4k()
+	})
+}
+
+// SetSource sets the "source" field.
+func (u *OtohaCatalogImageModelUpsertBulk) SetSource(v string) *OtohaCatalogImageModelUpsertBulk {
+	return u.Update(func(s *OtohaCatalogImageModelUpsert) {
+		s.SetSource(v)
+	})
+}
+
+// UpdateSource sets the "source" field to the value that was provided on create.
+func (u *OtohaCatalogImageModelUpsertBulk) UpdateSource() *OtohaCatalogImageModelUpsertBulk {
+	return u.Update(func(s *OtohaCatalogImageModelUpsert) {
+		s.UpdateSource()
+	})
+}
+
+// SetManualFields sets the "manual_fields" field.
+func (u *OtohaCatalogImageModelUpsertBulk) SetManualFields(v []string) *OtohaCatalogImageModelUpsertBulk {
+	return u.Update(func(s *OtohaCatalogImageModelUpsert) {
+		s.SetManualFields(v)
+	})
+}
+
+// UpdateManualFields sets the "manual_fields" field to the value that was provided on create.
+func (u *OtohaCatalogImageModelUpsertBulk) UpdateManualFields() *OtohaCatalogImageModelUpsertBulk {
+	return u.Update(func(s *OtohaCatalogImageModelUpsert) {
+		s.UpdateManualFields()
+	})
+}
+
+// ClearManualFields clears the value of the "manual_fields" field.
+func (u *OtohaCatalogImageModelUpsertBulk) ClearManualFields() *OtohaCatalogImageModelUpsertBulk {
+	return u.Update(func(s *OtohaCatalogImageModelUpsert) {
+		s.ClearManualFields()
+	})
+}
+
+// SetUnavailableSince sets the "unavailable_since" field.
+func (u *OtohaCatalogImageModelUpsertBulk) SetUnavailableSince(v time.Time) *OtohaCatalogImageModelUpsertBulk {
+	return u.Update(func(s *OtohaCatalogImageModelUpsert) {
+		s.SetUnavailableSince(v)
+	})
+}
+
+// UpdateUnavailableSince sets the "unavailable_since" field to the value that was provided on create.
+func (u *OtohaCatalogImageModelUpsertBulk) UpdateUnavailableSince() *OtohaCatalogImageModelUpsertBulk {
+	return u.Update(func(s *OtohaCatalogImageModelUpsert) {
+		s.UpdateUnavailableSince()
+	})
+}
+
+// ClearUnavailableSince clears the value of the "unavailable_since" field.
+func (u *OtohaCatalogImageModelUpsertBulk) ClearUnavailableSince() *OtohaCatalogImageModelUpsertBulk {
+	return u.Update(func(s *OtohaCatalogImageModelUpsert) {
+		s.ClearUnavailableSince()
 	})
 }
 

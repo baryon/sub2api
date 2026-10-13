@@ -299,3 +299,106 @@ export function imagePriceFromText(value: number | string | null | undefined): {
   if (n === null || n < 0 || n > IMAGE_PRICE_MAX) return { error: 'number' }
   return { price: n }
 }
+
+/** Candidates the last check put in (or kept in) the catalog: the ones that wait only for the group's drawing switch. */
+const DISCOVERY_IN_CATALOG = ['added', 'updated', 'unchanged', 'restored', 'manual_kept']
+
+interface ImageSwitchEntry {
+  problem: string
+}
+
+interface ImageSwitchDiscovery {
+  candidates: { result: string }[]
+}
+
+/**
+ * Whether to tell the admin that the image models are set up but the group does not allow drawing yet: the group's
+ * switch is off and some model is ready except for it (it stays an explicit admin choice, with a button to turn it on).
+ */
+export function imageSwitchNotice(
+  groupAllowsImages: boolean | null | undefined,
+  entries: ImageSwitchEntry[] | null | undefined,
+  discovery: ImageSwitchDiscovery | null | undefined
+): boolean {
+  if (groupAllowsImages !== false) return false
+  if ((entries ?? []).some((entry) => entry.problem === 'images_not_allowed')) return true
+  return (discovery?.candidates ?? []).some((candidate) => DISCOVERY_IN_CATALOG.includes(candidate.result))
+}
+
+/** An entry the accounts' model lists no longer show. */
+export function imageUpstreamMissing(entry: { problem: string; unavailable_since?: string | null }): boolean {
+  return entry.problem === 'upstream_missing' || !!entry.unavailable_since
+}
+
+/** The text key (under admin.otohaCatalog.images.discovery) for how a model was recognised as an image model. */
+export function discoveryEvidenceKey(evidence: string): string {
+  switch (evidence) {
+    case 'declared':
+      return 'evidence.declared'
+    case 'known_family':
+      return 'evidence.knownFamily'
+    case 'builtin_catalog':
+      return 'evidence.builtinCatalog'
+    default:
+      return 'evidence.unknown'
+  }
+}
+
+/** The text key for what the check did with a model. */
+export function discoveryResultKey(result: string): string {
+  switch (result) {
+    case 'added':
+    case 'updated':
+    case 'unchanged':
+    case 'restored':
+      return 'result.' + result
+    case 'manual_kept':
+      return 'result.manualKept'
+    case 'not_added':
+      return 'result.notAdded'
+    default:
+      return 'result.unknown'
+  }
+}
+
+/** The text key for why a model was not added; empty when there is no reason to show. */
+export function discoveryReasonKey(reason: string): string {
+  switch (reason) {
+    case 'gateway_not_supported':
+      return 'reason.gatewayNotSupported'
+    case 'blocked_by_group_models':
+      return 'reason.blockedByGroupModels'
+    case 'no_account':
+      return 'reason.noAccount'
+    case 'channel_restricted':
+      return 'reason.channelRestricted'
+    case 'no_route':
+      return 'reason.noRoute'
+    default:
+      return ''
+  }
+}
+
+/** The text key for how an account's model list went; empty when it went fine. */
+export function discoveryAccountErrorKey(error: string): string {
+  switch (error) {
+    case 'list_failed':
+      return 'accountError.listFailed'
+    case 'unsupported':
+      return 'accountError.unsupported'
+    default:
+      return ''
+  }
+}
+
+/** The text key for why a whole check was skipped; empty when it ran. */
+export function discoverySkippedKey(reason: string): string {
+  switch (reason) {
+    case 'group_platform':
+      return 'skipped.groupPlatform'
+    case 'no_accounts':
+      return 'skipped.noAccounts'
+    default:
+      return ''
+  }
+}

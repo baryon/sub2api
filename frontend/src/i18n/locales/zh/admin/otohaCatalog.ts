@@ -68,7 +68,8 @@ export default {
       channel_restricted: '渠道不允许',
       no_account: '没有可用账号',
       no_price: '没有价格',
-      images_not_allowed: '分组不允许画图'
+      images_not_allowed: '分组不允许画图',
+      upstream_missing: '上游已不提供'
     },
     statusHint: {
       not_allowed: '把这个模型加入分组的模型白名单后才会显示。',
@@ -83,6 +84,66 @@ export default {
       no_price: '价格表里没有这个模型的价格。请在分组设置的「分组逐模型定价」里为它设价格。'
     },
     images: {
+      auto: '自动',
+      autoHint: '由系统根据分组账号的模型列表自动加入',
+      autoEditNote: '这是系统根据账号的模型列表自动加入的。你改过的内容会一直保留，之后再检查上游时不会被覆盖。',
+      deleteAutoMessage: '从目录中删除 {model}？下次检查上游时会重新加入。只想让它暂时不显示，请改为停用。',
+      switchNotice: {
+        title: '作图条目已配好，但分组还没有打开作图',
+        body: '用户现在还画不了图。打开后，目录里的作图模型立即可用。',
+        turnOn: '打开作图',
+        turningOn: '正在打开…',
+        done: '分组已允许作图。',
+        failed: '没能打开作图，请稍后重试。'
+      },
+      discovery: {
+        title: '上游发现',
+        intro: '系统会查看分组里各个账号提供的模型，把其中的作图模型加进目录，并配好尺寸和每张图的售价。你改过的内容不会被覆盖；账号不再提供的模型会暂时下架。',
+        never: '还没检查过。',
+        checked: '上次检查：{time}',
+        checkedAuto: '上次检查：{time}（自动）',
+        check: '重新检查上游',
+        checking: '正在检查…',
+        failed: '检查失败，请稍后重试。',
+        nothingFound: '账号的模型列表里没有发现作图模型。',
+        accountCounts: '共 {listed} 个模型，其中作图模型 {images} 个',
+        missing: '账号不再提供，已暂时下架：{models}',
+        columns: {
+          accounts: '来自账号',
+          how: '怎么认出的',
+          result: '结果'
+        },
+        evidence: {
+          declared: '上游列表标明是作图模型',
+          knownFamily: '上游列表没写种类，按已知作图模型系列判断',
+          builtinCatalog: '账号登录方式不提供作图模型列表，按网关内置清单判断',
+          unknown: '未知'
+        },
+        result: {
+          added: '已加入',
+          updated: '已更新',
+          unchanged: '没有变化',
+          manualKept: '保留了管理员的设置',
+          restored: '重新可用',
+          notAdded: '没有加入',
+          unknown: '未知'
+        },
+        reason: {
+          gatewayNotSupported: '网关的作图接口暂不支持这个模型',
+          blockedByGroupModels: '分组的模型白名单不包含它',
+          noAccount: '分组里没有账号开放这个模型',
+          channelRestricted: '渠道限制了这个模型',
+          noRoute: '分组到不了这个模型'
+        },
+        accountError: {
+          listFailed: '取不到这个账号的模型列表',
+          unsupported: '这类账号不提供模型列表'
+        },
+        skipped: {
+          groupPlatform: '这个分组的类型不支持作图，没有检查。',
+          noAccounts: '分组里还没有账号，没有检查。'
+        }
+      },
       title: '作图模型',
       intro: 'Otoha App 用这些模型画图。设置它可以要求的尺寸，以及一张图的价格。',
       addPlaceholder: '输入作图模型名称，例如 gpt-image-2',
@@ -132,6 +193,7 @@ export default {
       },
       statusHint: {
         images_not_allowed: '这个分组不允许画图。请在分组设置里打开图片生成。',
+        upstream_missing: '账号的模型列表里已经没有它，目录里暂时不提供。',
         not_allowed: '把这个模型加入分组的模型白名单后才会显示。',
         no_route: '分组无法判断该由哪个服务商来画图。请在分组的混合路由里设置它的服务商。',
         channel_restricted: '分组的渠道只允许它定过价的模型，而这个模型不在其中。请把它加入渠道定价。',

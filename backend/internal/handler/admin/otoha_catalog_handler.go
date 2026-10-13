@@ -21,6 +21,7 @@ type otohaCatalogAdmin interface {
 	CreateImageEntry(ctx context.Context, groupID int64, input service.OtohaImageEntryInput) (*service.OtohaImageEntry, error)
 	UpdateImageEntry(ctx context.Context, groupID, entryID int64, input service.OtohaImageEntryInput) (*service.OtohaImageEntry, error)
 	DeleteImageEntry(ctx context.Context, groupID, entryID int64) error
+	DiscoverImages(ctx context.Context, groupID int64, trigger string) (*service.OtohaImageDiscovery, error)
 }
 
 // OtohaCatalogHandler serves the admin API for a group's Otoha model catalog.
@@ -329,4 +330,19 @@ func (h *OtohaCatalogHandler) DeleteImageEntry(c *gin.Context) {
 		return
 	}
 	response.Success(c, gin.H{"deleted": true})
+}
+
+// DiscoverImages checks the group's accounts for image models now and returns what it found.
+// POST /api/v1/admin/groups/:id/otoha-catalog/image-discovery
+func (h *OtohaCatalogHandler) DiscoverImages(c *gin.Context) {
+	groupID, ok := parsePositiveIDParam(c, "id")
+	if !ok {
+		return
+	}
+	report, err := h.catalog.DiscoverImages(c.Request.Context(), groupID, service.OtohaImageTriggerAdmin)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, report)
 }

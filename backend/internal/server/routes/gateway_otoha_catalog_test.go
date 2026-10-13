@@ -232,6 +232,7 @@ func TestOtohaCatalogAdminRoutesRequireAdminAuthentication(t *testing.T) {
 		{http.MethodPost, "/api/v1/admin/groups/7/otoha-catalog/image-entries"},
 		{http.MethodPut, "/api/v1/admin/groups/7/otoha-catalog/image-entries/1"},
 		{http.MethodDelete, "/api/v1/admin/groups/7/otoha-catalog/image-entries/1"},
+		{http.MethodPost, "/api/v1/admin/groups/7/otoha-catalog/image-discovery"},
 		{http.MethodGet, "/api/v1/admin/otoha-catalog/settings"},
 	} {
 		for _, tc := range []struct {

@@ -19,6 +19,8 @@ func NewOtohaCatalogService(
 	openAIGatewayService *OpenAIGatewayService,
 	accountRepo AccountRepository,
 	imageRepo OtohaImageRepository,
+	accountTestService *AccountTestService,
+	settingRepo SettingRepository,
 ) *OtohaCatalogService {
 	routing := otohaDiagnoserRouting{}
 	if gatewayService != nil {
@@ -50,6 +52,10 @@ func NewOtohaCatalogService(
 		if openAIGatewayService != nil {
 			// Billing charges the prices the admin set on image models, so they are what the app is shown (TASK-73).
 			openAIGatewayService.SetOtohaImagePriceOverrides(svc)
+		}
+		if accountTestService != nil && settingRepo != nil {
+			// The image entries are made from what the group's accounts list (TASK-76).
+			svc.WithDiscovery(NewOtohaImageListingSource(accountRepo, accountTestService), NewOtohaImageDiscoveryStore(settingRepo))
 		}
 	}
 	return svc

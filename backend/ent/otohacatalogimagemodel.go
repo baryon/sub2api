@@ -47,6 +47,12 @@ type OtohaCatalogImageModel struct {
 	Price2k *float64 `json:"price_2k,omitempty"`
 	// Price4k holds the value of the "price_4k" field.
 	Price4k *float64 `json:"price_4k,omitempty"`
+	// manual: the admin added it; auto: made from the group's accounts (TASK-76).
+	Source string `json:"source,omitempty"`
+	// Fields the admin changed on an auto entry; a refresh from the accounts leaves them.
+	ManualFields []string `json:"manual_fields,omitempty"`
+	// When the group's accounts stopped listing the model; NULL while they list it.
+	UnavailableSince *time.Time `json:"unavailable_since,omitempty"`
 	// Edges holds the relations/edges for other nodes in the graph.
 	// The values are being populated by the OtohaCatalogImageModelQuery when eager-loading is set.
 	Edges        OtohaCatalogImageModelEdges `json:"edges"`
@@ -78,7 +84,7 @@ func (*OtohaCatalogImageModel) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case otohacatalogimagemodel.FieldSizes, otohacatalogimagemodel.FieldQualities:
+		case otohacatalogimagemodel.FieldSizes, otohacatalogimagemodel.FieldQualities, otohacatalogimagemodel.FieldManualFields:
 			values[i] = new([]byte)
 		case otohacatalogimagemodel.FieldEnabled, otohacatalogimagemodel.FieldEdits:
 			values[i] = new(sql.NullBool)
@@ -86,9 +92,9 @@ func (*OtohaCatalogImageModel) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullFloat64)
 		case otohacatalogimagemodel.FieldID, otohacatalogimagemodel.FieldGroupID, otohacatalogimagemodel.FieldSortOrder:
 			values[i] = new(sql.NullInt64)
-		case otohacatalogimagemodel.FieldModelID, otohacatalogimagemodel.FieldName, otohacatalogimagemodel.FieldDescription:
+		case otohacatalogimagemodel.FieldModelID, otohacatalogimagemodel.FieldName, otohacatalogimagemodel.FieldDescription, otohacatalogimagemodel.FieldSource:
 			values[i] = new(sql.NullString)
-		case otohacatalogimagemodel.FieldCreatedAt, otohacatalogimagemodel.FieldUpdatedAt:
+		case otohacatalogimagemodel.FieldCreatedAt, otohacatalogimagemodel.FieldUpdatedAt, otohacatalogimagemodel.FieldUnavailableSince:
 			values[i] = new(sql.NullTime)
 		default:
 			values[i] = new(sql.UnknownType)
@@ -202,6 +208,27 @@ func (_m *OtohaCatalogImageModel) assignValues(columns []string, values []any) e
 				_m.Price4k = new(float64)
 				*_m.Price4k = value.Float64
 			}
+		case otohacatalogimagemodel.FieldSource:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field source", values[i])
+			} else if value.Valid {
+				_m.Source = value.String
+			}
+		case otohacatalogimagemodel.FieldManualFields:
+			if value, ok := values[i].(*[]byte); !ok {
+				return fmt.Errorf("unexpected type %T for field manual_fields", values[i])
+			} else if value != nil && len(*value) > 0 {
+				if err := json.Unmarshal(*value, &_m.ManualFields); err != nil {
+					return fmt.Errorf("unmarshal field manual_fields: %w", err)
+				}
+			}
+		case otohacatalogimagemodel.FieldUnavailableSince:
+			if value, ok := values[i].(*sql.NullTime); !ok {
+				return fmt.Errorf("unexpected type %T for field unavailable_since", values[i])
+			} else if value.Valid {
+				_m.UnavailableSince = new(time.Time)
+				*_m.UnavailableSince = value.Time
+			}
 		default:
 			_m.selectValues.Set(columns[i], values[i])
 		}
@@ -289,6 +316,17 @@ func (_m *OtohaCatalogImageModel) String() string {
 	if v := _m.Price4k; v != nil {
 		builder.WriteString("price_4k=")
 		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
+	builder.WriteString(", ")
+	builder.WriteString("source=")
+	builder.WriteString(_m.Source)
+	builder.WriteString(", ")
+	builder.WriteString("manual_fields=")
+	builder.WriteString(fmt.Sprintf("%v", _m.ManualFields))
+	builder.WriteString(", ")
+	if v := _m.UnavailableSince; v != nil {
+		builder.WriteString("unavailable_since=")
+		builder.WriteString(v.Format(time.ANSIC))
 	}
 	builder.WriteByte(')')
 	return builder.String()

@@ -15,6 +15,7 @@ export type OtohaCatalogProblem =
   | 'channel_restricted'
   | 'no_account'
   | 'no_price'
+  | 'upstream_missing'
 
 export interface OtohaModelPrice {
   currency: string
@@ -155,6 +156,64 @@ export interface OtohaImageAdminEntry extends OtohaImageEntryInput {
   in_catalog: boolean
   problem: OtohaCatalogProblem | 'images_not_allowed'
   route_platform: string
+  /** 'auto' entries were found from the group's accounts; 'manual' ones were added by an admin. */
+  source: 'manual' | 'auto'
+  /** On an auto entry: the fields an admin changed, which later checks leave alone. */
+  manual_fields: string[]
+  /** Since when the accounts' model lists no longer show the model; null while they do. */
+  unavailable_since: string | null
+}
+
+/** How the accounts' model lists marked a model as an image model. */
+export type OtohaImageEvidence = 'declared' | 'known_family' | 'builtin_catalog'
+export type OtohaImageDeclaredBy =
+  | ''
+  | 'output_modalities'
+  | 'image_generation_models'
+  | 'image_price'
+  | 'type'
+  | 'capabilities'
+export type OtohaImageDiscoveryResult = 'added' | 'updated' | 'unchanged' | 'manual_kept' | 'restored' | 'not_added'
+export type OtohaImageDiscoveryReason =
+  | ''
+  | 'gateway_not_supported'
+  | 'blocked_by_group_models'
+  | 'no_account'
+  | 'channel_restricted'
+  | 'no_route'
+
+export interface OtohaImageDiscoveryAccount {
+  id: number
+  name: string
+  platform: string
+  type: string
+  listed: number
+  image_models: number
+  error: '' | 'list_failed' | 'unsupported'
+}
+
+export interface OtohaImageDiscoveryCandidate {
+  model_id: string
+  name: string
+  /** Names of the accounts that list or serve the model. */
+  accounts: string[]
+  evidence: OtohaImageEvidence
+  declared_by: OtohaImageDeclaredBy
+  result: OtohaImageDiscoveryResult
+  reason: OtohaImageDiscoveryReason
+}
+
+/** What the last check of the group's accounts found, and why something was not added. */
+export interface OtohaImageDiscovery {
+  /** When the check ran (RFC 3339); null when it never ran. */
+  ran_at: string | null
+  trigger: 'admin' | 'schedule' | ''
+  /** Set when the whole check was skipped. */
+  skipped_reason: '' | 'group_platform' | 'no_accounts'
+  accounts: OtohaImageDiscoveryAccount[]
+  candidates: OtohaImageDiscoveryCandidate[]
+  /** Models marked unavailable by this check because the accounts no longer list them. */
+  missing: string[]
 }
 
 /** An image model as the app receives it: each size with its price tier and the price of one image. */
@@ -190,6 +249,9 @@ export interface OtohaCatalogAdminView {
   rate_multiplier: number
   entries: OtohaCatalogAdminEntry[]
   image_entries: OtohaImageAdminEntry[]
+  image_discovery: OtohaImageDiscovery | null
+  /** The group's own switch for drawing (stays an explicit admin choice). */
+  group_allow_image_generation: boolean
   preview: OtohaCatalog | null
 }
 
@@ -267,6 +329,11 @@ export async function deleteImageEntry(groupId: number, entryId: number): Promis
   await apiClient.delete(`/admin/groups/${groupId}/otoha-catalog/image-entries/${entryId}`)
 }
 
+export async function discoverImages(groupId: number): Promise<OtohaImageDiscovery> {
+  const { data } = await apiClient.post<OtohaImageDiscovery>(`/admin/groups/${groupId}/otoha-catalog/image-discovery`)
+  return data
+}
+
 export async function getSettings(): Promise<OtohaCatalogSettings> {
   const { data } = await apiClient.get<OtohaCatalogSettings>('/admin/otoha-catalog/settings')
   return data
@@ -281,6 +348,7 @@ export const otohaCatalogAPI = {
   createImageEntry,
   updateImageEntry,
   deleteImageEntry,
+  discoverImages,
   reorder,
   prefill
 }

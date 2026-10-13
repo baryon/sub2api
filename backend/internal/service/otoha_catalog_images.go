@@ -46,21 +46,27 @@ var (
 // price of one image in that size tier before the group's rate (what the group's own image prices mean); nil follows
 // billing.
 type OtohaImageEntry struct {
-	ID          int64     `json:"id"`
-	GroupID     int64     `json:"group_id"`
-	ModelID     string    `json:"model_id"`
-	Name        string    `json:"name"`
-	Description string    `json:"description"`
-	Enabled     bool      `json:"enabled"`
-	SortOrder   int       `json:"sort_order"`
-	Sizes       []string  `json:"sizes"`
-	Qualities   []string  `json:"qualities"`
-	Edits       bool      `json:"edits"`
-	Price1K     *float64  `json:"price_1k"`
-	Price2K     *float64  `json:"price_2k"`
-	Price4K     *float64  `json:"price_4k"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
+	ID          int64    `json:"id"`
+	GroupID     int64    `json:"group_id"`
+	ModelID     string   `json:"model_id"`
+	Name        string   `json:"name"`
+	Description string   `json:"description"`
+	Enabled     bool     `json:"enabled"`
+	SortOrder   int      `json:"sort_order"`
+	Sizes       []string `json:"sizes"`
+	Qualities   []string `json:"qualities"`
+	Edits       bool     `json:"edits"`
+	Price1K     *float64 `json:"price_1k"`
+	Price2K     *float64 `json:"price_2k"`
+	Price4K     *float64 `json:"price_4k"`
+	// Source is OtohaImageSourceManual (the admin added it) or OtohaImageSourceAuto (made from the group's accounts,
+	// TASK-76). ManualFields are the fields the admin changed on an auto entry, which a refresh leaves alone;
+	// UnavailableSince is when the group's accounts stopped listing the model (auto entries only).
+	Source           string     `json:"source"`
+	ManualFields     []string   `json:"manual_fields"`
+	UnavailableSince *time.Time `json:"unavailable_since"`
+	CreatedAt        time.Time  `json:"created_at"`
+	UpdatedAt        time.Time  `json:"updated_at"`
 }
 
 // priceOf is the price the admin set for a size tier; nil when none.
@@ -272,6 +278,7 @@ func (s *OtohaCatalogService) CreateImageEntry(ctx context.Context, groupID int6
 		return nil, err
 	}
 	entry.GroupID = groupID
+	entry.Source = OtohaImageSourceManual
 	entry.SortOrder = otohaSortOrderStep
 	for _, e := range existing {
 		if e.SortOrder+otohaSortOrderStep > entry.SortOrder {
@@ -299,6 +306,17 @@ func (s *OtohaCatalogService) UpdateImageEntry(ctx context.Context, groupID, ent
 	entry.GroupID = current.GroupID
 	entry.SortOrder = current.SortOrder
 	entry.CreatedAt = current.CreatedAt
+	entry.Source = current.Source
+	entry.UnavailableSince = current.UnavailableSince
+	if current.Source == OtohaImageSourceAuto {
+		// What the admin changes stays theirs: a later check of the accounts refreshes only the rest.
+		entry.ManualFields = append([]string{}, current.ManualFields...)
+		for _, field := range changedOtohaImageFields(*current, entry) {
+			if !otohaContains(entry.ManualFields, field) {
+				entry.ManualFields = append(entry.ManualFields, field)
+			}
+		}
+	}
 	if err := s.images.UpdateImage(ctx, &entry); err != nil {
 		return nil, err
 	}
@@ -337,6 +355,9 @@ func (s *OtohaCatalogService) evaluateImages(ctx context.Context, group *Group, 
 	items := make([]otohaImageItem, 0, len(entries))
 	imageRate := otohaImageRateOf(group).at(group.RateMultiplier)
 	for _, entry := range entries {
+		if entry.ManualFields == nil {
+			entry.ManualFields = []string{}
+		}
 		item := OtohaImageAdminEntry{OtohaImageEntry: entry, Prices: []OtohaImageTierPrice{}}
 		route := OtohaModelRoute{}
 		if s.imageRouting != nil {
@@ -370,6 +391,8 @@ func (s *OtohaCatalogService) evaluateImages(ctx context.Context, group *Group, 
 		switch {
 		case !entry.Enabled:
 			item.Problem = OtohaCatalogProblemDisabled
+		case entry.UnavailableSince != nil:
+			item.Problem = OtohaCatalogProblemUpstreamMissing
 		case group.ModelAllowlistEnabled() && !group.ModelAllowlist.Allows(entry.ModelID):
 			item.Problem = OtohaCatalogProblemNotAllowed
 		case !group.AllowImageGeneration:

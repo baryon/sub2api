@@ -42,6 +42,12 @@ const (
 	FieldPrice2k = "price_2k"
 	// FieldPrice4k holds the string denoting the price_4k field in the database.
 	FieldPrice4k = "price_4k"
+	// FieldSource holds the string denoting the source field in the database.
+	FieldSource = "source"
+	// FieldManualFields holds the string denoting the manual_fields field in the database.
+	FieldManualFields = "manual_fields"
+	// FieldUnavailableSince holds the string denoting the unavailable_since field in the database.
+	FieldUnavailableSince = "unavailable_since"
 	// EdgeGroup holds the string denoting the group edge name in mutations.
 	EdgeGroup = "group"
 	// Table holds the table name of the otohacatalogimagemodel in the database.
@@ -72,6 +78,9 @@ var Columns = []string{
 	FieldPrice1k,
 	FieldPrice2k,
 	FieldPrice4k,
+	FieldSource,
+	FieldManualFields,
+	FieldUnavailableSince,
 }
 
 // ValidColumn reports if the column name is valid (part of the table columns).
@@ -105,6 +114,10 @@ var (
 	DefaultSortOrder int
 	// DefaultEdits holds the default value on creation for the "edits" field.
 	DefaultEdits bool
+	// DefaultSource holds the default value on creation for the "source" field.
+	DefaultSource string
+	// SourceValidator is a validator for the "source" field. It is called by the builders before save.
+	SourceValidator func(string) error
 )
 
 // OrderOption defines the ordering options for the OtohaCatalogImageModel queries.
@@ -173,6 +186,16 @@ func ByPrice2k(opts ...sql.OrderTermOption) OrderOption {
 // ByPrice4k orders the results by the price_4k field.
 func ByPrice4k(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldPrice4k, opts...).ToFunc()
+}
+
+// BySource orders the results by the source field.
+func BySource(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldSource, opts...).ToFunc()
+}
+
+// ByUnavailableSince orders the results by the unavailable_since field.
+func ByUnavailableSince(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldUnavailableSince, opts...).ToFunc()
 }
 
 // ByGroupField orders the results by group field.
