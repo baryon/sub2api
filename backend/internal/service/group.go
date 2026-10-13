@@ -425,21 +425,13 @@ func NormalizeGroupPlatform(platform string) string {
 	return platform
 }
 
+// validateGroupPlatform accepts any platform in the platform list (domain.Platforms) and composite. A fixed list
+// here would leave out platforms added later, the same mistake TASK-80 fixed for account platforms.
 func validateGroupPlatform(platform string) error {
-	switch platform {
-	case PlatformAnthropic,
-		PlatformOpenAI,
-		PlatformGemini,
-		PlatformAntigravity,
-		PlatformGrok,
-		PlatformDeepSeek,
-		PlatformKimi,
-		PlatformZhipu,
-		PlatformComposite:
-		return nil
-	default:
+	if !domain.IsGroupPlatform(platform) {
 		return infraerrors.BadRequest("GROUP_PLATFORM_INVALID", "group platform is not supported")
 	}
+	return nil
 }
 
 // ValidateProfitControlConfig 是分组利润控制配置的唯一校验来源，handler 与 service 层共用。
