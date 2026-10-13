@@ -121,7 +121,7 @@ func (h *OpenAIGatewayHandler) responsesDeepSeekWebSocket(
 
 			decision, targetPlatform, err := resolveResponsesWebSocketTarget(c, apiKey, connectionCtx, requestedModel)
 			if err != nil {
-				return nil, service.NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "Responses WebSocket model route could not be resolved", err)
+				return nil, responsesWebSocketTurnRouteError(requestedModel, err)
 			}
 			if targetPlatform != service.PlatformDeepSeek {
 				return nil, service.NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "model switch requires reconnect", errOpenAIWSUnsupportedModelSwitch)

@@ -130,8 +130,9 @@ func TestOpenAIResponsesWebSocketRestoresDeepSeekCheckpointBeforeSubsequentTurnA
 	got := runOpenAIResponsesWebSocketUsageLogCase(t, openAIResponsesWSUsageLogCase{
 		firstPayload:  `{"type":"response.create","model":"company-coding-model","input":"first turn"}`,
 		secondPayload: checkpointResponseCreatePayload(t, publicModel, envelope, "continue composite"),
+		// The composite route sends the public model to upstream gpt-5.4, so that is the model the account serves.
 		accountModelMapping: map[string]any{
-			publicModel: "gpt-5.4",
+			"gpt-5.4": "gpt-5.4",
 		},
 		jwtSecret:     openAIWSCheckpointTestJWTSecret,
 		userID:        7844,

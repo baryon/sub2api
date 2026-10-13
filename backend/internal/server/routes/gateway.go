@@ -42,6 +42,38 @@ func RegisterGatewayRoutes(
 	requireGroupAnthropic := middleware.RequireGroupAssignment(settingService, middleware.AnthropicErrorWriter)
 	requireGroupGoogle := middleware.RequireGroupAssignment(settingService, middleware.GoogleErrorWriter)
 
+	writeUnsupportedPlatformFeature := func(c *gin.Context, feature string) {
+		service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalFeatureGate)
+		c.AbortWithStatusJSON(http.StatusNotFound, gin.H{
+			"error": gin.H{
+				"type":    "not_found_error",
+				"message": feature + " is not supported for this platform",
+			},
+		})
+	}
+	// DeepSeek has no Live, alpha search or Responses sub-resources; they are refused at the edge instead of being
+	// forwarded to an upstream that does not have them.
+	rejectDeepSeekFeature := func(feature string, next gin.HandlerFunc) gin.HandlerFunc {
+		return func(c *gin.Context) {
+			if getGroupPlatform(c) == service.PlatformDeepSeek {
+				writeUnsupportedPlatformFeature(c, feature)
+				return
+			}
+			next(c)
+		}
+	}
+	// The one Responses sub-resource DeepSeek serves is the exact standalone /compact (bridged by this gateway).
+	allowDeepSeekStandaloneCompact := func(feature string, next gin.HandlerFunc) gin.HandlerFunc {
+		return func(c *gin.Context) {
+			exactCompactPath := c.Request != nil && c.Request.URL != nil && c.Request.URL.RawPath == "" && c.Param("subpath") == "/compact"
+			if getGroupPlatform(c) == service.PlatformDeepSeek && !exactCompactPath {
+				writeUnsupportedPlatformFeature(c, feature)
+				return
+			}
+			next(c)
+		}
+	}
+
 	// 分组级模型白名单准入：在 apiKeyAuth 之后、compositeTarget 之前，
 	// 保证校验发生在合成路由改写与调度之前，且只看客户端书写的模型名。
 	groupModelAllowlist := middleware.GroupModelAllowlist()
@@ -52,7 +84,8 @@ func RegisterGatewayRoutes(
 	}
 	countTokensHandler := func(c *gin.Context) {
 		switch platform := getGroupPlatform(c); {
-		case platform == service.PlatformGrok:
+		case platform == service.PlatformGrok, platform == service.PlatformDeepSeek:
+			// Grok and DeepSeek are counted locally, without selecting an account.
 			h.OpenAIGateway.GrokCountTokens(c)
 		case domain.UsesOpenAIGateway(platform):
 			h.OpenAIGateway.CountTokens(c)
@@ -208,8 +241,8 @@ func RegisterGatewayRoutes(
 		// Single-model discovery never selects the Codex client_version manifest.
 		gateway.GET("/models/:model", h.Gateway.Models)
 		gateway.GET("/usage", h.Gateway.Usage)
-		gateway.POST("/live", h.OpenAIGateway.Live)
-		gateway.GET("/live/:call_id", h.OpenAIGateway.LiveSideband)
+		gateway.POST("/live", rejectDeepSeekFeature("Live API", h.OpenAIGateway.Live))
+		gateway.GET("/live/:call_id", rejectDeepSeekFeature("Live API", h.OpenAIGateway.LiveSideband))
 		// OpenAI Responses API: auto-route based on group platform
 		gateway.POST("/responses", func(c *gin.Context) {
 			if isOpenAIResponsesCompatibleGatewayPlatform(c) {
@@ -218,14 +251,14 @@ func RegisterGatewayRoutes(
 			}
 			h.Gateway.Responses(c)
 		})
-		gateway.POST("/responses/*subpath", guardResponsesSubpath(func(c *gin.Context) {
+		gateway.POST("/responses/*subpath", guardResponsesSubpath(allowDeepSeekStandaloneCompact("Responses subpaths", func(c *gin.Context) {
 			if isOpenAIResponsesCompatibleGatewayPlatform(c) {
 				h.OpenAIGateway.Responses(c)
 				return
 			}
 			h.Gateway.Responses(c)
-		}))
-		gateway.POST("/alpha/search", textBodyLimit, h.OpenAIGateway.AlphaSearch)
+		})))
+		gateway.POST("/alpha/search", textBodyLimit, rejectDeepSeekFeature("Alpha search API", h.OpenAIGateway.AlphaSearch))
 		gateway.GET("/responses", func(c *gin.Context) {
 			h.OpenAIGateway.ResponsesWebSocket(c)
 		})
@@ -376,8 +409,8 @@ func RegisterGatewayRoutes(
 		rootRoute(http.MethodDelete, prefix+"/contents/generations/tasks/:task_id", bodyLimit, h.OpenAIGateway.SeedanceTasks)
 	}
 	rootRoute(http.MethodPost, "/responses", bodyLimit, responsesHandler)
-	rootRoute(http.MethodPost, "/responses/*subpath", bodyLimit, guardResponsesSubpath(responsesHandler))
-	rootRoute(http.MethodPost, "/alpha/search", textBodyLimit, h.OpenAIGateway.AlphaSearch)
+	rootRoute(http.MethodPost, "/responses/*subpath", bodyLimit, guardResponsesSubpath(allowDeepSeekStandaloneCompact("Responses subpaths", responsesHandler)))
+	rootRoute(http.MethodPost, "/alpha/search", textBodyLimit, rejectDeepSeekFeature("Alpha search API", h.OpenAIGateway.AlphaSearch))
 	rootRoute(http.MethodGet, "/responses", bodyLimit, func(c *gin.Context) {
 		h.OpenAIGateway.ResponsesWebSocket(c)
 	})
@@ -387,11 +420,11 @@ func RegisterGatewayRoutes(
 	codexDirect := r.Group("/backend-api/codex")
 	codexDirect.Use(bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), groupModelAllowlist, compositeTarget, requireGroupAnthropic)
 	{
-		codexDirect.POST("/realtime/calls", h.OpenAIGateway.Live)
-		codexDirect.GET("/:call_id", h.OpenAIGateway.LiveSideband)
+		codexDirect.POST("/realtime/calls", rejectDeepSeekFeature("Codex Live API", h.OpenAIGateway.Live))
+		codexDirect.GET("/:call_id", rejectDeepSeekFeature("Codex Live API", h.OpenAIGateway.LiveSideband))
 		codexDirect.POST("/responses", responsesHandler)
-		codexDirect.POST("/responses/*subpath", guardResponsesSubpath(responsesHandler))
-		codexDirect.POST("/alpha/search", textBodyLimit, h.OpenAIGateway.AlphaSearch)
+		codexDirect.POST("/responses/*subpath", guardResponsesSubpath(allowDeepSeekStandaloneCompact("Codex Responses API", responsesHandler)))
+		codexDirect.POST("/alpha/search", textBodyLimit, rejectDeepSeekFeature("Codex alpha search API", h.OpenAIGateway.AlphaSearch))
 		codexDirect.GET("/responses", func(c *gin.Context) {
 			h.OpenAIGateway.ResponsesWebSocket(c)
 		})
@@ -601,10 +634,14 @@ func compositeTargetPlatformMiddleware(resolver *service.CompositeRouteResolver)
 		routePath := c.FullPath()
 		model := requestmodel.FromBodyForRoute(routePath, c.GetHeader("Content-Type"), body)
 		if model != "" {
-			decision, err := resolver.Resolve(c.Request.Context(), apiKey.Group.ID, model, compositeRouteEndpointForPath(c.Request.URL.Path))
+			endpoint := compositeRouteEndpointForPath(c.Request.URL.Path)
+			decision, err := resolver.Resolve(c.Request.Context(), apiKey.Group.ID, model, endpoint)
 			if err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{"type": "server_error", "message": "Failed to resolve composite model route"}})
 				c.Abort()
+				return
+			}
+			if rejectUnsupportedCompositeRouteEndpoint(c, decision, endpoint) {
 				return
 			}
 			if decision.Matched {
@@ -638,6 +675,9 @@ func compositeGeminiTargetPlatformMiddleware(resolver *service.CompositeRouteRes
 					c.Abort()
 					return
 				}
+				if rejectUnsupportedCompositeRouteEndpoint(c, decision, service.CompositeRouteEndpointGemini) {
+					return
+				}
 				if decision.Matched {
 					c.Request = c.Request.WithContext(service.WithCompositeRouteDecision(c.Request.Context(), decision))
 				}
@@ -648,6 +688,25 @@ func compositeGeminiTargetPlatformMiddleware(resolver *service.CompositeRouteRes
 		}
 		c.Next()
 	}
+}
+
+// rejectUnsupportedCompositeRouteEndpoint answers 404 when the provider a Composite route points to cannot serve the
+// inbound endpoint (DeepSeek: no count_tokens, embeddings, images, Gemini). It reports whether it answered.
+func rejectUnsupportedCompositeRouteEndpoint(c *gin.Context, decision service.CompositeRouteDecision, endpoint string) bool {
+	if strings.TrimSpace(decision.TargetPlatform) == "" {
+		return false
+	}
+	if service.CompositeRouteRequestEndpointSupported(decision.TargetPlatform, endpoint) {
+		return false
+	}
+	service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalFeatureGate)
+	c.AbortWithStatusJSON(http.StatusNotFound, gin.H{
+		"error": gin.H{
+			"type":    "not_found_error",
+			"message": endpoint + " is not supported for this platform",
+		},
+	})
+	return true
 }
 
 // grokCustomVoiceEndpoint derives the upstream Voice endpoint for the

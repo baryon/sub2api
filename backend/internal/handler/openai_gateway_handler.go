@@ -2502,6 +2502,9 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 		return
 	}
 	setOpenAIClientTransportWS(c)
+	// The model of a Composite group is only known from the first response.create frame, so the route resolver the
+	// handler was wired with is made available to the WebSocket target resolution.
+	AttachResponsesWebSocketCompositeResolver(c, h.compositeResolver)
 
 	apiKey, ok := middleware2.GetAPIKeyFromContext(c)
 	if !ok {
@@ -2623,7 +2626,12 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 	}
 	decision, requestPlatform, resolveErr := resolveResponsesWebSocketTarget(c, apiKey, ctx, reqModel)
 	if resolveErr != nil {
-		closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, "Responses WebSocket model route could not be resolved")
+		if errors.Is(resolveErr, errResponsesWebSocketCompositeTargetUnresolved) {
+			closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, "Responses WebSocket API only supports OpenAI-compatible models for composite groups")
+			return
+		}
+		reqLog.Error("openai.websocket_composite_route_failed", zap.Error(resolveErr))
+		closeOpenAIClientWS(wsConn, coderws.StatusInternalError, "Failed to resolve composite model route")
 		return
 	}
 	// Keep the client model in the frame for admission, response identity and usage.
