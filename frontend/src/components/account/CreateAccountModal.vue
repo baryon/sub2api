@@ -3483,7 +3483,7 @@
 
       <!-- OpenAI API 长上下文计费开关 -->
       <div
-        v-if="form.platform === 'openai' && (accountCategory === 'oauth-based' || accountCategory === 'apikey')"
+        v-if="form.platform === 'openai' && !hideAccountLongContextBilling && (accountCategory === 'oauth-based' || accountCategory === 'apikey')"
         class="border-t border-gray-200 pt-4 dark:border-dark-600"
       >
         <div class="flex items-center justify-between gap-4">
@@ -4249,6 +4249,7 @@ import {
 import { createStableObjectKeyResolver } from '@/utils/stableObjectKey'
 import { isUpstreamBillingProbeIdentity } from '@/utils/upstreamBillingProbe'
 import { getAccountExpiryTimestamp } from '@/components/account/accountExpiry'
+import { allSelectedGroupsEnableLongContextPricing } from '@/components/account/longContextBilling'
 import { VERTEX_LOCATION_OPTIONS } from '@/constants/account'
 import {
   OPENAI_WS_MODE_CTX_POOL,
@@ -4763,6 +4764,10 @@ const openaiPassthroughEnabled = ref(false)
 // OpenAI Codex namespace 工具摊平兼容开关（仅 OAuth），缺省关闭即原样保留
 const openaiFlattenNamespacesEnabled = ref(false)
 const openAILongContextBillingEnabled = ref(false)
+// 所选分组都已开启分档计费时，账号级长上下文开关多余，隐藏。
+const hideAccountLongContextBilling = computed(() =>
+  allSelectedGroupsEnableLongContextPricing(form.group_ids, props.groups)
+)
 const openAILongContextBillingTouched = ref(false)
 const openAICompactMode = ref<OpenAICompactMode>('auto')
 const openAIResponsesMode = ref<OpenAIResponsesMode>('auto')

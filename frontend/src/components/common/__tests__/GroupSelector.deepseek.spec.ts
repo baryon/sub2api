@@ -3,6 +3,8 @@ import { describe, expect, it, vi } from 'vitest'
 
 import GroupSelector from '../GroupSelector.vue'
 
+// GroupSelector reads the auth store (simple mode hides composite groups); this test covers standard mode.
+vi.mock('@/stores', () => ({ useAuthStore: () => ({ isSimpleMode: false }) }))
 vi.mock('vue-i18n', async () => {
   const actual = await vi.importActual<typeof import('vue-i18n')>('vue-i18n')
   return {

@@ -75,6 +75,7 @@ vi.mock('@/api', () => ({
   userGroupsAPI: {
     getAvailable: getAvailableGroups,
     getUserGroupRates,
+    getClientModels: vi.fn().mockResolvedValue([]),
   },
 }))
 
