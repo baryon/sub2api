@@ -923,13 +923,8 @@ func (s *OtohaCatalogService) evaluate(ctx context.Context, group *Group, entrie
 	return out, items
 }
 
-// buildOtohaCatalog prices the catalog's models at a rate (and its image models at the image rate); the revision
-// covers every price.
-func buildOtohaCatalog(items []otohaCatalogItem, imageItems []otohaImageItem, rate float64, imageRate otohaImageRate) *OtohaCatalog {
-	return buildOtohaCatalogWithMedia(items, imageItems, otohaMediaItems{}, rate, imageRate)
-}
-
-// buildOtohaCatalogWithMedia also prices the video, voice and quick-judgement models (TASK-81).
+// buildOtohaCatalogWithMedia prices the catalog's models at a rate, its image models at the image rate and its video,
+// voice and quick-judgement models (TASK-81); the revision covers every price.
 func buildOtohaCatalogWithMedia(items []otohaCatalogItem, imageItems []otohaImageItem, media otohaMediaItems, rate float64, imageRate otohaImageRate) *OtohaCatalog {
 	catalog := &OtohaCatalog{Schema: OtohaCatalogSchemaVersion, Models: make([]OtohaCatalogModel, 0, len(items))}
 	for _, item := range items {

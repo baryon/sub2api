@@ -36,14 +36,6 @@ func TestDeepSeekDefaultModelsMatchOfficialHarness(t *testing.T) {
 	require.Equal(t, "deepseek-v4-flash", DeepSeekDefaultModelIDs()[0], "callers must receive a detached catalog")
 }
 
-func TestBuildDeepSeekModelsURLUsesProviderRoot(t *testing.T) {
-	t.Parallel()
-
-	require.Equal(t, "https://api.deepseek.com/models", buildDeepSeekModelsURL("https://api.deepseek.com"))
-	require.Equal(t, "https://relay.example/deepseek/models", buildDeepSeekModelsURL("https://relay.example/deepseek"))
-	require.Equal(t, "https://relay.example/models", buildDeepSeekModelsURL("https://relay.example/models"))
-}
-
 func TestBuildDeepSeekUpstreamModelsRequest(t *testing.T) {
 	t.Parallel()
 

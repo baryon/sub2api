@@ -211,10 +211,6 @@ func (s *OtohaCatalogService) listMedia(ctx context.Context, groupID int64) ([]O
 	return s.media.store.LoadMediaEntries(ctx, groupID)
 }
 
-func otohaMediaKnownKind(kind string) bool {
-	return kind == OtohaMediaKindVideo || kind == OtohaMediaKindVoice || kind == OtohaMediaKindQuick
-}
-
 // UpdateMediaEntry changes the name, description and switch of an entry; what differs from the entry before is
 // remembered as the admin's, so a later check of the accounts leaves it.
 func (s *OtohaCatalogService) UpdateMediaEntry(ctx context.Context, groupID int64, input OtohaMediaEntryInput) (*OtohaMediaEntry, error) {
@@ -291,10 +287,6 @@ type otohaMediaItem struct {
 type otohaMediaItems struct {
 	video, voice, quick []otohaMediaItem
 	videoRate           otohaImageRate
-}
-
-func (m otohaMediaItems) any() bool {
-	return len(m.video)+len(m.voice)+len(m.quick) > 0
 }
 
 func otohaVideoRateOf(group *Group) otohaImageRate {

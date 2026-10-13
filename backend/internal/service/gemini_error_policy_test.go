@@ -14,6 +14,12 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// handleGeminiUpstreamError is the model-less form of handleGeminiUpstreamErrorForModel (the whole account cools
+// down). Production callers always know the requested model, so only these tests use it.
+func (s *GeminiMessagesCompatService) handleGeminiUpstreamError(ctx context.Context, account *Account, statusCode int, headers http.Header, body []byte) {
+	s.handleGeminiUpstreamErrorForModel(ctx, account, "", statusCode, headers, body)
+}
+
 // ---------------------------------------------------------------------------
 // TestShouldFailoverGeminiUpstreamError — verifies the failover decision
 // for the ErrorPolicyNone path (original logic preserved).

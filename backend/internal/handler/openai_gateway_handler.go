@@ -447,7 +447,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	}
 
 	setOpsRequestContext(c, "", false)
-	sessionHashBody := body
+	var sessionHashBody []byte
 	stopCompactKeepalive := func() {}
 	defer func() { stopCompactKeepalive() }()
 

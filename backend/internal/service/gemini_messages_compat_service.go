@@ -2997,10 +2997,6 @@ func asInt(v any) (int, bool) {
 	}
 }
 
-func (s *GeminiMessagesCompatService) handleGeminiUpstreamError(ctx context.Context, account *Account, statusCode int, headers http.Header, body []byte) {
-	s.handleGeminiUpstreamErrorForModel(ctx, account, "", statusCode, headers, body)
-}
-
 // geminiModelRateLimitReason marks a model-level cooldown written for an upstream 429 (TASK-85).
 const geminiModelRateLimitReason = "gemini_upstream_429"
 

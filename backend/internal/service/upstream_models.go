@@ -918,43 +918,6 @@ func (s *AccountTestService) buildUpstreamModelsRequest(ctx context.Context, acc
 	}
 }
 
-func (s *AccountTestService) buildDeepSeekUpstreamModelsRequest(ctx context.Context, account *Account) (*http.Request, error) {
-	if account == nil {
-		return nil, newUpstreamModelSyncConfigError("Account is required", nil)
-	}
-	if !account.IsDeepSeekAPIKey() {
-		return nil, newUpstreamModelSyncUnsupportedError(
-			fmt.Sprintf("Unsupported DeepSeek account type for upstream model sync: %s", account.Type), nil,
-		)
-	}
-
-	apiKey := account.GetDeepSeekAPIKey()
-	if apiKey == "" {
-		return nil, newUpstreamModelSyncConfigError("No DeepSeek API key is available", nil)
-	}
-	normalizedBaseURL, err := normalizeDeepSeekBaseURL(account.GetDeepSeekBaseURL())
-	if err != nil {
-		return nil, newUpstreamModelSyncConfigError("Invalid DeepSeek base URL", err)
-	}
-	normalizedBaseURL, err = s.validateUpstreamBaseURL(normalizedBaseURL)
-	if err != nil {
-		return nil, newUpstreamModelSyncConfigError("Invalid DeepSeek base URL", err)
-	}
-
-	reqCtx := WithHTTPUpstreamRedirectsDisabled(WithHTTPUpstreamProfile(ctx, HTTPUpstreamProfileOpenAI))
-	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, buildDeepSeekModelsURL(normalizedBaseURL), nil)
-	if err != nil {
-		return nil, newUpstreamModelSyncConfigError("Invalid DeepSeek model list URL", err)
-	}
-	req.Header.Set("Accept", "application/json")
-	req.Header.Set("Authorization", "Bearer "+apiKey)
-	account.ApplyHeaderOverrides(req.Header)
-	req.Header.Del("X-Api-Key")
-	req.Header.Del("X-Goog-Api-Key")
-	req.Header.Set("Authorization", "Bearer "+apiKey)
-	return req, nil
-}
-
 func (s *AccountTestService) buildGrokUpstreamModelsRequest(ctx context.Context, account *Account) (*http.Request, error) {
 	if account == nil {
 		return nil, newUpstreamModelSyncConfigError("Account is required", nil)
@@ -1365,10 +1328,6 @@ func buildV1ModelsURL(base string) string {
 
 func buildOpenAIModelsURL(base string) string {
 	return buildOpenAIEndpointURL(base, "/v1/models")
-}
-
-func buildDeepSeekModelsURL(base string) string {
-	return buildOpenAIEndpointURL(base, "/models")
 }
 
 // buildVertexPublisherModelsURL 构造 Google 发布方模型列表地址。该接口只有 v1beta1 版本，pageSize 上限 300。

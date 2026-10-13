@@ -40,8 +40,6 @@ const (
 	otohaImageEdgeMin      = 16
 	otohaImageEdgeMax      = 8192
 
-	otohaImageOverrideTTL = 30 * time.Second
-
 	// What the usage log says was billed is read over this window and kept this long (TASK-77).
 	otohaImageObservationDays = 30
 	otohaImageObservationTTL  = 5 * time.Minute
