@@ -558,7 +558,8 @@ func patchGrokResponsesBodyBase(body []byte, upstreamModel string) ([]byte, erro
 	if err != nil {
 		return nil, err
 	}
-	for _, unsupportedField := range openAIResponsesOptionalFields {
+	// xAI rejects `metadata` besides the optional Responses fields it does not implement.
+	for _, unsupportedField := range append([]string{"metadata"}, openAIResponsesOptionalFields...) {
 		if gjson.GetBytes(out, unsupportedField).Exists() {
 			out, err = sjson.DeleteBytes(out, unsupportedField)
 			if err != nil {
