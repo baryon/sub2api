@@ -1921,7 +1921,9 @@ func (s *BillingService) applyModelSpecificPricingPolicyEx(model string, pricing
 	needsCacheCreationPolicy := usesCacheWritePremium && !pricing.CacheCreationPriceExplicit && (pricing.CacheCreationPricePerToken <= 0 ||
 		(pricing.InputPricePerTokenPriority > 0 && pricing.CacheCreationPricePerTokenPriority <= 0))
 	_, hasMaxReasoningMultiplier := pricing.ReasoningEffortMultipliers["max"]
-	needsFable51MaxMultiplier := isClaudeFable51Model(model) && !hasMaxReasoningMultiplier
+	// The built-in 3x max-effort multiplier of Claude Fable 5.1 belongs to the default price card only; a group or
+	// channel card (forceDeepSeekRates false) bills exactly the multipliers the operator configured.
+	needsFable51MaxMultiplier := forceDeepSeekRates && isClaudeFable51Model(model) && !hasMaxReasoningMultiplier
 	fastRatio := openAIModelFastPricingRatio(model)
 	needsOpus55FastMultiplier := claude.IsOpus55(model) && pricing.FastMultiplier == nil
 	needsAstraUltrafast := isOpenAIGPT6AstraModel(normalized)
