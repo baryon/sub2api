@@ -218,7 +218,7 @@ func (s *OpenAIGatewayService) forwardAsRawChatCompletionsWithStartTime(
 		return nil, err
 	}
 	upstreamEndpoint := grokChatRawEndpoint
-	if account.IsDeepSeek() {
+	if account.UsesNativeDeepSeekGateway() {
 		upstreamEndpoint = deepSeekChatCompletionsEndpoint
 	}
 	SetActualOpenAIUpstreamEndpoint(c, upstreamEndpoint)
@@ -298,7 +298,7 @@ func (s *OpenAIGatewayService) forwardAsRawChatCompletionsWithStartTime(
 }
 
 func (s *OpenAIGatewayService) rawChatCompletionsURL(account *Account) (string, error) {
-	if account.IsDeepSeek() {
+	if account.UsesNativeDeepSeekGateway() {
 		return s.deepSeekEndpointURL(account, deepSeekChatCompletionsEndpoint)
 	}
 	if account.Platform == PlatformGrok {

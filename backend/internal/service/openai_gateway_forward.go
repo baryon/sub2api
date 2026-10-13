@@ -35,7 +35,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		return nil, filterErr
 	}
 	body = filteredBody
-	if account != nil && account.IsDeepSeek() {
+	if account != nil && account.UsesNativeDeepSeekGateway() {
 		return s.forwardDeepSeekResponses(ctx, c, account, body)
 	}
 	if result, handled, err := s.maybeForwardDeepSeekRemoteCompaction(ctx, c, account, body); handled {
