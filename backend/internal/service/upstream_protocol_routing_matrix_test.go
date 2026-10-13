@@ -310,6 +310,16 @@ func matchesKnownZhipuNonAPIKeyDifference(tc routingMatrixCase, want, got routin
 		reflect.DeepEqual(got, routingObservation{Error: "account 801 missing api_key", Status: http.StatusOK})
 }
 
+// This fork serves a DeepSeek account that names no upstream protocol (credentials.api_protocol empty) through the
+// DeepSeek-specific gateway: one shared API root, native /chat/completions and /responses endpoints, DeepSeek's own
+// request guards. Main sends such an account through the generic multi-protocol routing (chat_completions by default,
+// /v1/chat/completions). A DeepSeek account that does name a protocol is routed exactly like main, and the Messages
+// ingress is unchanged, so only these protocol-less cases may differ. The Chat/Responses wire for them is covered by
+// the DeepSeek gateway tests (openai_gateway_deepseek_test.go and the deepseek_* files).
+func matchesKnownDeepSeekNativeGatewayDifference(tc routingMatrixCase) bool {
+	return tc.platform == PlatformDeepseek && tc.apiProtocol == "" && tc.ingress.name != "messages"
+}
+
 func TestUpstreamProtocolRoutingMatrixMatchesMainGolden(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	data, err := os.ReadFile(routingMatrixGoldenPath)
@@ -325,6 +335,7 @@ func TestUpstreamProtocolRoutingMatrixMatchesMainGolden(t *testing.T) {
 	var differences []string
 	mismatched := 0
 	knownDifferences := 0
+	knownDeepSeekDifferences := 0
 	for i, tc := range cases {
 		index := golden.Results[i]
 		require.GreaterOrEqual(t, index, 0)
@@ -338,6 +349,10 @@ func TestUpstreamProtocolRoutingMatrixMatchesMainGolden(t *testing.T) {
 			knownDifferences++
 			continue
 		}
+		if matchesKnownDeepSeekNativeGatewayDifference(tc) {
+			knownDeepSeekDifferences++
+			continue
+		}
 		mismatched++
 		if len(differences) < 12 {
 			differences = append(differences, fmt.Sprintf("%s\nmain: %s\ncurrent: %s", tc.key(), want, got))
@@ -347,4 +362,7 @@ func TestUpstreamProtocolRoutingMatrixMatchesMainGolden(t *testing.T) {
 	// 2 account types × 4 modes × 3 probe states × 4 address configurations ×
 	// 2 model spellings. A disappeared or expanded exception requires review.
 	require.Equal(t, 192, knownDifferences, "unexpected change to the declared Zhipu non-API-Key difference")
+	// 4 modes × 3 account types × 3 probe states × 4 address configurations × 3 ingresses × 2 model spellings
+	// = 864 protocol-less DeepSeek cases; every one differs from main by design (see above).
+	require.Equal(t, 864, knownDeepSeekDifferences, "unexpected change to the declared DeepSeek native gateway difference")
 }

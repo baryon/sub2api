@@ -282,6 +282,15 @@ func (a *Account) IsDeepSeek() bool {
 	return a != nil && a.Platform == PlatformDeepSeek
 }
 
+// UsesNativeDeepSeekGateway reports whether a DeepSeek account is served by the DeepSeek-specific gateway
+// (shared API root, native /chat/completions, /responses and /anthropic endpoints, DeepSeek request guards).
+// A DeepSeek account that names an upstream protocol (credentials.api_protocol: adaptive, chat_completions,
+// responses or anthropic, which is what the account form writes) is routed by that protocol like every other
+// multi-protocol provider, with its per-protocol base URLs.
+func (a *Account) UsesNativeDeepSeekGateway() bool {
+	return a.IsDeepSeek() && strings.TrimSpace(a.GetCredential("api_protocol")) == ""
+}
+
 func (a *Account) IsDeepSeekAPIKey() bool {
 	return a.IsDeepSeek() && a.Type == AccountTypeAPIKey
 }

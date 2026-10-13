@@ -387,11 +387,12 @@ func (s *AccountTestService) TestAccountConnection(c *gin.Context, accountID int
 	}
 
 	// Route to platform-specific test method
-	if account.IsDeepSeek() {
+	if usesDeepSeekModelListConnectionTest(account) {
 		return s.testDeepSeekAccountConnection(c, account, modelID)
 	}
 	// 按入站协议分流的多协议供应商（国产厂商等）：按账号协议选测试路径。
-	// DeepSeek 即使标成 chat_completions 也走上面的独立探测。
+	// DeepSeek 即使标成 chat_completions 也走上面的独立探测；adaptive / responses / anthropic
+	// 协议的 DeepSeek 账号与其他国产供应商一样按所选协议逐个端点验证。
 	if account.RoutesProtocolByInbound() {
 		switch account.GetAPIProtocol() {
 		case APIProtocolAdaptive:
@@ -482,6 +483,16 @@ func (s *AccountTestService) testModelRoutedResponsesConnection(c *gin.Context, 
 	c.Writer.Flush()
 	s.sendEvent(c, TestEvent{Type: "test_start", Model: testModelID})
 	return s.testCNProviderAdaptiveResponsesConnection(c, account, testModelID, authToken)
+}
+
+// usesDeepSeekModelListConnectionTest reports whether a DeepSeek account is tested through its lightweight
+// /v1/models probe: accounts that name no protocol and accounts fixed to chat_completions. DeepSeek accounts on
+// adaptive, responses or anthropic are verified endpoint by endpoint like the other multi-protocol providers.
+func usesDeepSeekModelListConnectionTest(account *Account) bool {
+	if !account.IsDeepSeek() {
+		return false
+	}
+	return account.UsesNativeDeepSeekGateway() || account.GetAPIProtocol() == APIProtocolChatCompletions
 }
 
 // usesCNProviderChatCompletionsConnectionTest reports whether a chat_completions account of a multi-protocol
