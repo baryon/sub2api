@@ -484,12 +484,12 @@ func (s *AccountTestService) testModelRoutedResponsesConnection(c *gin.Context, 
 	return s.testCNProviderAdaptiveResponsesConnection(c, account, testModelID, authToken)
 }
 
-// usesCNProviderChatCompletionsConnectionTest 报告账号测试是否应走国产 Chat Completions 探测。
-// DeepSeek 即使协议标成 chat_completions 也仍走独立的 /v1/models 探测，避免把官方账号
-// 误打到通用 Chat Completions 探活。
+// usesCNProviderChatCompletionsConnectionTest reports whether a chat_completions account of a multi-protocol
+// provider is tested through the generic Chat Completions probe. DeepSeek is left out: even when its protocol is
+// marked chat_completions it keeps its own /v1/models probe, so an official account is not sent to the generic
+// Chat Completions liveness check. Every other multi-protocol provider (Cline, Command Code, OpenCode Go, ...) is.
 func usesCNProviderChatCompletionsConnectionTest(account *Account) bool {
-	return account != nil && !account.IsDeepSeek() && account.IsCNProvider() &&
-		account.GetAPIProtocol() == APIProtocolChatCompletions
+	return account != nil && !account.IsDeepSeek() && account.GetAPIProtocol() == APIProtocolChatCompletions
 }
 
 func (s *AccountTestService) testCNProviderChatCompletionsConnection(c *gin.Context, account *Account, modelID string, prompt string) error {
