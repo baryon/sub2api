@@ -299,6 +299,7 @@ import type { SubscriptionPlan, CheckoutInfoResponse, CreateOrderResult, OrderTy
 import { formatRechargeBonusNumber, normalizeRechargeBonusMode, normalizeRechargeBonusTiers, quoteRechargeBonus } from '@/utils/rechargeBonus'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import AmountInput from '@/components/payment/AmountInput.vue'
+import { parseTopupAmount, rememberTopupReturn, sanitizeReturnUrl } from '@/utils/topupLink'
 import PaymentMethodSelector from '@/components/payment/PaymentMethodSelector.vue'
 import { METHOD_ORDER, getPaymentPopupFeatures, isBuiltInAlipayMethod, isBuiltInWxpayMethod } from '@/components/payment/providerConfig'
 import {
@@ -353,6 +354,8 @@ const errorMessage = ref('')
 const errorHintMessage = ref('')
 const activeTab = ref<'recharge' | 'subscription'>('recharge')
 const amount = ref<number | null>(null)
+// Return address from the Otoha app's top-up link (otoha:// or this site only).
+const topupReturnUrl = ref('')
 const selectedMethod = ref('')
 const selectedPlan = ref<SubscriptionPlan | null>(null)
 const previewImage = ref('')
@@ -461,6 +464,9 @@ async function redirectToPaymentResult(state: PaymentRecoverySnapshot): Promise<
   }
   if (state.resumeToken) {
     query.resume_token = state.resumeToken
+  }
+  if (topupReturnUrl.value) {
+    query.return = topupReturnUrl.value
   }
   await router.push({
     path: '/payment/result',
@@ -1165,6 +1171,23 @@ async function resumeWechatPaymentFromQuery() {
   }
 }
 
+function applyTopupLink() {
+  if (typeof window === 'undefined') return
+  const rawReturn = Array.isArray(route.query.return) ? route.query.return[0] : route.query.return
+  const returnUrl = sanitizeReturnUrl(rawReturn, window.location.origin)
+  if (returnUrl) {
+    topupReturnUrl.value = returnUrl
+    rememberTopupReturn(window.localStorage, returnUrl)
+  }
+  if (route.query.tab === 'subscription' || paymentPhase.value !== 'select') return
+  const rawAmount = Array.isArray(route.query.amount) ? route.query.amount[0] : route.query.amount
+  const preset = parseTopupAmount(rawAmount, globalMinAmount.value, globalMaxAmount.value)
+  if (preset !== null && tabs.value.some((tab) => tab.key === 'recharge')) {
+    activeTab.value = 'recharge'
+    amount.value = preset
+  }
+}
+
 onMounted(async () => {
   try {
     const res = await paymentAPI.getCheckoutInfo()
@@ -1205,6 +1228,7 @@ onMounted(async () => {
     }
     await resumeWechatPaymentFromQuery()
     // balance_disabled → the tabs watcher above moves activeTab to the subscription tab (when enabled).
+    applyTopupLink()
     // Handle renewal navigation: ?tab=subscription&group=123 (ignored when subscriptions are disabled)
     if (route.query.tab === 'subscription' && subscriptionEnabled.value) {
       activeTab.value = 'subscription'

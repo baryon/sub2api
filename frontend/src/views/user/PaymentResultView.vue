@@ -90,10 +90,16 @@
             </div>
           </div>
         </div>
+        <p v-if="isFailed" class="text-center text-sm text-gray-500 dark:text-gray-400" data-testid="payment-failed-hint">
+          {{ t('payment.result.failedHint') }}
+        </p>
         <!-- Actions -->
-        <div class="flex gap-3">
-          <button class="btn btn-secondary flex-1" @click="router.push('/purchase')">{{ t('payment.result.backToRecharge') }}</button>
-          <button class="btn btn-primary flex-1" @click="router.push('/orders')">{{ t('payment.result.viewOrders') }}</button>
+        <div class="flex flex-col gap-3">
+          <button v-if="isSuccess && returnUrl" class="btn btn-primary w-full" data-testid="back-to-otoha" @click="backToOtoha">{{ t('payment.result.backToOtoha') }}</button>
+          <div class="flex gap-3">
+            <button class="btn btn-secondary flex-1" @click="retryRecharge">{{ isFailed ? t('payment.result.retry') : t('payment.result.backToRecharge') }}</button>
+            <button :class="['btn flex-1', isSuccess && returnUrl ? 'btn-secondary' : 'btn-primary']" @click="router.push('/orders')">{{ t('payment.result.viewOrders') }}</button>
+          </div>
         </div>
       </template>
     </div>
@@ -116,6 +122,7 @@ import { paymentAPI } from '@/api/payment'
 import type { PublicOrderVerifyResult } from '@/api/payment'
 import type { OrderStatus, PaymentOrder } from '@/types/payment'
 import { formatPaymentAmount, normalizePaymentCurrency } from '@/components/payment/currency'
+import { recallTopupReturn, sanitizeReturnUrl } from '@/utils/topupLink'
 import { normalizePaymentMethodForDisplay, paymentMethodI18nKey } from './paymentUx'
 
 const i18n = useI18n()
@@ -180,6 +187,32 @@ const isSuccess = computed(() => {
 const isPending = computed(() => {
   return isPendingStatus(order.value?.status)
 })
+
+const isFailed = computed(() => !isSuccess.value && !isPending.value)
+
+// Return address from the Otoha app's top-up link: from this page's address, else the one remembered on the recharge page.
+const returnUrl = computed(() => {
+  if (typeof window === 'undefined') return ''
+  return sanitizeReturnUrl(readRouteQueryString('return'), window.location.origin)
+    || recallTopupReturn(window.localStorage, window.location.origin)
+})
+
+function backToOtoha() {
+  if (returnUrl.value) window.location.assign(returnUrl.value)
+}
+
+function retryRecharge() {
+  const query: Record<string, string> = {}
+  if (returnUrl.value) {
+    query.tab = 'recharge'
+    query.return = returnUrl.value
+    const paid = order.value
+    if (paid && 'order_type' in paid && paid.order_type === 'balance' && paid.amount > 0) {
+      query.amount = String(paid.amount)
+    }
+  }
+  router.push({ path: '/purchase', query })
+}
 
 const statusTitle = computed(() => {
   if (isSuccess.value) {
