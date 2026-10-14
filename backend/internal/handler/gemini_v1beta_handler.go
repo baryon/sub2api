@@ -43,7 +43,7 @@ func (h *GatewayHandler) GeminiV1BetaListModels(c *gin.Context) {
 	forcePlatform, hasForcePlatform := middleware.GetForcePlatformFromContext(c)
 	effectivePlatform := effectiveAPIKeyPlatform(c, apiKey)
 	if !hasForcePlatform && effectivePlatform != service.PlatformGemini &&
-		!(apiKey.Group != nil && apiKey.Group.Platform == service.PlatformComposite && effectivePlatform == service.PlatformAntigravity) {
+		!servesCompositeAntigravityGemini(apiKey, effectivePlatform) {
 		googleError(c, http.StatusBadRequest, "API key group platform is not gemini")
 		return
 	}
@@ -261,7 +261,7 @@ func (h *GatewayHandler) GeminiV1BetaGetModel(c *gin.Context) {
 	forcePlatform, hasForcePlatform := middleware.GetForcePlatformFromContext(c)
 	effectivePlatform := effectiveAPIKeyPlatform(c, apiKey)
 	if !hasForcePlatform && effectivePlatform != service.PlatformGemini &&
-		!(apiKey.Group != nil && apiKey.Group.Platform == service.PlatformComposite && effectivePlatform == service.PlatformAntigravity) {
+		!servesCompositeAntigravityGemini(apiKey, effectivePlatform) {
 		googleError(c, http.StatusBadRequest, "API key group platform is not gemini")
 		return
 	}
@@ -339,7 +339,7 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 	if !middleware.HasForcePlatform(c) {
 		effectivePlatform := effectiveAPIKeyPlatform(c, apiKey)
 		if effectivePlatform != service.PlatformGemini &&
-			!(apiKey.Group != nil && apiKey.Group.Platform == service.PlatformComposite && effectivePlatform == service.PlatformAntigravity) {
+			!servesCompositeAntigravityGemini(apiKey, effectivePlatform) {
 			googleError(c, http.StatusBadRequest, "API key group platform is not gemini")
 			return
 		}
@@ -1094,4 +1094,10 @@ func derefGroupID(groupID *int64) int64 {
 		return 0
 	}
 	return *groupID
+}
+
+// servesCompositeAntigravityGemini reports whether a composite group routed this native Gemini call to an
+// Antigravity account (TASK-96), which serves Gemini models in Google's format too.
+func servesCompositeAntigravityGemini(apiKey *service.APIKey, effectivePlatform string) bool {
+	return apiKey.Group != nil && apiKey.Group.Platform == service.PlatformComposite && effectivePlatform == service.PlatformAntigravity
 }
