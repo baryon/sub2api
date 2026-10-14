@@ -361,6 +361,23 @@ func OtohaNativeAPIForPlatform(platform string) string {
 	}
 }
 
+// otohaNativeAPIForModel returns the native format for a model on a platform: Antigravity serves Gemini models in
+// Google's generateContent format on /v1beta (TASK-96) and Claude models in Anthropic Messages on /v1/messages.
+func otohaNativeAPIForModel(platform, modelID string) string {
+	if platform == PlatformAntigravity && isOtohaGeminiModel(modelID) {
+		return OtohaAPIGeminiGenerateContent
+	}
+	return OtohaNativeAPIForPlatform(platform)
+}
+
+func isOtohaGeminiModel(modelID string) bool {
+	if strings.HasPrefix(strings.ToLower(strings.TrimSpace(modelID)), "claude-") {
+		return false
+	}
+	detected, ok := DetectModelPlatform(modelID)
+	return ok && detected == PlatformGemini
+}
+
 // otohaAPIEndpoint is the gateway endpoint a format is called on.
 func otohaAPIEndpoint(api string) string {
 	switch api {
@@ -824,7 +841,7 @@ func (s *OtohaCatalogService) route(ctx context.Context, group *Group, modelID, 
 		route.API = api
 	}
 	if route.API == "" && route.Problem == "" && group != nil {
-		route.API = OtohaNativeAPIForPlatform(group.Platform)
+		route.API = otohaNativeAPIForModel(group.Platform, modelID)
 	}
 	return route
 }

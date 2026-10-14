@@ -717,8 +717,24 @@ func rejectUnsupportedCompositeRouteEndpoint(c *gin.Context, decision service.Co
 // protocol: a provider that cannot take the Gemini endpoint at all, a model of another provider, or a model no
 // provider of the group claims. They are all 404 in Google's error format, before an account is asked, so a name the
 // group never offered is not sent on to Google. It reports whether it answered.
+func isCompositeAntigravityGeminiModel(model string, decision service.CompositeRouteDecision) bool {
+	if decision.TargetPlatform != service.PlatformAntigravity {
+		return false
+	}
+	upstream := strings.TrimSpace(decision.UpstreamModel)
+	if upstream == "" {
+		upstream = model
+	}
+	if strings.HasPrefix(strings.ToLower(strings.TrimSpace(model)), "claude-") ||
+		strings.HasPrefix(strings.ToLower(upstream), "claude-") {
+		return false
+	}
+	detected, ok := service.DetectModelPlatform(upstream)
+	return ok && detected == service.PlatformGemini
+}
+
 func rejectCompositeGeminiModel(c *gin.Context, model string, decision service.CompositeRouteDecision) bool {
-	if decision.Matched && decision.TargetPlatform == service.PlatformGemini {
+	if decision.Matched && (decision.TargetPlatform == service.PlatformGemini || isCompositeAntigravityGeminiModel(model, decision)) {
 		return false
 	}
 	var message string

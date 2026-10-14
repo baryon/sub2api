@@ -145,3 +145,48 @@ func TestCompositeGeminiAllowlistBlocksAModelOutsideIt(t *testing.T) {
 	require.Equal(t, http.StatusNoContent, allowed.Code)
 	require.Equal(t, 1, chain.reached)
 }
+
+// TASK-96: a Gemini model routed to Antigravity (explicit route or account ownership) passes through /v1beta with
+// target platform antigravity so the handler selects Antigravity accounts and forwards via ForwardGemini; a Claude
+// model on Antigravity and other platforms stay 404 on /v1beta.
+func TestCompositeGeminiAntigravityGeminiModelReachesHandlerWhileClaudeIsRejected(t *testing.T) {
+	chain := newCompositeGeminiChain(t, []service.CompositeModelRoute{
+		{
+			ID: 1, GroupID: 2, PublicModel: "gemini-4-argon", MatchType: service.CompositeRouteMatchExact,
+			TargetPlatform: service.PlatformAntigravity, UpstreamModel: "gemini-4-argon", Endpoint: service.CompositeRouteEndpointAny,
+			Priority: 100, Enabled: true,
+		},
+		{
+			ID: 2, GroupID: 2, PublicModel: "otoha-ultra", MatchType: service.CompositeRouteMatchExact,
+			TargetPlatform: service.PlatformAntigravity, UpstreamModel: "gemini-4-argon", Endpoint: service.CompositeRouteEndpointGemini,
+			Priority: 100, Enabled: true,
+		},
+		{
+			ID: 3, GroupID: 2, PublicModel: "claude-sonnet-5-5", MatchType: service.CompositeRouteMatchExact,
+			TargetPlatform: service.PlatformAntigravity, UpstreamModel: "claude-sonnet-5-5", Endpoint: service.CompositeRouteEndpointAny,
+			Priority: 100, Enabled: true,
+		},
+		{
+			ID: 4, GroupID: 2, PublicModel: "antigravity-claude-alias", MatchType: service.CompositeRouteMatchExact,
+			TargetPlatform: service.PlatformAntigravity, UpstreamModel: "claude-sonnet-5-5", Endpoint: service.CompositeRouteEndpointAny,
+			Priority: 100, Enabled: true,
+		},
+	}, service.GroupModelAllowlist{})
+
+	for _, model := range []string{"gemini-4-argon", "otoha-ultra"} {
+		chain.reached = 0
+		w := chain.do(http.MethodPost, "/v1beta/models/"+model+":generateContent", `{"contents":[]}`)
+		require.Equal(t, http.StatusNoContent, w.Code, model)
+		require.Equal(t, 1, chain.reached, model)
+		require.Equal(t, service.PlatformAntigravity, chain.platform, model)
+		require.Equal(t, "gemini-4-argon", chain.upstream, model)
+	}
+
+	for _, model := range []string{"claude-sonnet-5-5", "antigravity-claude-alias"} {
+		chain.reached = 0
+		w := chain.do(http.MethodPost, "/v1beta/models/"+model+":generateContent", `{"contents":[]}`)
+		require.Equal(t, http.StatusNotFound, w.Code, model)
+		require.Equal(t, "NOT_FOUND", gjson.Get(w.Body.String(), "error.status").String(), model)
+		require.Zero(t, chain.reached, model)
+	}
+}

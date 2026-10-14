@@ -391,19 +391,19 @@ func (r otohaDiagnoserRouting) Route(ctx context.Context, group *Group, modelID,
 			if target.failed {
 				return OtohaModelRoute{Problem: target.problem, Failed: true}
 			}
-			if target.problem == "" && OtohaNativeAPIForPlatform(target.platform) == OtohaAPIAnthropicMessages {
+			if target.problem == "" && otohaNativeAPIForModel(target.platform, target.model) == OtohaAPIAnthropicMessages {
 				api = OtohaAPIAnthropicMessages
 			} else {
 				geminiTarget := r.resolveComposite(ctx, group, modelID, CompositeRouteEndpointGemini)
 				if geminiTarget.failed {
 					return OtohaModelRoute{Problem: geminiTarget.problem, Failed: true}
 				}
-				if geminiTarget.problem == "" && OtohaNativeAPIForPlatform(geminiTarget.platform) == OtohaAPIGeminiGenerateContent {
+				if geminiTarget.problem == "" && !strings.HasPrefix(strings.ToLower(strings.TrimSpace(modelID)), "claude-") && otohaNativeAPIForModel(geminiTarget.platform, geminiTarget.model) == OtohaAPIGeminiGenerateContent {
 					target, api = geminiTarget, OtohaAPIGeminiGenerateContent
 				} else {
 					target = r.resolveComposite(ctx, group, modelID, CompositeRouteEndpointResponses)
 					if target.problem == "" {
-						api = OtohaNativeAPIForPlatform(target.platform)
+						api = otohaNativeAPIForModel(target.platform, target.model)
 						if api == OtohaAPIAnthropicMessages || api == OtohaAPIGeminiGenerateContent {
 							// /v1/responses sends it to Claude or Gemini, but the endpoint the app would call
 							// (/v1/messages, /v1beta) does not.
@@ -422,14 +422,14 @@ func (r otohaDiagnoserRouting) Route(ctx context.Context, group *Group, modelID,
 			route.UpstreamModel = model
 		}
 	} else if api == "" {
-		api = OtohaNativeAPIForPlatform(platform)
+		api = otohaNativeAPIForModel(platform, model)
 	}
 	if api == "" {
 		route.Problem = OtohaCatalogProblemNoNativeAPI
 		return route
 	}
 	route.API = api
-	if !otohaAPIReachesPlatform(api, platform) {
+	if !otohaAPIReachesPlatformModel(api, platform, modelID, model) {
 		route.Problem = OtohaCatalogProblemAPIUnreachable
 		return route
 	}
@@ -578,7 +578,7 @@ func otohaAPIReachesPlatform(api, platform string) bool {
 		return otohaOpenAIGatewayPlatform(platform) || platform == PlatformAnthropic || platform == PlatformAntigravity ||
 			platform == PlatformGemini
 	case OtohaAPIGeminiGenerateContent:
-		return platform == PlatformGemini
+		return platform == PlatformGemini || platform == PlatformAntigravity
 	case OtohaAPIDeepSeekResponses:
 		return platform == PlatformDeepseek
 	case OtohaAPIOpenAIResponses:
@@ -587,4 +587,17 @@ func otohaAPIReachesPlatform(api, platform string) bool {
 	default:
 		return false
 	}
+}
+
+func otohaAPIReachesPlatformModel(api, platform, publicModel, upstreamModel string) bool {
+	if !otohaAPIReachesPlatform(api, platform) {
+		return false
+	}
+	if api == OtohaAPIGeminiGenerateContent && platform == PlatformAntigravity {
+		if strings.HasPrefix(strings.ToLower(strings.TrimSpace(publicModel)), "claude-") {
+			return false
+		}
+		return isOtohaGeminiModel(upstreamModel)
+	}
+	return true
 }

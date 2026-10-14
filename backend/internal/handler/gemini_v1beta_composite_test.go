@@ -183,6 +183,7 @@ func newCompositeGeminiFixture(t *testing.T, routes []service.CompositeModelRout
 		concurrencyHelper:          NewConcurrencyHelper(service.NewConcurrencyService(&fakeConcurrencyCache{}), SSEPingFormatClaude, 0),
 		geminiCachedContentService: service.NewGeminiCachedContentService(f.caches, nil, &config.Config{}),
 		geminiCompatService:        service.NewGeminiMessagesCompatService(nil, &fakeGroupRepo{group: f.group}, nil, snapshot, nil, nil, f.google, nil, &config.Config{}),
+		antigravityGatewayService:  service.NewAntigravityGatewayService(nil, nil, snapshot, &service.AntigravityTokenProvider{}, nil, f.google, service.NewSettingService(nil, &config.Config{}), nil),
 		maxAccountSwitches:         1,
 		maxAccountSwitchesGemini:   1,
 	}
@@ -617,4 +618,45 @@ func TestCompositeGeminiModelListPassesThePageOn(t *testing.T) {
 		require.Equal(t, http.StatusBadRequest, rec.Code, bad)
 		require.Empty(t, f.google.recorded(), bad)
 	}
+}
+
+// TASK-96: a Gemini model routed to Antigravity in the composite group reaches AntigravityGatewayService.ForwardGemini
+// with the Antigravity account selected.
+func TestCompositeGeminiAntigravityRouteReachesForwardGeminiWithAntigravityAccount(t *testing.T) {
+	routes := []service.CompositeModelRoute{{
+		ID: 1, GroupID: compositeGeminiGroupID, PublicModel: "gemini-4-argon", MatchType: service.CompositeRouteMatchExact,
+		TargetPlatform: service.PlatformAntigravity, UpstreamModel: "gemini-4-argon", Endpoint: service.CompositeRouteEndpointAny,
+		Priority: 100, Enabled: true,
+	}}
+	agAccount := &service.Account{
+		ID:          21,
+		Name:        "ultra",
+		Platform:    service.PlatformAntigravity,
+		Type:        service.AccountTypeOAuth,
+		Status:      service.StatusActive,
+		Schedulable: true,
+		Concurrency: 2,
+		Priority:    1,
+		Credentials: map[string]any{
+			"access_token": "ag-token-21",
+			"project_id":   "ag-proj-21",
+			"model_mapping": map[string]any{
+				"gemini-4-argon": "gemini-4-argon",
+			},
+		},
+		AccountGroups: []service.AccountGroup{{AccountID: 21, GroupID: compositeGeminiGroupID}},
+	}
+	f := newCompositeGeminiFixture(t, routes, agAccount)
+	f.google.respond = func(googleCall) (int, string, string) {
+		return 200, "text/event-stream", "data: {\"response\":{\"candidates\":[{\"content\":{\"role\":\"model\",\"parts\":[{\"text\":\"from ultra\"}]},\"finishReason\":\"STOP\"}],\"usageMetadata\":{\"promptTokenCount\":10,\"candidatesTokenCount\":4}}}\n\n"
+	}
+
+	rec := f.generate(t, "gemini-4-argon", "generateContent", geminiTwoTurnRequest)
+
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	require.Contains(t, rec.Body.String(), "from ultra")
+	calls := f.google.recorded()
+	require.Len(t, calls, 1)
+	require.Equal(t, int64(21), calls[0].account)
+	require.Equal(t, "Bearer ag-token-21", calls[0].bearer)
 }

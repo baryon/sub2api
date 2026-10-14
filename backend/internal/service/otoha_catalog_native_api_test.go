@@ -242,3 +242,48 @@ func TestOtohaCompositeGeminiIsCheckedOnTheGeminiEndpoint(t *testing.T) {
 	require.Equal(t, "gemini-2.5-pro", byModel["otoha-gemini"].RouteModel)
 	require.Equal(t, OtohaCatalogProblemNoRoute, byModel["messages-gemini"].Problem)
 }
+
+// TASK-96: Gemini models served by Antigravity accounts get gemini-generate-content so the app calls /v1beta natively;
+// Claude models on Antigravity stay anthropic-messages; an admin-chosen api still wins.
+func TestOtohaCompositeAntigravityGeminiUsesGenerateContentWhileClaudeStaysMessages(t *testing.T) {
+	f := newOtohaCompositeFixture(t)
+	f.ownership["gemini-4-argon"] = CompositeModelOwnership{Matched: true, TargetPlatform: PlatformAntigravity}
+	f.ownership["claude-sonnet-5-5"] = CompositeModelOwnership{Matched: true, TargetPlatform: PlatformAntigravity}
+	f.diagnoser.models[PlatformAntigravity] = []string{"gemini-4-argon", "claude-sonnet-5-5"}
+	f.channels.cache.Store(populateChannelCache([]Channel{{
+		ID:       1,
+		Status:   StatusActive,
+		GroupIDs: []int64{otohaCompositeGroupID},
+		ModelPricing: []ChannelModelPricing{
+			{Platform: PlatformAntigravity, Models: []string{"gemini-4-argon"}, InputPrice: otohaFloat(2e-6), OutputPrice: otohaFloat(12e-6)},
+			{Platform: PlatformAntigravity, Models: []string{"claude-sonnet-5-5"}, InputPrice: otohaFloat(3e-6), OutputPrice: otohaFloat(15e-6)},
+		},
+	}}, map[int64]string{otohaCompositeGroupID: PlatformComposite}))
+
+	draft, err := f.svc.Prefill(context.Background(), otohaCompositeGroupID, "gemini-4-argon")
+	require.NoError(t, err)
+	require.Equal(t, PlatformAntigravity, draft.RoutePlatform)
+	require.Equal(t, OtohaAPIGeminiGenerateContent, draft.RouteAPI)
+
+	claudeDraft, err := f.svc.Prefill(context.Background(), otohaCompositeGroupID, "claude-sonnet-5-5")
+	require.NoError(t, err)
+	require.Equal(t, PlatformAntigravity, claudeDraft.RoutePlatform)
+	require.Equal(t, OtohaAPIAnthropicMessages, claudeDraft.RouteAPI)
+
+	f.add(t, "gemini-4-argon", "claude-sonnet-5-5")
+	catalog, err := f.svc.CatalogForGroup(context.Background(), otohaCompositeGroupID)
+	require.NoError(t, err)
+	require.Equal(t, []string{"gemini-4-argon", "claude-sonnet-5-5"}, otohaModelIDs(catalog))
+	require.Equal(t, OtohaAPIGeminiGenerateContent, otohaCatalogModelByID(t, catalog, "gemini-4-argon").API)
+	require.Equal(t, OtohaAPIAnthropicMessages, otohaCatalogModelByID(t, catalog, "claude-sonnet-5-5").API)
+
+	entries, err := f.repo.ListByGroup(context.Background(), otohaCompositeGroupID)
+	require.NoError(t, err)
+	_, err = f.svc.UpdateEntry(context.Background(), otohaCompositeGroupID, entries[0].ID, OtohaCatalogEntryInput{
+		ModelID: "gemini-4-argon", Enabled: true, API: OtohaAPIAnthropicMessages,
+	})
+	require.NoError(t, err)
+	catalog, err = f.svc.CatalogForGroup(context.Background(), otohaCompositeGroupID)
+	require.NoError(t, err)
+	require.Equal(t, OtohaAPIAnthropicMessages, otohaCatalogModelByID(t, catalog, "gemini-4-argon").API, "admin-set api wins")
+}
