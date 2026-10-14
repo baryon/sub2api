@@ -244,3 +244,133 @@ func otohaSSEData(t *testing.T, stream, eventType string) string {
 	t.Fatalf("no %s event in the stream:\n%s", eventType, stream)
 	return ""
 }
+
+const otohaDeepSeekFlashChatStream = `data: {"id":"chatcmpl_ds_95","object":"chat.completion.chunk","created":1791127231,"model":"deepseek-flash","choices":[{"index":0,"delta":{"role":"assistant","content":"","reasoning_content":"Answer as deepseek-flash would."},"finish_reason":null}]}` + "\n\n" +
+	`data: {"id":"chatcmpl_ds_95","object":"chat.completion.chunk","created":1791127231,"model":"deepseek-flash","choices":[{"index":0,"delta":{"content":"Hello from deepseek-flash."},"finish_reason":"stop"}],"usage":{"prompt_tokens":1000,"completion_tokens":500,"total_tokens":1500}}` + "\n\n" +
+	"data: [DONE]\n\n"
+
+const otohaDeepSeekFlashChatJSON = `{"id":"chatcmpl_ds_95","object":"chat.completion","created":1791127231,"model":"deepseek-flash","choices":[{"index":0,"message":{"role":"assistant","content":"Hello from deepseek-flash.","reasoning_content":"Answer as deepseek-flash would."},"finish_reason":"stop"}],"usage":{"prompt_tokens":1000,"completion_tokens":500,"total_tokens":1500}}`
+
+func callOtohaDeepSeekWithProtocol(
+	t *testing.T,
+	path string,
+	apiProtocol string,
+	modelMapping map[string]any,
+	upstream *otohaNativeUpstream,
+	requestBody string,
+) (*httptest.ResponseRecorder, *service.UsageLog) {
+	t.Helper()
+	gin.SetMode(gin.TestMode)
+	group := otohaNativeGroup(false)
+	credentials := map[string]any{"api_key": "sk-deepseek-upstream", "base_url": "http://deepseek.otoha.test"}
+	if apiProtocol != "" {
+		credentials["api_protocol"] = apiProtocol
+		credentials["api_base_urls"] = map[string]any{
+			service.APIProtocolChatCompletions: "http://deepseek.otoha.test",
+			service.APIProtocolResponses:       "http://deepseek.otoha.test",
+			service.APIProtocolAnthropic:       "http://deepseek.otoha.test/anthropic",
+		}
+	}
+	if modelMapping != nil {
+		credentials["model_mapping"] = modelMapping
+	}
+	account := service.Account{
+		ID: 6507, Name: "deepseek", Platform: service.PlatformDeepSeek, Type: service.AccountTypeAPIKey,
+		Status: service.StatusActive, Schedulable: true, GroupIDs: []int64{otohaNativeGroupID},
+		Credentials: credentials,
+		Extra:       map[string]any{service.DeepSeekUserIsolationModeKey: service.DeepSeekUserIsolationModeOff},
+	}
+	cfg := otohaNativeConfig()
+	users := &otohaNativeUsers{balance: 10}
+	usage := &openAIWSUsageHandlerUsageLogRepoStub{created: make(chan *service.UsageLog, 1)}
+	billingCache := service.NewBillingCacheService(nil, users, nil, nil, nil, nil, cfg, nil)
+	t.Cleanup(billingCache.Stop)
+	billing := service.NewBillingService(cfg, nil)
+	channels := otohaNativeChannels()
+	gateway := service.NewOpenAIGatewayService(
+		&openAIWSUsageHandlerAccountRepoStub{account: account}, usage, nil, users, nil, nil, nil, cfg, nil,
+		service.NewConcurrencyService(nil), billing, nil, billingCache, upstream, &service.DeferredService{},
+		nil, nil, service.NewModelPricingResolver(channels, billing), channels, nil, nil, nil,
+	)
+	h := NewOpenAIGatewayHandler(gateway, service.NewConcurrencyService(&fakeConcurrencyCache{}), billingCache,
+		service.NewAPIKeyService(nil, nil, nil, nil, nil, nil, cfg), nil, nil, nil, nil, cfg)
+
+	c, rec := otohaNativeContext(path, requestBody, group, service.PlatformDeepSeek)
+	c.Request.Header.Del("x-api-key")
+	c.Request.Header.Set("Authorization", "Bearer sk-otoha-key")
+	if path == "/v1/chat/completions" {
+		h.ChatCompletions(c)
+	} else {
+		h.Responses(c)
+	}
+
+	select {
+	case log := <-usage.created:
+		return rec, log
+	case <-time.After(2 * time.Second):
+		t.Fatal("the DeepSeek request was not billed")
+		return rec, nil
+	}
+}
+
+func TestOtohaDeepSeekAdaptiveProtocolResponsesNamesTheRequestedModel(t *testing.T) {
+	for _, proto := range []string{service.APIProtocolAdaptive, service.APIProtocolResponses} {
+		for _, tc := range []struct {
+			name, contentType, upstreamBody, stream string
+		}{
+			{"stream", "text/event-stream", otohaDeepSeekFlashStream, "true"},
+			{"json", "application/json", otohaDeepSeekFlashJSON, "false"},
+		} {
+			t.Run(proto+"_"+tc.name, func(t *testing.T) {
+				upstream := &otohaNativeUpstream{contentType: tc.contentType, body: tc.upstreamBody}
+				rec, log := callOtohaDeepSeekWithProtocol(
+					t, "/v1/responses", proto, otohaDeepSeekLiveMapping(), upstream,
+					`{"model":"deepseek-v4-flash","input":"Say hello.","reasoning":{"effort":"high"},"stream":`+tc.stream+`}`,
+				)
+
+				require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+				require.Equal(t, "deepseek-v4-flash", gjson.GetBytes(upstream.sent, "model").String())
+				want := strings.ReplaceAll(tc.upstreamBody, `"model":"deepseek-flash"`, `"model":"deepseek-v4-flash"`)
+				require.Equal(t, want, rec.Body.String())
+				require.NotNil(t, log)
+				require.Equal(t, "deepseek-v4-flash", log.Model)
+				require.Equal(t, "deepseek-v4-flash", log.RequestedModel)
+				require.NotNil(t, log.UpstreamResponseModel)
+				require.Equal(t, "deepseek-flash", *log.UpstreamResponseModel)
+			})
+		}
+	}
+}
+
+func TestOtohaDeepSeekChatCompletionsCanonicalAnswerNamesTheRequestedModel(t *testing.T) {
+	for _, proto := range []string{"", service.APIProtocolAdaptive, service.APIProtocolChatCompletions} {
+		protoName := proto
+		if protoName == "" {
+			protoName = "native"
+		}
+		for _, tc := range []struct {
+			name, contentType, upstreamBody, stream string
+		}{
+			{"stream", "text/event-stream", otohaDeepSeekFlashChatStream, "true"},
+			{"json", "application/json", otohaDeepSeekFlashChatJSON, "false"},
+		} {
+			t.Run(protoName+"_"+tc.name, func(t *testing.T) {
+				upstream := &otohaNativeUpstream{contentType: tc.contentType, body: tc.upstreamBody}
+				rec, log := callOtohaDeepSeekWithProtocol(
+					t, "/v1/chat/completions", proto, otohaDeepSeekLiveMapping(), upstream,
+					`{"model":"deepseek-v4-flash","messages":[{"role":"user","content":"Say hello."}],"stream":`+tc.stream+`}`,
+				)
+
+				require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+				require.Equal(t, "deepseek-v4-flash", gjson.GetBytes(upstream.sent, "model").String())
+				want := strings.ReplaceAll(tc.upstreamBody, `"model":"deepseek-flash"`, `"model":"deepseek-v4-flash"`)
+				require.Equal(t, want, rec.Body.String())
+				require.NotNil(t, log)
+				require.Equal(t, "deepseek-v4-flash", log.Model)
+				require.Equal(t, "deepseek-v4-flash", log.RequestedModel)
+				require.NotNil(t, log.UpstreamResponseModel)
+				require.Equal(t, "deepseek-flash", *log.UpstreamResponseModel)
+			})
+		}
+	}
+}

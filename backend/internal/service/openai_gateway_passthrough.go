@@ -2007,7 +2007,9 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 	defer putSSEScannerBuf64K(scanBuf)
 	documentScanner := newOpenAISSEJSONDocumentScanner(scanner)
 
-	needModelReplace := strings.TrimSpace(originalModel) != "" && strings.TrimSpace(mappedModel) != "" && strings.TrimSpace(originalModel) != strings.TrimSpace(mappedModel)
+	clientModel := clientRequestedModelName(c, originalModel)
+	deepSeekUpstream := targetsDeepSeekAPIHost(account)
+	needModelReplace := strings.TrimSpace(clientModel) != "" && strings.TrimSpace(mappedModel) != "" && strings.TrimSpace(clientModel) != strings.TrimSpace(mappedModel)
 	resultWithUsage := func() *openaiStreamingResultPassthrough {
 		return &openaiStreamingResultPassthrough{
 			usage:            usage,
@@ -2032,8 +2034,14 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 			trimmedData := strings.TrimSpace(data)
 			rawEventType := effectiveOpenAISSEEventType(dataBytes, pendingSSEEventType)
 			observer.ObserveOpenAI(dataBytes, rawEventType)
-			if needModelReplace {
-				line = s.replaceModelInSSELine(line, mappedModel, originalModel)
+			if deepSeekUpstream {
+				line = string(nameDeepSeekResponsesModelInWireLine([]byte(line), clientModel))
+				if replacedData, replaced := extractOpenAISSEDataLine(line); replaced {
+					dataBytes = []byte(replacedData)
+					trimmedData = strings.TrimSpace(replacedData)
+				}
+			} else if needModelReplace {
+				line = s.replaceModelInSSELine(line, mappedModel, clientModel)
 				if replacedData, replaced := extractOpenAISSEDataLine(line); replaced {
 					dataBytes = []byte(replacedData)
 					trimmedData = strings.TrimSpace(replacedData)
@@ -2356,8 +2364,11 @@ func (s *OpenAIGatewayService) handleNonStreamingResponsePassthrough(
 	if contentType == "" {
 		contentType = "application/json"
 	}
-	if originalModel != "" && mappedModel != "" && originalModel != mappedModel {
-		body = s.replaceModelInResponseBody(body, mappedModel, originalModel)
+	clientModel := clientRequestedModelName(c, originalModel)
+	if targetsDeepSeekAPIHost(account) {
+		body, _ = nameDeepSeekResponsesModelForClient(body, clientModel)
+	} else if clientModel != "" && mappedModel != "" && clientModel != mappedModel {
+		body = s.replaceModelInResponseBody(body, mappedModel, clientModel)
 	}
 	body, err = restoreOpenAIResponsesNamespacePayload(c, body)
 	if err != nil {
@@ -2418,8 +2429,11 @@ func (s *OpenAIGatewayService) handlePassthroughSSEToJSON(resp *http.Response, c
 		}
 		finalResponse = supplementCompactionItemFromSSE(c, finalResponse, bodyText)
 		body = finalResponse
-		if originalModel != "" && mappedModel != "" && originalModel != mappedModel {
-			body = s.replaceModelInResponseBody(body, mappedModel, originalModel)
+		clientModel := clientRequestedModelName(c, originalModel)
+		if targetsDeepSeekAPIHost(account) {
+			body, _ = nameDeepSeekResponsesModelForClient(body, clientModel)
+		} else if clientModel != "" && mappedModel != "" && clientModel != mappedModel {
+			body = s.replaceModelInResponseBody(body, mappedModel, clientModel)
 		}
 		// Correct tool calls in final response
 		body = s.correctToolCallsInResponseBody(body)
@@ -2430,8 +2444,15 @@ func (s *OpenAIGatewayService) handlePassthroughSSEToJSON(resp *http.Response, c
 		restoredBody = restoreCodexToolNamesFromContext(c, restoredBody)
 		body = restoredBody
 	} else {
-		if originalModel != "" && mappedModel != "" && originalModel != mappedModel {
-			bodyText = s.replaceModelInSSEBody(bodyText, mappedModel, originalModel)
+		clientModel := clientRequestedModelName(c, originalModel)
+		if targetsDeepSeekAPIHost(account) {
+			lines := strings.Split(bodyText, "\n")
+			for i, line := range lines {
+				lines[i] = string(nameDeepSeekResponsesModelInWireLine([]byte(line), clientModel))
+			}
+			bodyText = strings.Join(lines, "\n")
+		} else if clientModel != "" && mappedModel != "" && clientModel != mappedModel {
+			bodyText = s.replaceModelInSSEBody(bodyText, mappedModel, clientModel)
 		}
 		body = []byte(bodyText)
 	}

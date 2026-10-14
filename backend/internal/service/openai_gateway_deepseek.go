@@ -188,6 +188,15 @@ func nameDeepSeekResponsesModelForClient(payload []byte, clientModel string) ([]
 	return named, changed
 }
 
+func clientRequestedModelName(c *gin.Context, fallback string) string {
+	if c != nil && c.Request != nil {
+		if publicModel, ok := RequestedPublicModelFromContext(c.Request.Context()); ok {
+			return publicModel
+		}
+	}
+	return fallback
+}
+
 // nameDeepSeekResponsesModelInWireLine applies nameDeepSeekResponsesModelForClient to one SSE wire line (line ending
 // included), keeping the "data:" prefix and the line ending as they were.
 func nameDeepSeekResponsesModelInWireLine(wireLine []byte, clientModel string) []byte {
@@ -740,12 +749,7 @@ func (s *OpenAIGatewayService) forwardDeepSeekResponses(
 	var relayResult *deepSeekResponsesRelayResult
 	// The answer goes back under the name the client sent: a composite route may already have put its upstream
 	// model into the body, so its public name wins.
-	clientModel := originalModel
-	if c != nil && c.Request != nil {
-		if publicModel, ok := RequestedPublicModelFromContext(c.Request.Context()); ok {
-			clientModel = publicModel
-		}
-	}
+	clientModel := clientRequestedModelName(c, originalModel)
 	if clientStream {
 		relayResult, err = s.handleDeepSeekResponsesStream(ctx, resp, c, account, startTime, clientModel)
 	} else {
