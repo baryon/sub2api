@@ -784,6 +784,29 @@ func TestBillingService_Gemini4ArgonThinkingTierFallbacksAreBillable(t *testing.
 	}
 }
 
+func TestDefaultPricingIncludesGemini4ArgonRates(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join("..", "..", "resources", "model-pricing", "model_prices_and_context_window.json"))
+	require.NoError(t, err)
+
+	pricingSvc := &PricingService{}
+	pricingData, err := pricingSvc.parsePricingData(data)
+	require.NoError(t, err)
+	pricingSvc.pricingData = pricingData
+
+	for _, model := range []string{"gemini-4-argon", "gemini-4-argon-high", "gemini-4-argon-low", "gemini-4-argon-medium"} {
+		t.Run(model, func(t *testing.T) {
+			pricing := pricingSvc.GetModelPricing(model)
+			require.NotNil(t, pricing)
+			require.Equal(t, "gemini", pricing.LiteLLMProvider)
+			require.InDelta(t, 2e-6, pricing.InputCostPerToken, 1e-15)
+			require.InDelta(t, 10e-6, pricing.OutputCostPerToken, 1e-15)
+			require.InDelta(t, 0.1e-6, pricing.CacheReadInputTokenCost, 1e-15)
+			require.Zero(t, pricing.LongContextInputTokenThreshold)
+		})
+	}
+	require.Contains(t, pricingSvc.ListModelNamesByProvider("gemini"), "gemini-4-argon")
+}
+
 func TestDefaultPricingIncludesGemini36FlashRates(t *testing.T) {
 	data, err := os.ReadFile(filepath.Join("..", "..", "resources", "model-pricing", "model_prices_and_context_window.json"))
 	require.NoError(t, err)

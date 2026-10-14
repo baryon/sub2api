@@ -114,6 +114,10 @@ const antigravityModels = [
   'gemini-3.8-flash-medium',
   'gemini-3.8-flash-high',
   'gemini-3.8-flash-tiered',
+  // Gemini 4 Argon 系列
+  'gemini-4-argon-low',
+  'gemini-4-argon-medium',
+  'gemini-4-argon-high',
   // 其他
   'gpt-oss-120b-medium',
   'tab_flash_lite_preview'
@@ -388,7 +392,11 @@ const deepseekPresetMappings = [
 
 // Antigravity 预设映射（支持通配符）
 const antigravityPresetMappings = [
-  // Claude 5.5 / Gemini 3.8 Flash 推荐映射
+  // Claude 5.5 / Gemini 4 Argon / 3.8 Flash 推荐映射
+  { label: '4 Argon→High', from: 'gemini-4-argon', to: 'gemini-4-argon-high', color: 'bg-amber-100 text-amber-700 hover:bg-amber-200 dark:bg-amber-900/30 dark:text-amber-400' },
+  { label: '4 Argon High', from: 'gemini-4-argon-high', to: 'gemini-4-argon-high', color: 'bg-orange-100 text-orange-700 hover:bg-orange-200 dark:bg-orange-900/30 dark:text-orange-400' },
+  { label: '4 Argon Medium', from: 'gemini-4-argon-medium', to: 'gemini-4-argon-medium', color: 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200 dark:bg-yellow-900/30 dark:text-yellow-400' },
+  { label: '4 Argon Low', from: 'gemini-4-argon-low', to: 'gemini-4-argon-low', color: 'bg-lime-100 text-lime-700 hover:bg-lime-200 dark:bg-lime-900/30 dark:text-lime-400' },
   { label: '3.8 Flash', from: 'gemini-3.8-flash', to: 'gemini-3.8-flash', color: 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-400' },
   { label: '3.8 Flash High', from: 'gemini-3.8-flash-high', to: 'gemini-3.8-flash-high', color: 'bg-teal-100 text-teal-700 hover:bg-teal-200 dark:bg-teal-900/30 dark:text-teal-400' },
   { label: 'Opus 5.5→High', from: 'claude-opus-5-5', to: 'claude-opus-5-5-high', color: 'bg-pink-100 text-pink-700 hover:bg-pink-200 dark:bg-pink-900/30 dark:text-pink-400' },
@@ -410,7 +418,8 @@ const antigravityPresetMappings = [
   { label: 'Sonnet4.5→4.6', from: 'claude-sonnet-4-5-20250929', to: 'claude-sonnet-4-6', color: 'bg-cyan-100 text-cyan-700 hover:bg-cyan-200 dark:bg-cyan-900/30 dark:text-cyan-400' },
   { label: 'Sonnet3.5→4.6', from: 'claude-3-5-sonnet-20241022', to: 'claude-sonnet-4-6', color: 'bg-teal-100 text-teal-700 hover:bg-teal-200 dark:bg-teal-900/30 dark:text-teal-400' },
   { label: 'Opus4.5→4.6', from: 'claude-opus-4-5-20251101', to: 'claude-opus-4-6-thinking', color: 'bg-violet-100 text-violet-700 hover:bg-violet-200 dark:bg-violet-900/30 dark:text-violet-400' },
-  // Gemini 3→3.1 映射
+  // Gemini 3→3.1 / 4 Argon 映射
+  { label: '3.1-Pro→4-Argon-High', from: 'gemini-3.1-pro*', to: 'gemini-4-argon-high', color: 'bg-amber-100 text-amber-700 hover:bg-amber-200 dark:bg-amber-900/30 dark:text-amber-400' },
   { label: '3-Pro-Preview→Pro-Agent', from: 'gemini-3-pro-preview', to: 'gemini-pro-agent', color: 'bg-amber-100 text-amber-700 hover:bg-amber-200 dark:bg-amber-900/30 dark:text-amber-400' },
   { label: '3-Pro-High→Pro-Agent', from: 'gemini-3-pro-high', to: 'gemini-pro-agent', color: 'bg-orange-100 text-orange-700 hover:bg-orange-200 dark:bg-orange-900/30 dark:text-orange-400' },
   { label: '3-Pro-Low→3.1-Pro-Low', from: 'gemini-3-pro-low', to: 'gemini-3.1-pro-low', color: 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200 dark:bg-yellow-900/30 dark:text-yellow-400' },
