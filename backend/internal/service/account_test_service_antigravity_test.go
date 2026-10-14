@@ -20,7 +20,7 @@ func TestAntigravityBuildGeminiTestRequest_IncludesValidatedToolConfig(t *testin
 	t.Parallel()
 
 	svc := &AntigravityGatewayService{}
-	raw, err := svc.buildGeminiTestRequest("proj-123", "gemini-3.8-flash-high")
+	raw, err := svc.buildGeminiTestRequestWithPrompt("proj-123", "gemini-3.8-flash-high", "")
 	require.NoError(t, err)
 
 	var v1Req map[string]any

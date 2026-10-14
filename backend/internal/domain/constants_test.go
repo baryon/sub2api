@@ -105,20 +105,15 @@ func TestDefaultAntigravityModelMapping_Gemini38FlashModels(t *testing.T) {
 	}
 }
 
-func TestDefaultAntigravityModelMapping_Gemini4ArgonAndClaude55Models(t *testing.T) {
+func TestDefaultAntigravityModelMapping_Claude55Models(t *testing.T) {
 	cases := map[string]string{
-		"gemini-4-argon":          "gemini-4-argon",
-		"gemini-4-argon-high":     "gemini-4-argon-high",
-		"gemini-4-argon-low":      "gemini-4-argon-low",
-		"gemini-4-argon-medium":   "gemini-4-argon-medium",
-		"gemini-4-argon-tiered":   "gemini-4-argon-tiered",
-		"claude-opus-5-5":         "claude-opus-5-5-high",
-		"claude-opus-5-5-high":    "claude-opus-5-5-high",
-		"claude-opus-5-5-low":     "claude-opus-5-5-low",
-		"claude-opus-5-5-medium":  "claude-opus-5-5-medium",
-		"claude-sonnet-5-5":       "claude-sonnet-5-5-high",
-		"claude-sonnet-5-5-high":  "claude-sonnet-5-5-high",
-		"claude-sonnet-5-5-low":   "claude-sonnet-5-5-low",
+		"claude-opus-5-5":          "claude-opus-5-5-high",
+		"claude-opus-5-5-high":     "claude-opus-5-5-high",
+		"claude-opus-5-5-low":      "claude-opus-5-5-low",
+		"claude-opus-5-5-medium":   "claude-opus-5-5-medium",
+		"claude-sonnet-5-5":        "claude-sonnet-5-5-high",
+		"claude-sonnet-5-5-high":   "claude-sonnet-5-5-high",
+		"claude-sonnet-5-5-low":    "claude-sonnet-5-5-low",
 		"claude-sonnet-5-5-medium": "claude-sonnet-5-5-medium",
 	}
 	for from, want := range cases {

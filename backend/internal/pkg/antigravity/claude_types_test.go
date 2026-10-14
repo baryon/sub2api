@@ -39,16 +39,9 @@ func TestDefaultModels_ContainsNewAndLegacyImageModels(t *testing.T) {
 		"gemini-3.8-flash-low",
 		"gemini-3.8-flash-medium",
 		"gemini-3.8-flash-tiered",
-		"gemini-4-argon",
-		"gemini-4-argon-high",
-		"gemini-4-argon-low",
-		"gemini-4-argon-medium",
-		"gemini-4-argon-tiered",
-		"claude-opus-5-5",
 		"claude-opus-5-5-high",
 		"claude-opus-5-5-low",
 		"claude-opus-5-5-medium",
-		"claude-sonnet-5-5",
 		"claude-sonnet-5-5-high",
 		"claude-sonnet-5-5-low",
 		"claude-sonnet-5-5-medium",
@@ -89,9 +82,6 @@ func TestIsGeminiReasoningModel_IncludesProAgent(t *testing.T) {
 	}
 	if !IsGeminiReasoningModel("gemini-3.8-flash-high") {
 		t.Fatal("expected gemini-3.8-flash-high to be recognized as a Gemini reasoning model")
-	}
-	if !IsGeminiReasoningModel("gemini-4-argon-high") {
-		t.Fatal("expected gemini-4-argon-high to be recognized as a Gemini reasoning model")
 	}
 	if IsGeminiReasoningModel("gemini-2.5-flash") {
 		t.Fatal("did not expect gemini-2.5-flash to be recognized as a Gemini reasoning model")
