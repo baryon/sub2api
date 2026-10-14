@@ -340,7 +340,9 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 		MarkResponseCommitted(c)
 	}
 
-	needModelReplace := originalModel != mappedModel
+	clientModel := clientRequestedModelName(c, originalModel)
+	deepSeekUpstream := targetsDeepSeekAPIHost(account)
+	needModelReplace := clientModel != mappedModel
 	streamOutputAccumulator := apicompat.NewBufferedResponseAccumulator()
 	streamDoneItems := newResponsesStreamOutputItems()
 	streamImageOutputs := make([]json.RawMessage, 0, 1)
@@ -635,11 +637,13 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 					streamOutputAccumulator.ProcessEvent(&streamEvent)
 				}
 			}
-			if normalizedData, normalized := normalizeResponsesStreamingTerminalOutput(dataBytes, streamOutputAccumulator, streamDoneItems, streamImageOutputs); normalized {
-				dataBytes = normalizedData
-				data = string(normalizedData)
-				line = "data: " + data
-				eventType = effectiveOpenAISSEEventType(dataBytes, eventType)
+			if !deepSeekUpstream {
+				if normalizedData, normalized := normalizeResponsesStreamingTerminalOutput(dataBytes, streamOutputAccumulator, streamDoneItems, streamImageOutputs); normalized {
+					dataBytes = normalizedData
+					data = string(normalizedData)
+					line = "data: " + data
+					eventType = effectiveOpenAISSEEventType(dataBytes, eventType)
+				}
 			}
 			restoredData, restoreErr := restoreGrokResponsesClientToolPayload(c, dataBytes)
 			if restoreErr != nil {
@@ -668,8 +672,10 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 				line = "data: " + data
 			}
 			// Replace model in response if needed.
-			if needModelReplace {
-				line = s.replaceModelInSSELine(line, mappedModel, originalModel)
+			if deepSeekUpstream {
+				line = string(nameDeepSeekResponsesModelInWireLine([]byte(line), clientModel))
+			} else if needModelReplace {
+				line = s.replaceModelInSSELine(line, mappedModel, clientModel)
 			}
 			startsClientOutput := forceFlushFailedEvent || openAIStreamDataStartsClientOutput(data, eventType)
 			startsVisibleOutput := openAIStreamDataStartsVisibleOutput(data, eventType)
@@ -1667,8 +1673,11 @@ func (s *OpenAIGatewayService) handleNonStreamingResponse(ctx context.Context, r
 	logOpenAISuccessMissingUsage(ctx, c, account, resp, usage, "json", false)
 
 	// Replace model in response if needed
-	if originalModel != mappedModel {
-		body = s.replaceModelInResponseBody(body, mappedModel, originalModel)
+	clientModel := clientRequestedModelName(c, originalModel)
+	if targetsDeepSeekAPIHost(account) {
+		body, _ = nameDeepSeekResponsesModelForClient(body, clientModel)
+	} else if clientModel != mappedModel {
+		body = s.replaceModelInResponseBody(body, mappedModel, clientModel)
 	}
 	body, err = restoreGrokResponsesClientToolPayload(c, body)
 	if err != nil {
@@ -1765,8 +1774,11 @@ func (s *OpenAIGatewayService) handleSSEToJSON(resp *http.Response, c *gin.Conte
 		}
 		finalResponse = supplementCompactionItemFromSSE(c, finalResponse, bodyText)
 		body = finalResponse
-		if originalModel != mappedModel {
-			body = s.replaceModelInResponseBody(body, mappedModel, originalModel)
+		clientModel := clientRequestedModelName(c, originalModel)
+		if targetsDeepSeekAPIHost(account) {
+			body, _ = nameDeepSeekResponsesModelForClient(body, clientModel)
+		} else if clientModel != mappedModel {
+			body = s.replaceModelInResponseBody(body, mappedModel, clientModel)
 		}
 		// Correct tool calls in final response
 		body = s.correctToolCallsInResponseBody(body)
@@ -1785,8 +1797,15 @@ func (s *OpenAIGatewayService) handleSSEToJSON(resp *http.Response, c *gin.Conte
 		restoredBody = restoreCodexToolNamesFromContext(c, restoredBody)
 		body = restoredBody
 	} else {
-		if originalModel != mappedModel {
-			bodyText = s.replaceModelInSSEBody(bodyText, mappedModel, originalModel)
+		clientModel := clientRequestedModelName(c, originalModel)
+		if targetsDeepSeekAPIHost(account) {
+			lines := strings.Split(bodyText, "\n")
+			for i, line := range lines {
+				lines[i] = string(nameDeepSeekResponsesModelInWireLine([]byte(line), clientModel))
+			}
+			bodyText = strings.Join(lines, "\n")
+		} else if clientModel != mappedModel {
+			bodyText = s.replaceModelInSSEBody(bodyText, mappedModel, clientModel)
 		}
 		body = []byte(bodyText)
 	}

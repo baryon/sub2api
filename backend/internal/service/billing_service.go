@@ -294,6 +294,9 @@ func isDeepSeekModel(model string) bool {
 	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(model)), "deepseek-")
 }
 
+// DeepSeekPeakMultiplierAt 供其他包的测试按请求时刻计算预期费用（高峰 2×，低谷 1×）。
+func DeepSeekPeakMultiplierAt(now time.Time) float64 { return deepseekPeakMultiplierAt(now) }
+
 // deepseekPeakMultiplierAt 返回指定时刻的 DeepSeek 官方峰谷定价因子。
 // 官方口径（2026-08-23 起生效）：高峰价 = 2× 低谷价；高峰时段为
 // 01:00–04:00 与 06:00–10:00 UTC（半开区间），仅工作日；

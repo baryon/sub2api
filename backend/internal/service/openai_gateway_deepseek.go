@@ -13,6 +13,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/tidwall/gjson"
+	"github.com/tidwall/sjson"
 )
 
 const (
@@ -160,10 +161,76 @@ func (s *OpenAIGatewayService) writeDeepSeekResponsesHeaders(c *gin.Context, res
 	}
 }
 
+// nameDeepSeekResponsesModelForClient makes a DeepSeek Responses payload (a stream event or the non-streamed
+// body) name the model the client asked for. DeepSeek answers under its own name when the account maps the public
+// name to another one, and also for its aliases (a request for deepseek-v4-flash is answered as deepseek-flash);
+// clients that check the answer's model reject both. Only the protocol model fields (model, response.model) change,
+// and only when they differ from clientModel; the rest of the payload stays byte for byte. Usage, the observed
+// upstream model and billing must read DeepSeek's original payload, not this one.
+func nameDeepSeekResponsesModelForClient(payload []byte, clientModel string) ([]byte, bool) {
+	if clientModel == "" || !bytes.Contains(payload, []byte(`"model"`)) || !gjson.ValidBytes(payload) {
+		return payload, false
+	}
+	named := payload
+	changed := false
+	for _, path := range []string{"model", "response.model"} {
+		m := gjson.GetBytes(named, path)
+		if m.Type != gjson.String || m.Str == clientModel {
+			continue
+		}
+		updated, err := sjson.SetBytes(named, path, clientModel)
+		if err != nil {
+			return payload, false
+		}
+		named = updated
+		changed = true
+	}
+	return named, changed
+}
+
+func clientRequestedModelName(c *gin.Context, fallback string) string {
+	if c != nil && c.Request != nil {
+		if publicModel, ok := RequestedPublicModelFromContext(c.Request.Context()); ok {
+			return publicModel
+		}
+	}
+	return fallback
+}
+
+// nameDeepSeekResponsesModelInWireLine applies nameDeepSeekResponsesModelForClient to one SSE wire line (line ending
+// included), keeping the "data:" prefix and the line ending as they were.
+func nameDeepSeekResponsesModelInWireLine(wireLine []byte, clientModel string) []byte {
+	if clientModel == "" {
+		return wireLine
+	}
+	content := bytes.TrimRight(wireLine, "\r\n")
+	if !bytes.Contains(content, []byte(`"model"`)) {
+		return wireLine
+	}
+	line := string(content)
+	data, ok := extractOpenAISSEDataLine(line)
+	if !ok {
+		return wireLine
+	}
+	named, changed := nameDeepSeekResponsesModelForClient([]byte(data), clientModel)
+	if !changed {
+		return wireLine
+	}
+	prefix := line[:len(line)-len(data)]
+	out := make([]byte, 0, len(prefix)+len(named)+len(wireLine)-len(content))
+	out = append(out, prefix...)
+	out = append(out, named...)
+	return append(out, wireLine[len(content):]...)
+}
+
+// handleDeepSeekResponsesJSON relays a non-streamed DeepSeek Responses answer. The client gets it under clientModel
+// (see nameDeepSeekResponsesModelForClient); usage, the observed upstream model and billing use DeepSeek's original
+// body.
 func (s *OpenAIGatewayService) handleDeepSeekResponsesJSON(
 	resp *http.Response,
 	c *gin.Context,
 	account *Account,
+	clientModel string,
 ) (*deepSeekResponsesRelayResult, error) {
 	sanitizeDeepSeekResponseHeadersInPlace(account, resp.Header)
 	body, err := ReadUpstreamResponseBody(resp.Body, s.cfg, c, openAITooLargeError)
@@ -222,6 +289,7 @@ func (s *OpenAIGatewayService) handleDeepSeekResponsesJSON(
 	if restoreErr != nil {
 		return nil, fmt.Errorf("restore DeepSeek Responses client tools: %w", restoreErr)
 	}
+	writeBody, _ = nameDeepSeekResponsesModelForClient(writeBody, clientModel)
 
 	s.writeDeepSeekResponsesHeaders(c, resp, false)
 	c.Data(resp.StatusCode, c.Writer.Header().Get("Content-Type"), writeBody)
@@ -236,12 +304,16 @@ func (s *OpenAIGatewayService) handleDeepSeekResponsesJSON(
 	return result, nil
 }
 
+// handleDeepSeekResponsesStream relays DeepSeek's Responses stream line by line. Each written line names clientModel
+// (see nameDeepSeekResponsesModelInWireLine); events are parsed for usage and the observed upstream model before
+// that.
 func (s *OpenAIGatewayService) handleDeepSeekResponsesStream(
 	ctx context.Context,
 	resp *http.Response,
 	c *gin.Context,
 	account *Account,
 	startTime time.Time,
+	clientModel string,
 ) (*deepSeekResponsesRelayResult, error) {
 	sanitizeDeepSeekResponseHeadersInPlace(account, resp.Header)
 	observer := upstreamResponseModelObserverFromContext(c)
@@ -518,6 +590,7 @@ func (s *OpenAIGatewayService) handleDeepSeekResponsesStream(
 						return protocolFailure(processErr)
 					}
 				}
+				wireLine = nameDeepSeekResponsesModelInWireLine(wireLine, clientModel)
 				if guardErr := sensitiveGuard.PushWireLine(wireLine, func(safeWire []byte) error {
 					writeWire(safeWire)
 					return nil
@@ -542,7 +615,8 @@ func (s *OpenAIGatewayService) handleDeepSeekResponsesStream(
 				}
 			}
 			if len(pendingLine) > 0 {
-				if guardErr := sensitiveGuard.PushWireLine(pendingLine, func(safeWire []byte) error {
+				tailLine := nameDeepSeekResponsesModelInWireLine(pendingLine, clientModel)
+				if guardErr := sensitiveGuard.PushWireLine(tailLine, func(safeWire []byte) error {
 					writeWire(safeWire)
 					return nil
 				}); guardErr != nil {
@@ -673,10 +747,13 @@ func (s *OpenAIGatewayService) forwardDeepSeekResponses(
 	reasoningEffort := extractOpenAIReasoningEffortFromBodyForAccount(account, upstreamBody, upstreamModel, billingModel, originalModel)
 	serviceTier := extractOpenAIServiceTierFromBody(upstreamBody)
 	var relayResult *deepSeekResponsesRelayResult
+	// The answer goes back under the name the client sent: a composite route may already have put its upstream
+	// model into the body, so its public name wins.
+	clientModel := clientRequestedModelName(c, originalModel)
 	if clientStream {
-		relayResult, err = s.handleDeepSeekResponsesStream(ctx, resp, c, account, startTime)
+		relayResult, err = s.handleDeepSeekResponsesStream(ctx, resp, c, account, startTime, clientModel)
 	} else {
-		relayResult, err = s.handleDeepSeekResponsesJSON(resp, c, account)
+		relayResult, err = s.handleDeepSeekResponsesJSON(resp, c, account, clientModel)
 	}
 	if relayResult == nil {
 		return nil, err
