@@ -218,11 +218,9 @@ func (s *OpenAIGatewayService) handleDeepSeekResponsesJSON(
 		return nil, newDeepSeekMissingUsageFailoverError(c, account, openAICompatibleUpstreamRequestID(resp.Header))
 	}
 
-	writeBody := body
-	if restored, restoreErr := restoreOpenAIResponsesClientToolPayload(c, body); restoreErr != nil {
+	writeBody, restoreErr := restoreOpenAIResponsesClientToolPayload(c, body)
+	if restoreErr != nil {
 		return nil, fmt.Errorf("restore DeepSeek Responses client tools: %w", restoreErr)
-	} else {
-		writeBody = restored
 	}
 
 	s.writeDeepSeekResponsesHeaders(c, resp, false)

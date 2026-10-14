@@ -744,10 +744,6 @@ func normalizeGrokReasoningEffortValue(raw, upstreamModel string) (string, bool)
 	}
 }
 
-func grokSupportsExtraHighReasoningEffort(model string) bool {
-	return GrokSupportsXHighReasoningEffort(model)
-}
-
 // GrokSupportsXHighReasoningEffort reports whether the model advertises and
 // forwards the xhigh reasoning effort (Grok 4.6/4.7 and their aliases).
 func GrokSupportsXHighReasoningEffort(model string) bool {
