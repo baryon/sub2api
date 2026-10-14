@@ -260,6 +260,8 @@ func TestTierIDToPlanType(t *testing.T) {
 		{"free-tier", "Free"},
 		{"g1-pro-tier", "Pro"},
 		{"g1-ultra-tier", "Ultra"},
+		{"g1-ultra-lite-tier", "Ultra"},
+		{"G1-Pro-Plus-Tier", "Pro"},
 		{"FREE-TIER", "Free"},
 		{"", "Free"},
 		{"unknown-tier", "unknown-tier"},

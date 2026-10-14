@@ -778,6 +778,12 @@ func (a *Account) resolveModelMapping(rawMapping map[string]any) map[string]stri
 	if len(result) > 0 {
 		if a.Platform == domain.PlatformAntigravity {
 			ensureAntigravityDefaultPassthroughs(result, []string{
+				"claude-opus-5-5-high",
+				"claude-opus-5-5-low",
+				"claude-opus-5-5-medium",
+				"claude-sonnet-5-5-high",
+				"claude-sonnet-5-5-low",
+				"claude-sonnet-5-5-medium",
 				"gemini-3-flash",
 				"gemini-3.1-pro-high",
 				"gemini-3.1-pro-low",
@@ -796,6 +802,11 @@ func (a *Account) resolveModelMapping(rawMapping map[string]any) map[string]stri
 				"gemini-3.8-flash-low",
 				"gemini-3.8-flash-medium",
 				"gemini-3.8-flash-tiered",
+				"gemini-4-argon",
+				"gemini-4-argon-high",
+				"gemini-4-argon-low",
+				"gemini-4-argon-medium",
+				"gemini-4-argon-tiered",
 			})
 			applyAntigravityGemini31ProAliases(result)
 		}
