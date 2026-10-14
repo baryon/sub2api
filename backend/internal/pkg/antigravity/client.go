@@ -239,8 +239,37 @@ func TierIDToPlanType(tierID string) string {
 		if tierID == "" {
 			return "Free"
 		}
+		// Google 新增的细分档位（如 g1-ultra-lite-tier、g1-pro-plus-tier）仍归入 Ultra / Pro。
+		if plan := paidPlanFromTierID(tierID); plan != "" {
+			return plan
+		}
 		return tierID
 	}
+}
+
+// paidPlanFromTierID 识别 g1-ultra-*-tier / g1-pro-*-tier 形式的付费档位 ID，未知时返回空串。
+func paidPlanFromTierID(tierID string) string {
+	id := strings.ToLower(strings.TrimSpace(tierID))
+	if !strings.HasSuffix(id, "-tier") {
+		return ""
+	}
+	switch {
+	case strings.HasPrefix(id, "g1-ultra-"):
+		return "Ultra"
+	case strings.HasPrefix(id, "g1-pro-"):
+		return "Pro"
+	default:
+		return ""
+	}
+}
+
+// IsPaidPlanType 判断账号记录的 plan_type 是否为付费套餐，兼容旧记录里直接保存的档位 ID。
+func IsPaidPlanType(planType string) bool {
+	switch strings.ToLower(strings.TrimSpace(planType)) {
+	case "pro", "ultra":
+		return true
+	}
+	return paidPlanFromTierID(planType) != ""
 }
 
 // Client Antigravity API 客户端
