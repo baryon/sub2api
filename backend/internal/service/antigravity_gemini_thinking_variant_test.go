@@ -90,10 +90,13 @@ func TestResolveGeminiThinkingVariant(t *testing.T) {
 		{"variant value is itself a mapping target", map[string]string{
 			"gemini-3.8-flash-high": "gemini-3.8-flash-tiered",
 		}, "gemini-3.8-flash", budget("-1"), "gemini-3.8-flash-tiered", true},
-		{"user-written bare identity passthrough: respected", map[string]string{
+		{"persisted default bare identity passthrough still resolves when variants exist", map[string]string{
 			"gemini-3.8-flash":      "gemini-3.8-flash",
 			"gemini-3.8-flash-high": "gemini-3.8-flash-high",
-		}, "gemini-3.8-flash", budget("1000"), "", false},
+		}, "gemini-3.8-flash", budget("1000"), "gemini-3.8-flash-low", true},
+		{"wildcard mapping does not fabricate variants for non-tiered bare model", map[string]string{
+			"gemini-2.5*": "gemini-2.5-flash",
+		}, "gemini-2.5-flash", budget("-1"), "", false},
 		{"runtime-injected bare passthrough (not in credentials): still resolved", map[string]string{
 			// resolveModelMapping 会补 gemini-3.7-flash → gemini-3.7-flash 的默认透传，
 			// 但 credentials 里没有这条，应当继续推导变体。
