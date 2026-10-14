@@ -110,8 +110,10 @@ func requireOtohaDeepSeekFlashBilling(t *testing.T, log *service.UsageLog) {
 	require.Equal(t, "deepseek-flash", *log.UpstreamResponseModel, "the record keeps what DeepSeek answered, not the renamed model")
 	require.NotNil(t, log.UpstreamModelMismatch)
 	require.False(t, *log.UpstreamModelMismatch)
-	require.InDelta(t, 1000*0.15e-6+500*0.6e-6, log.TotalCost, 1e-12)
-	require.InDelta(t, (1000*0.15e-6+500*0.6e-6)*1.5, log.ActualCost, 1e-12)
+	// DeepSeek's official price doubles at weekday peak hours; the expected cost follows the moment the request was billed.
+	peak := service.DeepSeekPeakMultiplierAt(log.CreatedAt)
+	require.InDelta(t, (1000*0.15e-6+500*0.6e-6)*peak, log.TotalCost, 1e-12)
+	require.InDelta(t, (1000*0.15e-6+500*0.6e-6)*peak*1.5, log.ActualCost, 1e-12)
 }
 
 func TestOtohaDeepSeekResponsesStreamNamesTheRequestedModel(t *testing.T) {
