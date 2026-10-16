@@ -1310,6 +1310,7 @@ func (s *GatewayService) buildRecordUsageLog(
 		BillingType:              billingType,
 		BillingMode:              resolveBillingMode(result, cost),
 		RequestKind:              result.RequestKind.Normalize(),
+		NativeCompactionV2:       result.NativeCompactionV2,
 		Stream:                   result.Stream,
 		DurationMs:               &durationMs,
 		FirstTokenMs:             result.FirstTokenMs,

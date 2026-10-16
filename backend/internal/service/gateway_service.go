@@ -641,6 +641,7 @@ type ForwardResult struct {
 	// cheaper tier (see ResolveBillingServiceTier).
 	ServiceTier *string
 	RequestKind UsageRequestKind
+	NativeCompactionV2 bool
 
 	// 图片生成计费字段（图片生成模型使用）
 	ImageCount         int    // 生成的图片数量

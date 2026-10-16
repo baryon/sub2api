@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
@@ -670,7 +671,8 @@ func TestGatewayForwardAsResponsesRemoteCompactionV2AndRestore(t *testing.T) {
 			Body:       io.NopCloser(strings.NewReader(summaryStream)),
 		},
 	}
-	svc := &GatewayService{cfg: &config.Config{}, httpUpstream: upstream}
+	svc := &GatewayService{cfg: &config.Config{JWT: config.JWTConfig{Secret: "test-gateway-compact-jwt-secret-key-32b"}}, httpUpstream: upstream}
+	userCtx := context.WithValue(context.Background(), ctxkey.UserID, int64(42))
 	account := &Account{
 		ID:       1,
 		Platform: PlatformAnthropic,
@@ -695,7 +697,7 @@ func TestGatewayForwardAsResponsesRemoteCompactionV2AndRestore(t *testing.T) {
 	c1, _ := gin.CreateTestContext(rec1)
 	c1.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(string(compactBody)))
 
-	res1, err := svc.ForwardAsResponses(context.Background(), c1, account, compactBody, nil)
+	res1, err := svc.ForwardAsResponses(userCtx, c1, account, compactBody, nil)
 	require.NoError(t, err)
 	require.NotNil(t, res1)
 	require.Equal(t, UsageRequestKindCompact, res1.RequestKind)
@@ -741,7 +743,7 @@ func TestGatewayForwardAsResponsesRemoteCompactionV2AndRestore(t *testing.T) {
 	c2, _ := gin.CreateTestContext(rec2)
 	c2.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(string(followUpBody)))
 
-	_, err = svc.ForwardAsResponses(context.Background(), c2, account, followUpBody, nil)
+	_, err = svc.ForwardAsResponses(userCtx, c2, account, followUpBody, nil)
 	require.NoError(t, err)
 	require.Contains(t, gjson.GetBytes(upstream.lastBody, "messages.0.content.0.text").String(), "<compacted-summary>Summary of prior context.</compacted-summary>")
 }

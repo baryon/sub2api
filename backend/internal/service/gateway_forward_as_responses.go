@@ -54,8 +54,18 @@ func (s *GatewayService) ForwardAsResponses(
 		body = restoredBody
 	}
 
-	isCompaction := isGatewayResponsesCompactionRequest(c, body)
+	hasCompactionTrigger := HasCompactionTriggerInInput(body)
+	isCompactPath := isOpenAIResponsesCompactPath(c)
+	isCompaction := isCompactPath || hasCompactionTrigger
 	if isCompaction {
+		if _, err := gatewayCompactUserAAD(ctx); err != nil {
+			writeResponsesError(c, http.StatusBadRequest, "invalid_request_error", err.Error())
+			return nil, err
+		}
+		if _, err := gatewayCompactAEAD(s.cfg); err != nil {
+			writeResponsesError(c, http.StatusInternalServerError, "server_error", err.Error())
+			return nil, err
+		}
 		rewritten, rewriteErr := rewriteGatewayResponsesCompactionRequest(body)
 		if rewriteErr != nil {
 			writeResponsesError(c, http.StatusBadRequest, "invalid_request_error", rewriteErr.Error())
@@ -77,6 +87,10 @@ func (s *GatewayService) ForwardAsResponses(
 	}
 	originalModel := responsesReq.Model
 	clientStream := responsesReq.Stream
+	if isCompaction && isCompactPath {
+		clientStream = false
+	}
+	nativeCompactionV2 := !isCompactPath && clientStream && hasCompactionTrigger
 
 	// 3. Convert Responses → Anthropic
 	// Resolve the final upstream model before model-specific conversion.
@@ -217,7 +231,7 @@ func (s *GatewayService) ForwardAsResponses(
 	var result *ForwardResult
 	var handleErr error
 	if isCompaction {
-		result, handleErr = s.handleResponsesCompactionResponse(ctx, resp, c, originalModel, mappedModel, reasoningEffort, startTime, clientStream)
+		result, handleErr = s.handleResponsesCompactionResponse(ctx, resp, c, originalModel, mappedModel, reasoningEffort, startTime, clientStream, nativeCompactionV2)
 	} else if clientStream {
 		result, handleErr = s.handleResponsesStreamingResponse(resp, c, originalModel, mappedModel, reasoningEffort, startTime, clientToolMapping)
 	} else {
@@ -748,6 +762,7 @@ func (s *GatewayService) handleResponsesCompactionResponse(
 	reasoningEffort *string,
 	startTime time.Time,
 	clientStream bool,
+	nativeCompactionV2 bool,
 ) (*ForwardResult, error) {
 	requestID := resp.Header.Get("x-request-id")
 
@@ -818,8 +833,9 @@ func (s *GatewayService) handleResponsesCompactionResponse(
 		Model:           originalModel,
 		UpstreamModel:   mappedModel,
 		ReasoningEffort: reasoningEffort,
-		RequestKind:     UsageRequestKindCompact,
-		Stream:          clientStream,
+		RequestKind:        UsageRequestKindCompact,
+		NativeCompactionV2: nativeCompactionV2,
+		Stream:             clientStream,
 		Duration:        time.Since(startTime),
 	}, nil
 }

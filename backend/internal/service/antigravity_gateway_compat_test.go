@@ -13,6 +13,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
@@ -86,7 +87,7 @@ func newAntigravityCompatService(cfg config.GatewayConfig, upstream HTTPUpstream
 		tokenProvider,
 		nil,
 		upstream,
-		NewSettingService(&antigravitySettingRepoStub{}, &config.Config{Gateway: cfg}),
+		NewSettingService(&antigravitySettingRepoStub{}, &config.Config{Gateway: cfg, JWT: config.JWTConfig{Secret: "test-antigravity-compact-jwt-secret-key-32b"}}),
 		nil,
 	)
 }
@@ -1157,12 +1158,14 @@ func TestAntigravityCompatResponsesRemoteCompactionV2AndRestore(t *testing.T) {
 			{"type":"function","name":"exec_command","parameters":{"type":"object","properties":{}}}
 		]
 	}`)
+	userCtx := context.WithValue(context.Background(), ctxkey.UserID, int64(42))
 	c1, rec1 := newAntigravityCompatContext(http.MethodPost, "/v1/responses", compactBody)
 
-	res1, err := svc.ForwardAsResponses(context.Background(), c1, account, compactBody, nil)
+	res1, err := svc.ForwardAsResponses(userCtx, c1, account, compactBody, nil)
 	require.NoError(t, err)
 	require.NotNil(t, res1)
 	require.Equal(t, UsageRequestKindCompact, res1.RequestKind)
+	require.True(t, res1.NativeCompactionV2)
 	require.Len(t, upstream.requestBodies, 1)
 
 	// 1. Upstream request must NOT end with a model turn and must not include tools.
@@ -1213,7 +1216,7 @@ func TestAntigravityCompatResponsesRemoteCompactionV2AndRestore(t *testing.T) {
 	require.NoError(t, err)
 	c2, rec2 := newAntigravityCompatContext(http.MethodPost, "/v1/responses", followUpBody)
 
-	res2, err := svc.ForwardAsResponses(context.Background(), c2, account, followUpBody, nil)
+	res2, err := svc.ForwardAsResponses(userCtx, c2, account, followUpBody, nil)
 	require.NoError(t, err)
 	require.NotNil(t, res2)
 	require.Equal(t, http.StatusOK, rec2.Code)
@@ -1262,9 +1265,47 @@ func TestAntigravityCompatResponsesEndsWithUserTurnAndRejectsInvalidCompactEnvel
 		}`)
 		c, rec := newAntigravityCompatContext(http.MethodPost, "/v1/responses", body)
 
-		res, err := svc.ForwardAsResponses(context.Background(), c, account, body, nil)
+		userCtx := context.WithValue(context.Background(), ctxkey.UserID, int64(42))
+		res, err := svc.ForwardAsResponses(userCtx, c, account, body, nil)
 		require.Error(t, err)
 		require.Nil(t, res)
 		require.Equal(t, http.StatusBadRequest, rec.Code)
+	})
+
+	t.Run("rejects previous_response_id and duplicate compaction_trigger on compact", func(t *testing.T) {
+		svc := newAntigravityCompatService(config.GatewayConfig{MaxLineSize: defaultMaxLineSize}, nil)
+		account := newAntigravityCompatAccount(AccountTypeOAuth)
+		userCtx := context.WithValue(context.Background(), ctxkey.UserID, int64(42))
+
+		for _, payload := range []string{
+			`{"model":"gemini-3.1-pro-high","previous_response_id":"resp_old","input":[{"type":"message","role":"user","content":"hi"},{"type":"compaction_trigger"}]}`,
+			`{"model":"gemini-3.1-pro-high","input":[{"type":"message","role":"user","content":"hi"},{"type":"compaction_trigger"},{"type":"compaction_trigger"}]}`,
+		} {
+			c, rec := newAntigravityCompatContext(http.MethodPost, "/v1/responses", []byte(payload))
+			res, err := svc.ForwardAsResponses(userCtx, c, account, []byte(payload), nil)
+			require.Error(t, err)
+			require.Nil(t, res)
+			require.Equal(t, http.StatusBadRequest, rec.Code)
+		}
+	})
+
+	t.Run("standalone /v1/responses/compact returns unary JSON even when stream is true", func(t *testing.T) {
+		summarySSE := `data: {"response":{"responseId":"resp_compact_unary","candidates":[{"content":{"role":"model","parts":[{"text":"Unary compact summary."}]},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":30,"candidatesTokenCount":8,"totalTokenCount":38}}}` + "\n\n"
+		upstream := &queuedHTTPUpstreamStub{responses: []*http.Response{{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+			Body:       io.NopCloser(strings.NewReader(summarySSE)),
+		}}}
+		svc := newAntigravityCompatService(config.GatewayConfig{MaxLineSize: defaultMaxLineSize}, upstream)
+		account := newAntigravityCompatAccount(AccountTypeOAuth)
+		userCtx := context.WithValue(context.Background(), ctxkey.UserID, int64(42))
+		body := []byte(`{"model":"gemini-3.1-pro-high","stream":true,"input":"Summarize this"}`)
+		c, rec := newAntigravityCompatContext(http.MethodPost, "/v1/responses/compact", body)
+
+		res, err := svc.ForwardAsResponses(userCtx, c, account, body, nil)
+		require.NoError(t, err)
+		require.NotNil(t, res)
+		require.False(t, res.NativeCompactionV2)
+		require.Equal(t, "compaction", gjson.GetBytes(rec.Body.Bytes(), "output.0.type").String())
 	})
 }
