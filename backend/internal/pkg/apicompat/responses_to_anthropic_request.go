@@ -185,14 +185,16 @@ func mapResponsesEffortToAnthropic(effort string) string {
 }
 
 func mapResponsesEffortToAnthropicForModel(model, effort string) string {
+	if !claude.IsClaudeModelID(model) {
+		value := strings.ToLower(strings.TrimSpace(effort))
+		if value == "xhigh" {
+			return "max"
+		}
+		return value
+	}
 	mapped := mapResponsesEffortToAnthropic(effort)
 	if mapped == "" {
 		return ""
-	}
-	// OpenAI-compatible Anthropic adapters without a Claude model ID use max
-	// for xhigh. Claude model families keep their own advertised effort scale.
-	if !claude.IsClaudeModelID(model) && mapped == "xhigh" {
-		return "max"
 	}
 	return claude.ClampEffortForModel(model, mapped)
 }

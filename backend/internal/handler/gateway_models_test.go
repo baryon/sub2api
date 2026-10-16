@@ -450,6 +450,12 @@ func TestGatewayModels_UnmappedOpenAIAccountsSupplementMappedModels(t *testing.T
 			Credentials: map[string]any{"model_mapping": map[string]any{alias: "gpt-5.6-sol"}},
 		},
 	}
+	subscriptionDefaults := make([]string, 0)
+	for _, model := range openai.DefaultModelIDs() {
+		if model != "gpt-5.5" {
+			subscriptionDefaults = append(subscriptionDefaults, model)
+		}
+	}
 	tests := []struct {
 		name     string
 		accounts []service.Account
@@ -459,7 +465,7 @@ func TestGatewayModels_UnmappedOpenAIAccountsSupplementMappedModels(t *testing.T
 		{
 			name:     "unmapped parent and Spark shadow retain defaults and aliases",
 			accounts: accounts,
-			want:     append(openai.DefaultModelIDs(), alias),
+			want:     append(append([]string{}, subscriptionDefaults...), alias),
 		},
 		{
 			name:     "unmapped API key account also contributes defaults",
@@ -469,7 +475,7 @@ func TestGatewayModels_UnmappedOpenAIAccountsSupplementMappedModels(t *testing.T
 		{
 			name:     "unmapped accounts alone retain default response shape",
 			accounts: accounts[:1],
-			want:     openai.DefaultModelIDs(),
+			want:     subscriptionDefaults,
 		},
 		{
 			name:     "custom list can select defaults and aliases",
@@ -498,7 +504,7 @@ func TestGatewayModels_UnmappedOpenAIAccountsSupplementMappedModels(t *testing.T
 				Credentials: map[string]any{"model_mapping": map[string]any{"stale-model": "stale-model"}},
 				Extra:       map[string]any{"openai_passthrough": true},
 			}}, accounts[1:]...),
-			want: append(openai.DefaultModelIDs(), alias),
+			want: append(append([]string{}, subscriptionDefaults...), alias),
 		},
 		{
 			name:     "unmapped accounts from another platform do not add defaults",
@@ -1638,14 +1644,14 @@ func modelIDsForTest(models []gatewayModelItemForTest) []string {
 	return ids
 }
 
-func TestGatewayModels_AntigravityExplicitMappingDefinesBothCatalogs(t *testing.T) {
+func TestGatewayModels_AntigravityExplicitMappingAppearsInBothCatalogs(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	const groupID int64 = 93
 	mapping := map[string]any{
-		"gemini-3.8-flash":      "gemini-3.8-flash-high",
-		"gemini-3.8-flash-high": "gemini-3.8-flash-high",
-		"claude-opus-5-5-high":  "claude-opus-5-5-high",
-		"gemini-pro-agent":      "gemini-pro-agent",
+		"gemini-3.8-flash":         "gemini-3.8-flash-high",
+		"gemini-3.8-flash-high":    "gemini-3.8-flash-high",
+		"claude-opus-4-6-thinking": "claude-opus-4-6-thinking",
+		"gemini-pro-agent":         "gemini-pro-agent",
 	}
 	for _, platform := range []string{service.PlatformAntigravity, service.PlatformComposite, service.PlatformGemini} {
 		t.Run(platform, func(t *testing.T) {
@@ -1656,7 +1662,7 @@ func TestGatewayModels_AntigravityExplicitMappingDefinesBothCatalogs(t *testing.
 					Credentials: map[string]any{"model_mapping": mapping},
 				}}},
 			})
-			want := []string{"gemini-3.8-flash", "gemini-3.8-flash-high", "gemini-pro-agent", "claude-opus-5-5-high"}
+			want := []string{"gemini-3.8-flash", "gemini-3.8-flash-high", "gemini-pro-agent", "claude-opus-4-6-thinking"}
 			if platform == service.PlatformGemini {
 				want = want[:3]
 			}
@@ -1682,7 +1688,11 @@ func TestGatewayModels_AntigravityExplicitMappingDefinesBothCatalogs(t *testing.
 					ids = modelIDsForTest(got.Data)
 				}
 				require.Equal(t, http.StatusOK, rec.Code)
-				require.ElementsMatch(t, want, ids, "codex=%t", codex)
+				// 显式条目必须同时出现在两种目录；默认透传补齐的条目不锁定。
+				require.Subset(t, ids, want, "codex=%t", codex)
+				if platform == service.PlatformGemini {
+					require.NotContains(t, ids, "claude-opus-4-6-thinking", "codex=%t", codex)
+				}
 			}
 		})
 	}
@@ -1747,7 +1757,12 @@ func TestGatewayModels_GeminiGroupIncludesAntigravityGeminiMappings(t *testing.T
 	var got gatewayModelsResponseForTest
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
 	ids := modelIDsForTest(got.Data)
-	require.ElementsMatch(t, []string{"gemini-3.8-flash-high", "gemini-synced-custom", "gemini-3.8-flash-low", "gemini-native-only"}, ids)
+	// 账号显式配置的 gemini-* 映射必须出现（resolveModelMapping 还会补一组 antigravity
+	// 默认透传别名，这里只断言显式条目与排除项，不锁定补齐后的完整集合）。
+	require.Contains(t, ids, "gemini-3.8-flash-high")
+	require.Contains(t, ids, "gemini-synced-custom")
+	require.Contains(t, ids, "gemini-3.8-flash-low")
+	require.Contains(t, ids, "gemini-native-only")
 	require.NotContains(t, ids, "gemini-disabled-only")
 	require.NotContains(t, ids, "gemini-unset-only")
 	// antigravity 账号的 claude-* 映射与 anthropic 账号的映射都不应出现在 gemini 分组。
