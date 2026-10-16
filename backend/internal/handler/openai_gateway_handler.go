@@ -2629,6 +2629,11 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 	}
 	decision, requestPlatform, resolveErr := resolveResponsesWebSocketTarget(c, apiKey, ctx, reqModel)
 	if resolveErr != nil {
+		if decision.OAuthAmbiguous() {
+			service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalModelConfiguration)
+			closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, decision.AmbiguousMessage())
+			return
+		}
 		if errors.Is(resolveErr, errResponsesWebSocketCompositeTargetUnresolved) {
 			closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, "Responses WebSocket API only supports OpenAI-compatible models for composite groups")
 			return
