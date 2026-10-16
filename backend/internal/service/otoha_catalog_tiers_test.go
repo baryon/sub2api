@@ -237,3 +237,59 @@ func TestOtohaResolverPricerOfAModelWithoutALongerTierGivesNone(t *testing.T) {
 	off := &Group{ID: 3, Platform: PlatformOpenAI}
 	require.Empty(t, pricer.UpstreamLongerTiers(context.Background(), off, "gpt-6-astra"), "a group that does not bill by prompt length has one price")
 }
+
+func TestOtohaAnthropicModelsCarryPromptCachingAndTTLWritePrices(t *testing.T) {
+	f := newOtohaCompositeFixture(t)
+	f.group.LongContextPricingEnabled = true
+	f.diagnoser.models[PlatformAnthropic] = []string{"claude-haiku-5-5"}
+	f.diagnoser.models[PlatformAntigravity] = []string{"claude-opus-5-5-medium"}
+	f.routes = []CompositeModelRoute{
+		{
+			ID: 1, GroupID: otohaCompositeGroupID, PublicModel: "claude-opus-5-5",
+			MatchType: CompositeRouteMatchExact, TargetPlatform: PlatformAntigravity,
+			UpstreamModel: "claude-opus-5-5-medium", Endpoint: CompositeRouteEndpointMessages, Enabled: true,
+		},
+	}
+	f.add(t, "claude-haiku-5-5", "claude-opus-5-5", "gpt-6-luna")
+
+	catalog, err := f.svc.CatalogForGroup(context.Background(), otohaCompositeGroupID)
+	require.NoError(t, err)
+
+	// 1. Native Anthropic model (claude-haiku-5-5) has promptCaching and TTL cache write prices (group rate = 2).
+	// Base upstream: input=0.10, output=0.50, cached=0.01, write5m=0.125, write1h=0.20 -> at rate 2: 0.20, 1.00, 0.02, 0.25, 0.40.
+	// >100k upstream: input=0.50, output=2.50, cached=0.05, write5m=0.625, write1h=1.00 -> at rate 2: 1.00, 5.00, 0.10, 1.25, 2.00.
+	haiku := otohaModelByID(t, catalog, "claude-haiku-5-5")
+	require.Equal(t, &OtohaPromptCaching{
+		Dialect:      "anthropic",
+		Capabilities: []string{"automatic", "explicitBreakpoints"},
+	}, haiku.PromptCaching)
+	require.Equal(t, "ttl", haiku.Price.CacheWriteBilling)
+	require.NotNil(t, haiku.Price.CacheWrite5m)
+	require.NotNil(t, haiku.Price.CacheWrite1h)
+	require.InDelta(t, 0.25, *haiku.Price.CacheWrite5m, 1e-6)
+	require.InDelta(t, 0.40, *haiku.Price.CacheWrite1h, 1e-6)
+	require.Len(t, haiku.PriceTiers, 2)
+	require.NotNil(t, haiku.PriceTiers[0].CacheWrite5m)
+	require.NotNil(t, haiku.PriceTiers[0].CacheWrite1h)
+	require.InDelta(t, 0.25, *haiku.PriceTiers[0].CacheWrite5m, 1e-6)
+	require.InDelta(t, 0.40, *haiku.PriceTiers[0].CacheWrite1h, 1e-6)
+	require.Equal(t, 100000, haiku.PriceTiers[1].AboveInputTokens)
+	require.NotNil(t, haiku.PriceTiers[1].CacheWrite5m)
+	require.NotNil(t, haiku.PriceTiers[1].CacheWrite1h)
+	require.InDelta(t, 1.25, *haiku.PriceTiers[1].CacheWrite5m, 1e-6)
+	require.InDelta(t, 2.00, *haiku.PriceTiers[1].CacheWrite1h, 1e-6)
+
+	// 2. Antigravity-routed Claude model converts Messages to Google v1internal and must NOT advertise Anthropic promptCaching.
+	opus := otohaModelByID(t, catalog, "claude-opus-5-5")
+	require.Nil(t, opus.PromptCaching)
+
+	// 3. OpenAI model does not advertise Anthropic promptCaching.
+	luna := otohaModelByID(t, catalog, "gpt-6-luna")
+	require.Nil(t, luna.PromptCaching)
+}
+
+func TestEnforceCacheControlLimitPreservesTopLevelAutomaticAndBlockBreakpoints(t *testing.T) {
+	body := []byte(`{"model":"claude-haiku-5-5","cache_control":{"type":"ephemeral"},"system":[{"type":"text","text":"stable system","cache_control":{"type":"ephemeral"}}],"messages":[{"role":"user","content":"hello"}]}`)
+	out := enforceCacheControlLimit(body)
+	require.JSONEq(t, string(body), string(out))
+}

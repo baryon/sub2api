@@ -429,6 +429,7 @@ type otohaCatalogItem struct {
 	upstream OtohaModelPrice
 	use      []string
 	api      string
+	platform string
 	// tiers are the tiers above the base price, before any rate (derived from billing).
 	tiers []OtohaPriceTier
 }
@@ -933,7 +934,11 @@ func (s *OtohaCatalogService) evaluate(ctx context.Context, group *Group, entrie
 			item.Problem = OtohaCatalogProblemNoPrice
 		default:
 			item.InCatalog = true
-			items = append(items, otohaCatalogItem{entry: entry, upstream: upstream, use: item.EffectiveUse, api: route.API, tiers: derivedTiers})
+			effectivePlatform := route.Platform
+			if effectivePlatform == "" && group != nil {
+				effectivePlatform = group.Platform
+			}
+			items = append(items, otohaCatalogItem{entry: entry, upstream: upstream, use: item.EffectiveUse, api: route.API, platform: effectivePlatform, tiers: derivedTiers})
 		}
 		out = append(out, item)
 	}
@@ -948,6 +953,12 @@ func buildOtohaCatalogWithMedia(items []otohaCatalogItem, imageItems []otohaImag
 		sale := otohaSalePrice(item.upstream, rate)
 		model := otohaCatalogModel(item.entry, sale, otohaEffectiveCost(item.entry, sale), item.use)
 		model.API = item.api
+		if item.api == OtohaAPIAnthropicMessages && item.platform == PlatformAnthropic {
+			model.PromptCaching = &OtohaPromptCaching{
+				Dialect:      "anthropic",
+				Capabilities: []string{"automatic", "explicitBreakpoints"},
+			}
+		}
 		model.PriceTiers = otohaPriceTiers(item.entry, item.upstream, item.tiers, rate)
 		catalog.Models = append(catalog.Models, model)
 	}
@@ -1024,15 +1035,29 @@ func otohaPriceTiers(entry OtohaCatalogEntry, upstream OtohaModelPrice, longer [
 	}
 	base := otohaSalePrice(upstream, rate)
 	tiers := make([]OtohaPriceTier, 0, 1+len(longer))
-	tiers = append(tiers, OtohaPriceTier{Input: base.Input, Output: base.Output, CachedInput: base.CachedInput})
+	tiers = append(tiers, OtohaPriceTier{
+		Input:        base.Input,
+		Output:       base.Output,
+		CachedInput:  base.CachedInput,
+		CacheWrite5m: base.CacheWrite5m,
+		CacheWrite1h: base.CacheWrite1h,
+	})
 	for _, tier := range longer {
-		sale := otohaSalePrice(OtohaModelPrice{Input: tier.Input, Output: tier.Output, CachedInput: tier.CachedInput}, rate)
+		sale := otohaSalePrice(OtohaModelPrice{
+			Input:        tier.Input,
+			Output:       tier.Output,
+			CachedInput:  tier.CachedInput,
+			CacheWrite5m: tier.CacheWrite5m,
+			CacheWrite1h: tier.CacheWrite1h,
+		}, rate)
 		tiers = append(tiers, OtohaPriceTier{
 			AboveInputTokens: tier.AboveInputTokens,
 			Inclusive:        tier.Inclusive,
 			Input:            sale.Input,
 			Output:           sale.Output,
 			CachedInput:      sale.CachedInput,
+			CacheWrite5m:     sale.CacheWrite5m,
+			CacheWrite1h:     sale.CacheWrite1h,
 		})
 	}
 	return tiers
@@ -1054,8 +1079,15 @@ func (s *OtohaCatalogService) routedLongerTiers(ctx context.Context, group *Grou
 		if tier.AboveInputTokens <= 0 {
 			continue
 		}
-		price := normalizeOtohaPrice(OtohaModelPrice{Input: tier.Input, Output: tier.Output, CachedInput: tier.CachedInput})
+		price := normalizeOtohaPrice(OtohaModelPrice{
+			Input:        tier.Input,
+			Output:       tier.Output,
+			CachedInput:  tier.CachedInput,
+			CacheWrite5m: tier.CacheWrite5m,
+			CacheWrite1h: tier.CacheWrite1h,
+		})
 		tier.Input, tier.Output, tier.CachedInput = price.Input, price.Output, price.CachedInput
+		tier.CacheWrite5m, tier.CacheWrite1h = price.CacheWrite5m, price.CacheWrite1h
 		out = append(out, tier)
 	}
 	return out
@@ -1089,24 +1121,45 @@ func otohaSalePrice(upstream OtohaModelPrice, rate float64) OtohaModelPrice {
 	if rate < 0 {
 		rate = 0
 	}
-	price := OtohaModelPrice{Input: upstream.Input * rate, Output: upstream.Output * rate}
+	price := OtohaModelPrice{
+		Input:             upstream.Input * rate,
+		Output:            upstream.Output * rate,
+		CacheWriteBilling: upstream.CacheWriteBilling,
+	}
 	if upstream.CachedInput != nil {
 		cached := *upstream.CachedInput * rate
 		price.CachedInput = &cached
+	}
+	if upstream.CacheWrite5m != nil {
+		w5 := *upstream.CacheWrite5m * rate
+		price.CacheWrite5m = &w5
+	}
+	if upstream.CacheWrite1h != nil {
+		w1 := *upstream.CacheWrite1h * rate
+		price.CacheWrite1h = &w1
 	}
 	return normalizeOtohaPrice(price)
 }
 
 func normalizeOtohaPrice(price OtohaModelPrice) OtohaModelPrice {
 	out := OtohaModelPrice{
-		Currency: otohaPriceCurrency,
-		Per:      otohaPricePer,
-		Input:    roundOtohaPrice(price.Input),
-		Output:   roundOtohaPrice(price.Output),
+		Currency:          otohaPriceCurrency,
+		Per:               otohaPricePer,
+		Input:             roundOtohaPrice(price.Input),
+		Output:            roundOtohaPrice(price.Output),
+		CacheWriteBilling: price.CacheWriteBilling,
 	}
 	if price.CachedInput != nil {
 		cached := roundOtohaPrice(*price.CachedInput)
 		out.CachedInput = &cached
+	}
+	if price.CacheWrite5m != nil {
+		w5 := roundOtohaPrice(*price.CacheWrite5m)
+		out.CacheWrite5m = &w5
+	}
+	if price.CacheWrite1h != nil {
+		w1 := roundOtohaPrice(*price.CacheWrite1h)
+		out.CacheWrite1h = &w1
 	}
 	return out
 }
@@ -1390,18 +1443,32 @@ func normalizeOtohaPriceTiers(tiers []OtohaPriceTier) ([]OtohaPriceTier, error) 
 		if tier.CachedInput != nil {
 			prices = append(prices, *tier.CachedInput)
 		}
+		if tier.CacheWrite5m != nil {
+			prices = append(prices, *tier.CacheWrite5m)
+		}
+		if tier.CacheWrite1h != nil {
+			prices = append(prices, *tier.CacheWrite1h)
+		}
 		for _, p := range prices {
 			if math.IsNaN(p) || math.IsInf(p, 0) || p < 0 || p > otohaPriceMax {
 				return nil, otohaInvalid("a price tier's prices must be between 0 and %d", otohaPriceMax)
 			}
 		}
-		price := normalizeOtohaPrice(OtohaModelPrice{Input: tier.Input, Output: tier.Output, CachedInput: tier.CachedInput})
+		price := normalizeOtohaPrice(OtohaModelPrice{
+			Input:        tier.Input,
+			Output:       tier.Output,
+			CachedInput:  tier.CachedInput,
+			CacheWrite5m: tier.CacheWrite5m,
+			CacheWrite1h: tier.CacheWrite1h,
+		})
 		out = append(out, OtohaPriceTier{
 			AboveInputTokens: tier.AboveInputTokens,
 			Inclusive:        tier.Inclusive,
 			Input:            price.Input,
 			Output:           price.Output,
 			CachedInput:      price.CachedInput,
+			CacheWrite5m:     price.CacheWrite5m,
+			CacheWrite1h:     price.CacheWrite1h,
 		})
 	}
 	return out, nil

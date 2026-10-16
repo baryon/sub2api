@@ -62,6 +62,8 @@ type OtohaCatalogModel struct {
 	// "anthropic-messages" (POST /v1/messages), "deepseek-responses" (DeepSeek's own Responses dialect, passed
 	// through, POST /v1/responses) or "openai-responses" (POST /v1/responses). Every model the server lists has one.
 	API string `json:"api,omitempty"`
+	// PromptCaching describes the prompt-caching protocol the model supports on this route (TASK-106).
+	PromptCaching *OtohaPromptCaching `json:"promptCaching,omitempty"`
 	// PriceTiers is the price by prompt length (TASK-67): the first tier is the base price (aboveInputTokens 0,
 	// equal to Price) and each later tier applies to a whole request whose input is above (or, with inclusive, at
 	// least) aboveInputTokens. Prices are in Price's currency and unit, after the group's rate.
@@ -100,15 +102,23 @@ type OtohaThinkingLevel struct {
 	ExtraOutput string `json:"extraOutput"`
 }
 
+// OtohaPromptCaching describes the prompt-caching protocol a model supports on the Otoha gateway (TASK-106).
+type OtohaPromptCaching struct {
+	Dialect      string   `json:"dialect"`
+	Capabilities []string `json:"capabilities"`
+}
+
 // OtohaPriceTier is the price of requests whose input is longer than a bound.
 type OtohaPriceTier struct {
 	// AboveInputTokens is the bound in input tokens (cached tokens included); 0 for the base price.
 	AboveInputTokens int `json:"aboveInputTokens"`
 	// Inclusive makes the tier apply at AboveInputTokens itself, not only above it.
-	Inclusive   bool     `json:"inclusive"`
-	Input       float64  `json:"input"`
-	Output      float64  `json:"output"`
-	CachedInput *float64 `json:"cachedInput,omitempty"`
+	Inclusive    bool     `json:"inclusive"`
+	Input        float64  `json:"input"`
+	Output       float64  `json:"output"`
+	CachedInput  *float64 `json:"cachedInput,omitempty"`
+	CacheWrite5m *float64 `json:"cacheWrite5m,omitempty"`
+	CacheWrite1h *float64 `json:"cacheWrite1h,omitempty"`
 }
 
 // OtohaCompaction says whether the model service compacts a conversation itself: Kind is "none", "anthropic"
@@ -121,11 +131,14 @@ type OtohaCompaction struct {
 
 // OtohaModelPrice is a model's sale price in US dollars per million tokens.
 type OtohaModelPrice struct {
-	Currency    string   `json:"currency"`
-	Per         string   `json:"per"`
-	Input       float64  `json:"input"`
-	Output      float64  `json:"output"`
-	CachedInput *float64 `json:"cachedInput,omitempty"`
+	Currency          string   `json:"currency"`
+	Per               string   `json:"per"`
+	Input             float64  `json:"input"`
+	Output            float64  `json:"output"`
+	CachedInput       *float64 `json:"cachedInput,omitempty"`
+	CacheWriteBilling string   `json:"cacheWriteBilling,omitempty"`
+	CacheWrite5m      *float64 `json:"cacheWrite5m,omitempty"`
+	CacheWrite1h      *float64 `json:"cacheWrite1h,omitempty"`
 }
 
 // OtohaCatalogReader gives a group's Otoha catalog: nil (and no error) when the group has none.

@@ -111,6 +111,19 @@ func (p otohaResolverPricer) UpstreamPrice(ctx context.Context, group *Group, mo
 		cached := base.CacheReadPricePerToken * 1e6
 		price.CachedInput = &cached
 	}
+	if (resolved.SupportsCacheBreakdown || base.SupportsCacheBreakdown) &&
+		(base.CacheCreation5mPrice > 0 || base.CacheCreationPricePerToken > 0) &&
+		base.CacheCreation1hPrice > 0 {
+		write5m := base.CacheCreation5mPrice
+		if write5m <= 0 {
+			write5m = base.CacheCreationPricePerToken
+		}
+		w5 := write5m * 1e6
+		w1 := base.CacheCreation1hPrice * 1e6
+		price.CacheWriteBilling = "ttl"
+		price.CacheWrite5m = &w5
+		price.CacheWrite1h = &w1
+	}
 	return price, true
 }
 
@@ -154,6 +167,12 @@ func otohaTiersFromSchedule(tiers []ContextPricingTier) []OtohaPriceTier {
 		if tier.CacheRead != nil && *tier.CacheRead > 0 {
 			cached := *tier.CacheRead * 1e6
 			priced.CachedInput = &cached
+		}
+		if tier.CacheWrite != nil && tier.CacheWrite1h != nil && *tier.CacheWrite > 0 && *tier.CacheWrite1h > 0 && *tier.CacheWrite1h != *tier.CacheWrite {
+			w5 := *tier.CacheWrite * 1e6
+			w1 := *tier.CacheWrite1h * 1e6
+			priced.CacheWrite5m = &w5
+			priced.CacheWrite1h = &w1
 		}
 		out = append(out, priced)
 	}
