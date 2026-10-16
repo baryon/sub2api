@@ -827,15 +827,15 @@ func (s *GatewayService) handleResponsesCompactionResponse(
 	}
 
 	return &ForwardResult{
-		RequestID:       requestID,
-		UpstreamHeaders: resp.Header,
-		Usage:           usage,
-		Model:           originalModel,
-		UpstreamModel:   mappedModel,
-		ReasoningEffort: reasoningEffort,
+		RequestID:          requestID,
+		UpstreamHeaders:    resp.Header,
+		Usage:              usage,
+		Model:              originalModel,
+		UpstreamModel:      mappedModel,
+		ReasoningEffort:    reasoningEffort,
 		RequestKind:        UsageRequestKindCompact,
 		NativeCompactionV2: nativeCompactionV2,
 		Stream:             clientStream,
-		Duration:        time.Since(startTime),
+		Duration:           time.Since(startTime),
 	}, nil
 }
