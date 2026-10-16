@@ -85,6 +85,22 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 	if rejectSystemOneOnlyPlatform(c, apiKey, h.responsesErrorResponse) {
 		return
 	}
+	if h.gatewayService != nil {
+		restoredBody, changed, restoreErr := h.gatewayService.RestoreGatewayCompactInput(c.Request.Context(), body)
+		if restoreErr != nil {
+			h.responsesErrorResponse(c, http.StatusBadRequest, "invalid_request_error", "invalid compact encrypted_content")
+			return
+		}
+		if changed {
+			body = restoredBody
+		}
+	}
+	if normalizedBody, changed := normalizeCodexAutomationBootstrap(body); changed {
+		body = normalizedBody
+	}
+	if normalizedBody, changed := normalizeCodexDelegationBootstrap(body); changed {
+		body = normalizedBody
+	}
 	reqStream, ok := parseOpenAICompatibleStream(body)
 	if !ok {
 		h.responsesErrorResponse(c, http.StatusBadRequest, "invalid_request_error", invalidStreamFieldTypeMessage)

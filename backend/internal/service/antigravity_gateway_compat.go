@@ -32,14 +32,16 @@ const (
 const antigravityCompatMaxTokens = 64000
 
 type antigravityCompatRequest struct {
-	protocol        antigravityCompatProtocol
-	originalBody    []byte
-	claudeBody      []byte
-	originalModel   string
-	clientStream    bool
-	includeUsage    bool
-	startTime       time.Time
-	reasoningEffort *string
+	protocol          antigravityCompatProtocol
+	originalBody      []byte
+	claudeBody        []byte
+	originalModel     string
+	clientStream      bool
+	includeUsage      bool
+	isCompaction      bool
+	clientToolMapping apicompat.ResponsesClientToolMapping
+	startTime         time.Time
+	reasoningEffort   *string
 }
 
 type antigravityCompatUpstreamCall struct {
@@ -110,8 +112,39 @@ func (s *AntigravityGatewayService) ForwardAsResponses(
 		return nil, err
 	}
 
+	cfg := settingServiceConfig(s.settingService)
+	normalizedBody, normalized, err := normalizeOpenAIResponsesLegacyIngressWithConfig(cfg, body)
+	if err != nil {
+		return nil, s.writeAntigravityCompatError(c, http.StatusBadRequest, "invalid_request_error", err.Error())
+	}
+	if normalized {
+		body = normalizedBody
+	}
+
+	restoredBody, restored, err := restoreGatewayCompactInput(ctx, cfg, body)
+	if err != nil {
+		return nil, s.writeAntigravityCompatError(c, http.StatusBadRequest, "invalid_request_error", err.Error())
+	}
+	if restored {
+		body = restoredBody
+	}
+
+	isCompaction := isGatewayResponsesCompactionRequest(c, body)
+	if isCompaction {
+		rewritten, rewriteErr := rewriteGatewayResponsesCompactionRequest(body)
+		if rewriteErr != nil {
+			return nil, s.writeAntigravityCompatError(c, http.StatusBadRequest, "invalid_request_error", rewriteErr.Error())
+		}
+		body = rewritten
+	}
+
+	adaptedBody, clientToolMapping, err := adaptResponsesClientToolsForAnthropic(body)
+	if err != nil {
+		return nil, s.writeAntigravityCompatError(c, http.StatusBadRequest, "invalid_request_error", err.Error())
+	}
+
 	var request apicompat.ResponsesRequest
-	if json.Unmarshal(body, &request) != nil {
+	if json.Unmarshal(adaptedBody, &request) != nil {
 		return nil, s.writeAntigravityCompatError(c, http.StatusBadRequest, "invalid_request_error", "Failed to parse request body")
 	}
 	if strings.TrimSpace(request.Model) == "" {
@@ -122,6 +155,8 @@ func (s *AntigravityGatewayService) ForwardAsResponses(
 	if err != nil {
 		return nil, s.writeAntigravityCompatError(c, http.StatusBadRequest, "invalid_request_error", err.Error())
 	}
+	preserveResponsesTokenLimit(&request, claudeRequest)
+	ensureResponsesDoesNotEndWithAssistantTurn(claudeRequest)
 	claudeRequest.Stream = request.Stream
 	claudeBody, err := json.Marshal(claudeRequest)
 	if err != nil {
@@ -129,13 +164,15 @@ func (s *AntigravityGatewayService) ForwardAsResponses(
 	}
 
 	return s.forwardAntigravityCompat(ctx, c, account, antigravityCompatRequest{
-		protocol:        antigravityCompatResponses,
-		originalBody:    body,
-		claudeBody:      claudeBody,
-		originalModel:   request.Model,
-		clientStream:    request.Stream,
-		startTime:       time.Now(),
-		reasoningEffort: ExtractResponsesReasoningEffortFromBody(body),
+		protocol:          antigravityCompatResponses,
+		originalBody:      body,
+		claudeBody:        claudeBody,
+		originalModel:     request.Model,
+		clientStream:      request.Stream,
+		isCompaction:      isCompaction,
+		clientToolMapping: clientToolMapping,
+		startTime:         time.Now(),
+		reasoningEffort:   ExtractResponsesReasoningEffortFromBody(body),
 	})
 }
 
@@ -162,6 +199,33 @@ func preserveChatCompletionTokenLimit(request *apicompat.ChatCompletionsRequest,
 	if limit != nil && *limit > 0 {
 		claudeRequest.MaxTokens = min(*limit, antigravityCompatMaxTokens)
 	}
+}
+
+func preserveResponsesTokenLimit(request *apicompat.ResponsesRequest, claudeRequest *apicompat.AnthropicRequest) {
+	if request == nil || claudeRequest == nil {
+		return
+	}
+	if request.MaxOutputTokens != nil {
+		if *request.MaxOutputTokens > 0 {
+			claudeRequest.MaxTokens = min(*request.MaxOutputTokens, antigravityCompatMaxTokens)
+		}
+		return
+	}
+	claudeRequest.MaxTokens = antigravityCompatMaxTokens
+}
+
+func ensureResponsesDoesNotEndWithAssistantTurn(claudeRequest *apicompat.AnthropicRequest) {
+	if claudeRequest == nil || len(claudeRequest.Messages) == 0 {
+		return
+	}
+	if claudeRequest.Messages[len(claudeRequest.Messages)-1].Role != "assistant" {
+		return
+	}
+	continueText, _ := json.Marshal("Continue.")
+	claudeRequest.Messages = append(claudeRequest.Messages, apicompat.AnthropicMessage{
+		Role:    "user",
+		Content: continueText,
+	})
 }
 
 func (s *AntigravityGatewayService) forwardAntigravityCompat(
@@ -395,12 +459,16 @@ func (s *AntigravityGatewayService) consumeAntigravityCompatResponse(
 	if requestID != "" {
 		c.Header("x-request-id", requestID)
 	}
-	streamResult, err := s.consumeAntigravityCompatSuccess(c, call, resp)
+	streamResult, err := s.consumeAntigravityCompatSuccess(ctx, c, call, resp)
 	if err != nil {
 		return nil, err
 	}
 	if streamResult.usage == nil {
 		streamResult.usage = &ClaudeUsage{}
+	}
+	requestKind := UsageRequestKindNormal
+	if call.request.isCompaction {
+		requestKind = UsageRequestKindCompact
 	}
 
 	return &ForwardResult{
@@ -415,15 +483,20 @@ func (s *AntigravityGatewayService) consumeAntigravityCompatResponse(
 		Duration:                      time.Since(call.request.startTime),
 		FirstTokenMs:                  streamResult.firstTokenMs,
 		ReasoningEffort:               call.request.reasoningEffort,
+		RequestKind:                   requestKind,
 		ClientDisconnect:              streamResult.clientDisconnect,
 	}, nil
 }
 
 func (s *AntigravityGatewayService) consumeAntigravityCompatSuccess(
+	ctx context.Context,
 	c *gin.Context,
 	call *antigravityCompatUpstreamCall,
 	resp *http.Response,
 ) (*antigravityStreamResult, error) {
+	if call.request.isCompaction {
+		return s.handleResponsesCompactionFromAntigravity(ctx, c, call, resp)
+	}
 	if call.request.clientStream {
 		if call.request.protocol == antigravityCompatChatCompletions {
 			return s.handleChatCompletionsStreamingFromAntigravity(
@@ -434,13 +507,25 @@ func (s *AntigravityGatewayService) consumeAntigravityCompatSuccess(
 				call.request.includeUsage,
 			)
 		}
-		return s.handleResponsesStreamingFromAntigravity(c, resp, call.request.startTime, call.request.originalModel)
+		return s.handleResponsesStreamingFromAntigravity(
+			c,
+			resp,
+			call.request.startTime,
+			call.request.originalModel,
+			call.request.clientToolMapping,
+		)
 	}
 
 	if call.request.protocol == antigravityCompatChatCompletions {
 		return s.handleChatCompletionsNonStreamingFromAntigravity(c, resp, call.request.startTime, call.request.originalModel)
 	}
-	return s.handleResponsesNonStreamingFromAntigravity(c, resp, call.request.startTime, call.request.originalModel)
+	return s.handleResponsesNonStreamingFromAntigravity(
+		c,
+		resp,
+		call.request.startTime,
+		call.request.originalModel,
+		call.request.clientToolMapping,
+	)
 }
 
 func (s *AntigravityGatewayService) handleAntigravityCompatHTTPError(
@@ -582,6 +667,7 @@ func (s *AntigravityGatewayService) handleResponsesNonStreamingFromAntigravity(
 	resp *http.Response,
 	startTime time.Time,
 	originalModel string,
+	clientToolMappings ...apicompat.ResponsesClientToolMapping,
 ) (*antigravityStreamResult, error) {
 	claudeResponse, result, err := s.collectClaudeStreamResponse(c, resp, startTime, originalModel)
 	if err != nil {
@@ -591,7 +677,56 @@ func (s *AntigravityGatewayService) handleResponsesNonStreamingFromAntigravity(
 	if json.Unmarshal(claudeResponse, &anthropicResponse) != nil {
 		return nil, s.writeAntigravityCompatError(c, http.StatusBadGateway, "upstream_error", "Failed to parse upstream response")
 	}
-	c.JSON(http.StatusOK, apicompat.AnthropicToResponsesResponse(&anthropicResponse))
+	responsesResponse := apicompat.AnthropicToResponsesResponse(&anthropicResponse)
+	if len(clientToolMappings) > 0 {
+		if respBytes, marshalErr := json.Marshal(responsesResponse); marshalErr == nil {
+			if restoredBytes, _, restoreErr := apicompat.RestoreResponsesClientToolPayload(respBytes, clientToolMappings[0]); restoreErr == nil {
+				c.Data(http.StatusOK, "application/json; charset=utf-8", restoredBytes)
+				return result, nil
+			}
+		}
+	}
+	c.JSON(http.StatusOK, responsesResponse)
+	return result, nil
+}
+
+func (s *AntigravityGatewayService) handleResponsesCompactionFromAntigravity(
+	ctx context.Context,
+	c *gin.Context,
+	call *antigravityCompatUpstreamCall,
+	resp *http.Response,
+) (*antigravityStreamResult, error) {
+	claudeResponse, result, err := s.collectClaudeStreamResponse(c, resp, call.request.startTime, call.request.originalModel)
+	if err != nil {
+		return nil, s.mapAntigravityCompatCollectionError(c, err)
+	}
+	var anthropicResponse apicompat.AnthropicResponse
+	if json.Unmarshal(claudeResponse, &anthropicResponse) != nil {
+		return nil, s.writeAntigravityCompatError(c, http.StatusBadGateway, "upstream_error", "Failed to parse upstream response")
+	}
+	summary := extractAnthropicResponseSummaryText(&anthropicResponse)
+	if summary == "" {
+		return nil, s.writeAntigravityCompatError(c, http.StatusBadGateway, "upstream_error", "Upstream compaction returned empty summary")
+	}
+	usage := ClaudeUsage{
+		InputTokens:          anthropicResponse.Usage.InputTokens,
+		OutputTokens:         anthropicResponse.Usage.OutputTokens,
+		CacheReadInputTokens: anthropicResponse.Usage.CacheReadInputTokens,
+	}
+	if result != nil && result.usage != nil {
+		usage = *result.usage
+	}
+	if err := writeGatewayCompactResponse(
+		ctx,
+		c,
+		settingServiceConfig(s.settingService),
+		call.request.originalModel,
+		summary,
+		usage,
+		call.request.clientStream,
+	); err != nil {
+		return nil, s.writeAntigravityCompatError(c, http.StatusBadGateway, "upstream_error", "Failed to synthesize compaction response")
+	}
 	return result, nil
 }
 
