@@ -60,6 +60,10 @@ type GatewayHandler struct {
 	maxAccountSwitchesGemini   int
 	cfg                        *config.Config
 	settingService             *service.SettingService
+	toolsSearchBilling         toolsSearchBilling
+	toolsSearchAdmission       toolsSearchAdmission
+	toolsSearchProvider        toolsSearchProvider
+	toolsSearchRateLimit       gin.HandlerFunc
 }
 
 // NewGatewayHandler creates a new GatewayHandler

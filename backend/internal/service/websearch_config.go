@@ -37,8 +37,9 @@ type WebSearchProviderConfig struct {
 const maxWebSearchProviders = 10
 
 var validProviderTypes = map[string]bool{
-	websearch.ProviderTypeBrave:  true,
-	websearch.ProviderTypeTavily: true,
+	websearch.ProviderTypeDeepSeek: true,
+	websearch.ProviderTypeBrave:    true,
+	websearch.ProviderTypeTavily:   true,
 }
 
 func validateWebSearchConfig(cfg *WebSearchEmulationConfig) error {
