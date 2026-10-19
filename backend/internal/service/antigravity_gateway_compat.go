@@ -459,6 +459,9 @@ func antigravityCompatProxyURL(account *Account) string {
 
 func (s *AntigravityGatewayService) handleAntigravityCompatTransportError(c *gin.Context, err error) error {
 	if switchErr, ok := IsAntigravityAccountSwitchError(err); ok {
+		if antigravityCompatSSECommitted(c) {
+			return s.writeAntigravityCompatError(c, http.StatusServiceUnavailable, "upstream_error", "Upstream account is temporarily unavailable")
+		}
 		return &UpstreamFailoverError{
 			StatusCode:        http.StatusServiceUnavailable,
 			ForceCacheBilling: switchErr.IsStickySession,
@@ -576,6 +579,9 @@ func (s *AntigravityGatewayService) handleAntigravityCompatHTTPError(
 		"",
 		false,
 	)
+	if antigravityCompatSSECommitted(c) {
+		return s.writeMappedAntigravityCompatError(c, account, resp.StatusCode, resp.Header.Get("x-request-id"), body)
+	}
 	if s.shouldFailoverUpstreamError(resp.StatusCode) {
 		message := sanitizeUpstreamErrorMessage(strings.TrimSpace(extractAntigravityErrorMessage(body)))
 		event := OpsUpstreamErrorEvent{
@@ -621,13 +627,17 @@ func antigravityCredentialRejectedError(resp *http.Response, body []byte) *Upstr
 	}
 }
 
+func antigravityCompatSSECommitted(c *gin.Context) bool {
+	return IsResponseCommitted(c) && c.Writer.Written() && strings.HasPrefix(c.Writer.Header().Get("Content-Type"), "text/event-stream")
+}
+
 func (s *AntigravityGatewayService) writeAntigravityCompatError(
 	c *gin.Context,
 	status int,
 	errType string,
 	message string,
 ) error {
-	if IsResponseCommitted(c) && c.Writer.Written() && strings.HasPrefix(c.Writer.Header().Get("Content-Type"), "text/event-stream") {
+	if antigravityCompatSSECommitted(c) {
 		payload, _ := json.Marshal(gin.H{"type": "error", "error": gin.H{"type": errType, "message": message}})
 		_, _ = c.Writer.Write(append(append([]byte("event: error\ndata: "), payload...), '\n', '\n'))
 		c.Writer.Flush()

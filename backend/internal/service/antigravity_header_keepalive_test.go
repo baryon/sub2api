@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net/http"
 	"strings"
@@ -139,4 +140,31 @@ func TestAntigravityHeaderKeepalivePreservesBodyContextUntilClose(t *testing.T) 
 	require.NoError(t, resp.Body.Close())
 	require.ErrorIs(t, bodyContext.Err(), context.Canceled)
 	require.Empty(t, recorder.Body.String(), "fast upstream must not commit the downstream")
+}
+
+func TestAntigravityCompatFailoverAfterHeaderKeepaliveWritesError(t *testing.T) {
+	for _, scenario := range []string{"unauthorized", "account switch"} {
+		t.Run(scenario, func(t *testing.T) {
+			c, recorder := newAntigravityCompatContext(http.MethodPost, "/v1/responses", nil)
+			c.Header("Content-Type", "text/event-stream")
+			MarkResponseCommitted(c)
+			_, err := c.Writer.Write([]byte(": ping\n\n"))
+			require.NoError(t, err)
+			c.Writer.Flush()
+			svc := newAntigravityCompatService(config.GatewayConfig{}, nil)
+			if scenario == "unauthorized" {
+				err = svc.handleAntigravityCompatHTTPError(c.Request.Context(), c,
+					newAntigravityCompatAccount(AccountTypeOAuth),
+					&antigravityCompatUpstreamCall{request: antigravityCompatRequest{originalModel: "gemini-3.1-pro-high"}},
+					&http.Response{StatusCode: http.StatusUnauthorized, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(`{"error":{"message":"Invalid bearer token"}}`))})
+			} else {
+				err = svc.handleAntigravityCompatTransportError(c, &AntigravityAccountSwitchError{OriginalAccountID: 1})
+			}
+			require.Error(t, err)
+			var failover *UpstreamFailoverError
+			require.False(t, errors.As(err, &failover), "committed response must not request account replay")
+			require.Contains(t, recorder.Body.String(), "event: error\n")
+			require.Contains(t, recorder.Body.String(), `"error":`)
+		})
+	}
 }
