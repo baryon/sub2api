@@ -256,6 +256,17 @@ func (s *AntigravityGatewayService) forwardAntigravityCompat(
 		return nil, err
 	}
 
+	upstream := s.httpUpstream
+	if request.clientStream && !request.isCompaction {
+		interval := antigravityCompatPreContentKeepaliveInterval
+		if s.settingService != nil && s.settingService.cfg != nil {
+			configured := time.Duration(s.settingService.cfg.Gateway.StreamKeepaliveInterval) * time.Second
+			if configured > 0 && configured < interval {
+				interval = configured
+			}
+		}
+		upstream = &antigravityHeaderKeepaliveUpstream{HTTPUpstream: upstream, c: c, interval: interval}
+	}
 	result, err := s.antigravityRetryLoop(antigravityRetryLoopParams{
 		ctx:             ctx,
 		prefix:          call.prefix,
@@ -265,7 +276,7 @@ func (s *AntigravityGatewayService) forwardAntigravityCompat(
 		action:          "streamGenerateContent",
 		body:            call.geminiBody,
 		c:               c,
-		httpUpstream:    s.httpUpstream,
+		httpUpstream:    upstream,
 		settingService:  s.settingService,
 		accountRepo:     s.accountRepo,
 		handleError:     s.handleUpstreamError,
@@ -616,6 +627,12 @@ func (s *AntigravityGatewayService) writeAntigravityCompatError(
 	errType string,
 	message string,
 ) error {
+	if IsResponseCommitted(c) && c.Writer.Written() && strings.HasPrefix(c.Writer.Header().Get("Content-Type"), "text/event-stream") {
+		payload, _ := json.Marshal(gin.H{"type": "error", "error": gin.H{"type": errType, "message": message}})
+		_, _ = c.Writer.Write(append(append([]byte("event: error\ndata: "), payload...), '\n', '\n'))
+		c.Writer.Flush()
+		return errors.New(message)
+	}
 	MarkResponseCommitted(c)
 	c.JSON(status, gin.H{
 		"error": gin.H{
@@ -649,15 +666,7 @@ func (s *AntigravityGatewayService) writeMappedAntigravityCompatError(
 		Kind:               "http_error",
 		Message:            message,
 	})
-	c.JSON(mapUpstreamStatusCode(upstreamStatus), gin.H{
-		"error": gin.H{
-			"message": getPassthroughOrDefault(message, "Upstream request failed"),
-			"type":    "upstream_error",
-			"param":   nil,
-			"code":    nil,
-		},
-	})
-	return fmt.Errorf("upstream error: %d %s", upstreamStatus, message)
+	return s.writeAntigravityCompatError(c, mapUpstreamStatusCode(upstreamStatus), "upstream_error", getPassthroughOrDefault(message, "Upstream request failed"))
 }
 
 func (s *AntigravityGatewayService) handleChatCompletionsNonStreamingFromAntigravity(
