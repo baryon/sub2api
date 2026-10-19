@@ -93,6 +93,14 @@ func (m *Manager) SearchWithBestProvider(ctx context.Context, req SearchRequest)
 	}
 
 	candidates := m.filterAvailableProviders(ctx, req.ProxyURL)
+	// Tools-only providers must not reroute existing emulation traffic.
+	legacyCandidates := candidates[:0]
+	for _, cfg := range candidates {
+		if cfg.Type != ProviderTypeDeepSeek {
+			legacyCandidates = append(legacyCandidates, cfg)
+		}
+	}
+	candidates = legacyCandidates
 	if len(candidates) == 0 {
 		return nil, "", fmt.Errorf("websearch: no available provider (all exhausted, expired, or proxy unavailable)")
 	}
@@ -460,6 +468,8 @@ func (m *Manager) ResetUsage(ctx context.Context, providerType string) error {
 
 func (m *Manager) buildProvider(cfg ProviderConfig, client *http.Client) Provider {
 	switch cfg.Type {
+	case ProviderTypeDeepSeek:
+		return NewDeepSeekProvider(cfg.APIKey, client)
 	case braveProviderName:
 		return NewBraveProvider(cfg.APIKey, client)
 	case tavilyProviderName:

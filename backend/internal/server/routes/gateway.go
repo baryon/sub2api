@@ -216,6 +216,10 @@ func RegisterGatewayRoutes(
 	}
 
 	// API网关（Claude API兼容）
+	// Standalone search has no model and must not enter composite model routing.
+	r.POST("/v1/tools/search", middleware.ToolsSearchErrors(), textBodyLimit, clientRequestID, opsErrorLogger, endpointNorm,
+		gin.HandlerFunc(apiKeyAuth), middleware.RequireGroupAssignment(settingService, middleware.ToolsSearchGroupErrorWriter), h.Gateway.ToolsSearch)
+
 	gateway := r.Group("/v1")
 	gateway.Use(bodyLimit)
 	gateway.Use(clientRequestID)
@@ -653,9 +657,9 @@ func compositeTargetPlatformMiddleware(resolver *service.CompositeRouteResolver)
 			if decision.OAuthAmbiguous() {
 				service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalModelConfiguration)
 				c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": gin.H{"type": "invalid_request_error", "message": decision.AmbiguousMessage()}})
-					return
-				}
-				if rejectUnsupportedCompositeRouteEndpoint(c, decision, endpoint) {
+				return
+			}
+			if rejectUnsupportedCompositeRouteEndpoint(c, decision, endpoint) {
 				return
 			}
 			if decision.Matched {

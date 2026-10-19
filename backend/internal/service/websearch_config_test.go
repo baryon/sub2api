@@ -12,6 +12,13 @@ import (
 
 // --- validateWebSearchConfig ---
 
+func TestValidateWebSearchConfig_DeepSeekSearchProvider(t *testing.T) {
+	require.NoError(t, validateWebSearchConfig(&WebSearchEmulationConfig{
+		Enabled:   true,
+		Providers: []WebSearchProviderConfig{{Type: "deepseek", APIKey: "test-only"}},
+	}))
+}
+
 func TestValidateWebSearchConfig_Nil(t *testing.T) {
 	require.NoError(t, validateWebSearchConfig(nil))
 }

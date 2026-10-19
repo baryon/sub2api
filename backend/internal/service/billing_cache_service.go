@@ -828,14 +828,15 @@ func (s *BillingCacheService) ReserveFixedCharge(ctx context.Context, user *User
 		return nil, err
 	}
 	var subscriptionPending, apiKeyPending float64
-	if subscriptionBill && (group.HasDailyLimit() || group.HasWeeklyLimit() || group.HasMonthlyLimit()) {
+	limits := subscription.EffectiveLimits(group)
+	if subscriptionBill && (limits.HasDaily() || limits.HasWeekly() || limits.HasMonthly()) {
 		res, subscriptionPending = s.reserveInflightScope(ctx, res, user.ID, inflightSubscriptionScope(subscription.ID), amount)
 	}
 	if apiKey != nil && (apiKey.Quota > 0 || apiKey.HasRateLimits()) {
 		res, apiKeyPending = s.reserveInflightScope(ctx, res, user.ID, inflightAPIKeyScope(apiKey.ID), amount)
 	}
 	if subscriptionBill {
-		err = s.checkFixedChargeSubscription(ctx, user.ID, group, amount+subscriptionPending)
+		err = s.checkFixedChargeSubscription(ctx, user.ID, group, subscription, amount+subscriptionPending)
 	}
 	if err == nil && apiKey != nil {
 		err = s.checkFixedChargeAPIKey(ctx, apiKey, amount+apiKeyPending)
@@ -848,7 +849,7 @@ func (s *BillingCacheService) ReserveFixedCharge(ctx context.Context, user *User
 }
 
 // checkFixedChargeSubscription 按库中订阅用量校验日 / 周 / 月剩余额度覆盖 pending。
-func (s *BillingCacheService) checkFixedChargeSubscription(ctx context.Context, userID int64, group *Group, pending float64) error {
+func (s *BillingCacheService) checkFixedChargeSubscription(ctx context.Context, userID int64, group *Group, subscription *UserSubscription, pending float64) error {
 	read := s.GetSubscriptionStatus
 	if s.subRepo != nil {
 		read = s.getSubscriptionFromDB
@@ -857,13 +858,14 @@ func (s *BillingCacheService) checkFixedChargeSubscription(ctx context.Context, 
 	if err != nil {
 		return ErrBillingServiceUnavailable.WithCause(err)
 	}
-	if group.HasDailyLimit() && subData.DailyUsage+pending > *group.DailyLimitUSD {
+	limits := subscription.EffectiveLimits(group)
+	if limits.HasDaily() && subData.DailyUsage+pending > *limits.DailyUSD {
 		return ErrDailyLimitExceeded
 	}
-	if group.HasWeeklyLimit() && subData.WeeklyUsage+pending > *group.WeeklyLimitUSD {
+	if limits.HasWeekly() && subData.WeeklyUsage+pending > *limits.WeeklyUSD {
 		return ErrWeeklyLimitExceeded
 	}
-	if group.HasMonthlyLimit() && subData.MonthlyUsage+pending > *group.MonthlyLimitUSD {
+	if limits.HasMonthly() && subData.MonthlyUsage+pending > *limits.MonthlyUSD {
 		return ErrMonthlyLimitExceeded
 	}
 	return nil

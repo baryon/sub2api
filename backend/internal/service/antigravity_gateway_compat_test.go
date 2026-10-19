@@ -1089,7 +1089,9 @@ func TestAntigravityCompatResponsesAdaptsAndRestoresClientTools(t *testing.T) {
 	}
 	svc := newAntigravityCompatService(config.GatewayConfig{MaxLineSize: defaultMaxLineSize}, upstream)
 	account := newAntigravityCompatAccount(AccountTypeOAuth)
-	account.Credentials["model_mapping"].(map[string]any)["gemini-4-argon-medium"] = "gemini-4-argon-medium"
+	modelMapping, ok := account.Credentials["model_mapping"].(map[string]any)
+	require.True(t, ok)
+	modelMapping["gemini-4-argon-medium"] = "gemini-4-argon-medium"
 
 	reqBody := []byte(`{
 		"model":"gemini-4-argon-medium",
@@ -1144,7 +1146,9 @@ func TestAntigravityCompatResponsesRemoteCompactionV2AndRestore(t *testing.T) {
 	}
 	svc := newAntigravityCompatService(config.GatewayConfig{MaxLineSize: defaultMaxLineSize}, upstream)
 	account := newAntigravityCompatAccount(AccountTypeOAuth)
-	account.Credentials["model_mapping"].(map[string]any)["gemini-4-argon-medium"] = "gemini-4-argon-medium"
+	modelMapping, ok := account.Credentials["model_mapping"].(map[string]any)
+	require.True(t, ok)
+	modelMapping["gemini-4-argon-medium"] = "gemini-4-argon-medium"
 
 	compactBody := []byte(`{
 		"model":"gemini-4-argon-medium",
@@ -1233,7 +1237,9 @@ func TestAntigravityCompatResponsesEndsWithUserTurnAndRejectsInvalidCompactEnvel
 		upstream := &queuedHTTPUpstreamStub{responses: []*http.Response{antigravityCompatSuccessResponse()}}
 		svc := newAntigravityCompatService(config.GatewayConfig{MaxLineSize: defaultMaxLineSize}, upstream)
 		account := newAntigravityCompatAccount(AccountTypeOAuth)
-		account.Credentials["model_mapping"].(map[string]any)["gemini-4-argon-medium"] = "gemini-4-argon-medium"
+		modelMapping, ok := account.Credentials["model_mapping"].(map[string]any)
+		require.True(t, ok)
+		modelMapping["gemini-4-argon-medium"] = "gemini-4-argon-medium"
 
 		body := []byte(`{
 			"model":"gemini-4-argon-medium",

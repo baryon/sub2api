@@ -418,6 +418,19 @@ func TestReserveFixedCharge(t *testing.T) {
 		require.ErrorIs(t, reserve(svc, nil, group, sub, 2.5), ErrDailyLimitExceeded)
 	})
 
+	t.Run("plan allowance overrides group and reserves headroom", func(t *testing.T) {
+		for _, groupLimit := range []*float64{nil, float64Ptr(.01)} {
+			group := &Group{ID: 2, SubscriptionType: SubscriptionTypeSubscription, DailyLimitUSD: groupLimit}
+			sub := &UserSubscription{ID: 1, DailyLimitUSD: float64Ptr(.02)}
+			svc := reservingSvc(&fixedChargeCacheStub{sub: &SubscriptionCacheData{Status: SubscriptionStatusActive}}, nil, nil)
+			first, err := svc.ReserveFixedCharge(ctx, user, nil, group, sub, .02)
+			require.NoError(t, err)
+			_, err = svc.ReserveFixedCharge(ctx, user, nil, group, sub, .01)
+			require.ErrorIs(t, err, ErrDailyLimitExceeded)
+			first.Release()
+		}
+	})
+
 	t.Run("api key quota and rate windows include the amount", func(t *testing.T) {
 		svc := newSvc(&fixedChargeCacheStub{balance: 100, rate: &APIKeyRateLimitCacheData{
 			Usage1d: 8, Window1d: time.Now().Unix(),

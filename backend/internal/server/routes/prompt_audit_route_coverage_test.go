@@ -28,6 +28,7 @@ func TestEveryGatewayPOSTRouteIsClassifiedForPromptAuditCoverage(t *testing.T) {
 	}
 
 	audited := map[string][]string{
+		"/v1/tools/search":          {"gateway_tools_search.go"},
 		"/messages":                 {"gateway_handler.go", "openai_gateway_handler.go"},
 		"/systemone":                {"gateway_systemone.go"},
 		"/responses":                {"gateway_handler_responses.go", "openai_gateway_handler.go"},

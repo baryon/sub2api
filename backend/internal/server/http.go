@@ -50,6 +50,7 @@ func ProvideRouter(
 	r := gin.New()
 	r.Use(middleware2.Recovery())
 	configureTrustedProxies(r, cfg.Server)
+	handlers.Gateway.SetToolsSearchRateLimit(middleware2.ToolsSearchRateLimit(redisClient))
 
 	// Wire up websearch Manager builder so it initializes on startup and rebuilds on config save.
 	settingService.SetWebSearchManagerBuilder(context.Background(), func(cfg *service.WebSearchEmulationConfig, proxyURLs map[int64]string) {

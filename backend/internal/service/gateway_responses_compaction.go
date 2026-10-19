@@ -244,14 +244,6 @@ func restoreGatewayCompactInput(ctx context.Context, cfg *config.Config, body []
 	return restoredBody, true, nil
 }
 
-func isGatewayResponsesCompactionRequest(c *gin.Context, body []byte) bool {
-	return isOpenAIResponsesCompactPath(c) || HasCompactionTriggerInInput(body)
-}
-
-func isGatewayNativeCompactionV2Request(c *gin.Context, body []byte, clientStream bool) bool {
-	return !isOpenAIResponsesCompactPath(c) && clientStream && HasCompactionTriggerInInput(body)
-}
-
 func rewriteGatewayResponsesCompactionRequest(body []byte) ([]byte, error) {
 	var request map[string]json.RawMessage
 	if err := json.Unmarshal(body, &request); err != nil {
@@ -341,9 +333,9 @@ func extractAnthropicResponseSummaryText(resp *apicompat.AnthropicResponse) stri
 	for _, block := range resp.Content {
 		if block.Type == "text" && block.Text != "" {
 			if sb.Len() > 0 {
-				sb.WriteString("\n")
+				_, _ = sb.WriteString("\n")
 			}
-			sb.WriteString(block.Text)
+			_, _ = sb.WriteString(block.Text)
 		}
 	}
 	return strings.TrimSpace(sb.String())

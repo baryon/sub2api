@@ -342,7 +342,7 @@ func (s *GatewayService) buildUpstreamRequestAnthropicAPIKeyPassthrough(
 		targetURL = validatedURL + "/v1/messages?beta=true"
 	}
 
-	if !(account.UsesNativeDeepSeekGateway() && account.IsDeepSeekAPIKey()) {
+	if !account.UsesNativeDeepSeekGateway() || !account.IsDeepSeekAPIKey() {
 		// 能力维度 body sanitize：透传路径上 anthropic-beta header 原样透传客户端值，
 		// 依此决定是否保留 body 中的 context_management。DeepSeek 使用官方原生
 		// Anthropic 协议，body 必须保持原样，不套用 Anthropic beta 清理策略。

@@ -64,6 +64,10 @@ type GatewayHandler struct {
 	otohaCatalog               service.OtohaCatalogReader
 	otohaAutoTopUp             otohaAutoTopUpState
 	planNames                  service.SubscriptionPlanNamer
+	toolsSearchBilling         toolsSearchBilling
+	toolsSearchAdmission       toolsSearchAdmission
+	toolsSearchProvider        toolsSearchProvider
+	toolsSearchRateLimit       gin.HandlerFunc
 }
 
 // NewGatewayHandler creates a new GatewayHandler
