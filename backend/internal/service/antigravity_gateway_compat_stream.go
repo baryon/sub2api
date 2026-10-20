@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -315,7 +316,7 @@ func (s *AntigravityGatewayService) handleAntigravityCompatStream(
 func (s *AntigravityGatewayService) handleAntigravityCompatStreamWithKeepaliveInterval(
 	c *gin.Context, resp *http.Response, startTime time.Time, originalModel string,
 	adapter antigravityCompatStreamAdapter, prefix string, interval, maxPreContentWait time.Duration,
-) (*antigravityStreamResult, error) {
+) (streamResult *antigravityStreamResult, streamErr error) {
 	flusher, ok := c.Writer.(http.Flusher)
 	if !ok {
 		return nil, errors.New("streaming not supported")
@@ -334,6 +335,25 @@ func (s *AntigravityGatewayService) handleAntigravityCompatStreamWithKeepaliveIn
 	// failed streams must now report an SSE error rather than request failover.
 	session.preContentKeepaliveSent = IsResponseCommitted(c) && c.Writer.Written()
 	session.preContentKeepaliveInterval = interval
+	diagnostics := &antigravityStreamDiagnostics{}
+	readStarted := time.Now()
+	var firstLineMs, firstDataMs int64 = -1, -1
+	defer func() {
+		fields := append(antigravityDiagnosticCorrelation(c), diagnostics.fields()...)
+		fields = append(fields, "model", originalModel, "elapsed_ms", time.Since(startTime).Milliseconds(),
+			"header_phase_ms", readStarted.Sub(startTime).Milliseconds(), "stream_read_ms", time.Since(readStarted).Milliseconds(),
+			"first_line_ms", firstLineMs, "first_data_ms", firstDataMs,
+			"upstream_status", resp.StatusCode, "upstream_content_type", antigravityDiagnosticContentType(resp.Header.Get("Content-Type")),
+			"meaningful_content", session.hasMeaningfulData(), "processor_content", session.processor.HasContent(),
+			"processor_started", session.processor.MessageStartSent(), "pending_events", len(session.pendingEvents),
+			"keepalive_sent", session.preContentKeepaliveSent, "client_canceled", c.Request.Context().Err() != nil,
+			"client_write_failed", writer.Disconnected(), "error_class", antigravityDiagnosticError(streamErr))
+		if streamErr != nil {
+			slog.WarnContext(c.Request.Context(), "antigravity.stream_summary", fields...)
+		} else {
+			slog.InfoContext(c.Request.Context(), "antigravity.stream_summary", fields...)
+		}
+	}()
 	events, stopScanner, maxLineSize := s.startAntigravityCompatScanner(resp.Body)
 	defer stopScanner()
 
@@ -370,7 +390,19 @@ func (s *AntigravityGatewayService) handleAntigravityCompatStreamWithKeepaliveIn
 	for {
 		select {
 		case event, open := <-events:
-			if !session.hasMeaningfulData() && !writer.Disconnected() && !time.Now().Before(preContentDeadline) {
+			observedAt := time.Now()
+			// Observe before the deadline check so a chunk that arrived after the
+			// first-content deadline is still represented in the diagnostic summary.
+			if open && event.err == nil {
+				diagnostics.observe(event.line)
+				if firstLineMs < 0 {
+					firstLineMs = observedAt.Sub(startTime).Milliseconds()
+				}
+				if firstDataMs < 0 && strings.HasPrefix(strings.TrimSpace(event.line), "data:") {
+					firstDataMs = observedAt.Sub(startTime).Milliseconds()
+				}
+			}
+			if !session.hasMeaningfulData() && !writer.Disconnected() && !observedAt.Before(preContentDeadline) {
 				return preContentTimeout()
 			}
 			if !open {

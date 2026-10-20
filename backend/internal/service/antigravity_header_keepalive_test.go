@@ -168,3 +168,14 @@ func TestAntigravityCompatFailoverAfterHeaderKeepaliveWritesError(t *testing.T) 
 		})
 	}
 }
+
+func TestAntigravityDiagnosticHeaderContentType(t *testing.T) {
+	for _, tc := range []struct{ input, want string }{
+		{"text/event-stream; charset=utf-8", "sse"},
+		{"application/json", "json"},
+		{"secret-prompt-or-token", "other"},
+		{"", "missing"},
+	} {
+		require.Equal(t, tc.want, antigravityDiagnosticContentType(tc.input))
+	}
+}

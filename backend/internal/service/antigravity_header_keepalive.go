@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"io"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -23,7 +24,23 @@ type antigravityHeaderResult struct {
 	err      error
 }
 
-func (u *antigravityHeaderKeepaliveUpstream) Do(req *http.Request, proxyURL string, accountID int64, concurrency int) (*http.Response, error) {
+func (u *antigravityHeaderKeepaliveUpstream) Do(req *http.Request, proxyURL string, accountID int64, concurrency int) (response *http.Response, requestErr error) {
+	started := time.Now()
+	keepalives := 0
+	u.c.Set(antigravityDiagnosticAccountKey, accountID)
+	defer func() {
+		status, contentType := 0, "missing"
+		if response != nil {
+			status = response.StatusCode
+			contentType = antigravityDiagnosticContentType(response.Header.Get("Content-Type"))
+		}
+		fields := append(antigravityDiagnosticCorrelation(u.c),
+			"header_wait_ms", time.Since(started).Milliseconds(), "upstream_status", status,
+			"upstream_content_type", contentType, "upstream_request_bytes", req.ContentLength,
+			"keepalives", keepalives, "error_class", antigravityDiagnosticError(requestErr),
+			"client_canceled", u.c.Request.Context().Err() != nil)
+		slog.InfoContext(req.Context(), "antigravity.upstream_headers", fields...)
+	}()
 	ctx, cancel := context.WithCancel(req.Context())
 	completed := make(chan antigravityHeaderResult)
 	abandoned := make(chan struct{})
@@ -70,6 +87,7 @@ func (u *antigravityHeaderKeepaliveUpstream) Do(req *http.Request, proxyURL stri
 				return nil, err
 			}
 			u.c.Writer.Flush()
+			keepalives++
 		}
 	}
 }
