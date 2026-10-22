@@ -11,7 +11,9 @@ func diagnosticsFields(d *antigravityStreamDiagnostics) map[string]any {
 	fields := d.fields()
 	result := make(map[string]any, len(fields)/2)
 	for i := 0; i < len(fields); i += 2 {
-		result[fields[i].(string)] = fields[i+1]
+		if key, ok := fields[i].(string); ok {
+			result[key] = fields[i+1]
+		}
 	}
 	return result
 }

@@ -39,6 +39,7 @@ func antigravityDiagnosticContentType(value string) string {
 }
 
 func antigravityDiagnosticError(err error) string {
+	var repetitionErr *antigravityStreamRepetitionError
 	switch {
 	case err == nil:
 		return "none"
@@ -54,6 +55,8 @@ func antigravityDiagnosticError(err error) string {
 		return "stream_interval_timeout"
 	case strings.Contains(err.Error(), "empty Antigravity"):
 		return "empty_stream"
+	case errors.As(err, &repetitionErr):
+		return "repetition_loop"
 	default:
 		return "other"
 	}
