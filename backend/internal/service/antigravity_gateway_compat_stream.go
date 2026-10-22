@@ -2,10 +2,12 @@ package service
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -133,6 +135,104 @@ type antigravityCompatScanEvent struct {
 	err  error
 }
 
+const (
+	antigravityRepetitionMinPeriodBytes = 32
+	antigravityRepetitionMaxPeriodBytes = 2048
+	antigravityRepetitionCycles         = 8
+	antigravityRepetitionWindowBytes    = antigravityRepetitionMaxPeriodBytes * antigravityRepetitionCycles
+	antigravityRepetitionMaxTailBytes   = antigravityRepetitionWindowBytes + 8*1024
+)
+
+type antigravityStreamRepetitionError struct {
+	Stream       string
+	PeriodBytes  int
+	ScannedBytes int
+}
+
+func (e *antigravityStreamRepetitionError) Error() string {
+	if e == nil {
+		return "repetition loop detected in stream"
+	}
+	return fmt.Sprintf("repetition loop detected in %s stream (period=%dB scanned=%dB)", e.Stream, e.PeriodBytes, e.ScannedBytes)
+}
+
+type antigravityRepetitionWindow struct {
+	tail    []byte
+	scanned int
+}
+
+func (w *antigravityRepetitionWindow) add(delta string) (int, bool) {
+	if delta == "" {
+		return 0, false
+	}
+	raw := []byte(delta)
+	for len(raw) > 0 {
+		step := len(raw)
+		if step > antigravityRepetitionMinPeriodBytes {
+			step = antigravityRepetitionMinPeriodBytes
+		}
+		w.tail = append(w.tail, raw[:step]...)
+		w.scanned += step
+		raw = raw[step:]
+		if len(w.tail) > antigravityRepetitionMaxTailBytes {
+			w.tail = append([]byte(nil), w.tail[len(w.tail)-antigravityRepetitionWindowBytes:]...)
+		}
+		if period := detectRepeatedCycle(w.tail); period > 0 {
+			return period, true
+		}
+	}
+	return 0, false
+}
+
+func detectRepeatedCycle(tail []byte) int {
+	n := len(tail)
+	minTotal := antigravityRepetitionMinPeriodBytes * antigravityRepetitionCycles
+	if n < minTotal {
+		return 0
+	}
+	maxPeriod := n / antigravityRepetitionCycles
+	if maxPeriod > antigravityRepetitionMaxPeriodBytes {
+		maxPeriod = antigravityRepetitionMaxPeriodBytes
+	}
+	for period := antigravityRepetitionMinPeriodBytes; period <= maxPeriod; period++ {
+		total := period * antigravityRepetitionCycles
+		start := n - total
+		if tail[n-1] != tail[n-1-period] || tail[start] != tail[start+period] {
+			continue
+		}
+		if bytes.Equal(tail[start:n-period], tail[start+period:n]) {
+			return period
+		}
+	}
+	return 0
+}
+
+type antigravityStreamRepetitionGuard struct {
+	text     antigravityRepetitionWindow
+	thinking antigravityRepetitionWindow
+	combined antigravityRepetitionWindow
+}
+
+func (g *antigravityStreamRepetitionGuard) observeText(delta string) *antigravityStreamRepetitionError {
+	if period, ok := g.text.add(delta); ok {
+		return &antigravityStreamRepetitionError{Stream: "text", PeriodBytes: period, ScannedBytes: g.text.scanned}
+	}
+	if period, ok := g.combined.add(delta); ok {
+		return &antigravityStreamRepetitionError{Stream: "combined", PeriodBytes: period, ScannedBytes: g.combined.scanned}
+	}
+	return nil
+}
+
+func (g *antigravityStreamRepetitionGuard) observeThinking(delta string) *antigravityStreamRepetitionError {
+	if period, ok := g.thinking.add(delta); ok {
+		return &antigravityStreamRepetitionError{Stream: "thinking", PeriodBytes: period, ScannedBytes: g.thinking.scanned}
+	}
+	if period, ok := g.combined.add(delta); ok {
+		return &antigravityStreamRepetitionError{Stream: "combined", PeriodBytes: period, ScannedBytes: g.combined.scanned}
+	}
+	return nil
+}
+
 type antigravityCompatStreamSession struct {
 	processor                   *antigravity.StreamingProcessor
 	adapter                     antigravityCompatStreamAdapter
@@ -144,6 +244,8 @@ type antigravityCompatStreamSession struct {
 	meaningfulData              bool
 	preContentKeepaliveSent     bool
 	preContentKeepaliveInterval time.Duration
+	repetitionGuard             antigravityStreamRepetitionGuard
+	repetitionErr               *antigravityStreamRepetitionError
 }
 
 const (
@@ -192,9 +294,17 @@ func (s *antigravityCompatStreamSession) writePreContentKeepalive(now time.Time)
 }
 
 func (s *antigravityCompatStreamSession) finish() (*antigravityStreamResult, error) {
+	if s.repetitionErr != nil {
+		s.adapter.WriteError(s.writer, "repetition_loop_detected")
+		return s.collectResult(false), s.repetitionErr
+	}
 	finalEvents, usage := s.processor.Finish()
 	mergeAntigravityCompatUsage(s.usage, usage)
 	s.consumeClaudeEvents(finalEvents)
+	if s.repetitionErr != nil {
+		s.adapter.WriteError(s.writer, "repetition_loop_detected")
+		return s.result(false), s.repetitionErr
+	}
 	if !s.hasMeaningfulData() && !s.writer.Disconnected() {
 		if s.preContentKeepaliveSent {
 			s.adapter.WriteError(s.writer, "empty_stream")
@@ -234,6 +344,9 @@ func (s *antigravityCompatStreamSession) consumeClaudeEvents(data []byte) {
 }
 
 func (s *antigravityCompatStreamSession) consumeClaudeData(eventType, payload string) {
+	if s.repetitionErr != nil {
+		return
+	}
 	var event apicompat.AnthropicStreamEvent
 	if json.Unmarshal([]byte(payload), &event) != nil {
 		return
@@ -246,6 +359,20 @@ func (s *antigravityCompatStreamSession) consumeClaudeData(eventType, payload st
 	}
 	if event.Message != nil {
 		mergeAnthropicUsage(s.usage, event.Message.Usage)
+	}
+	if event.Delta != nil {
+		switch event.Delta.Type {
+		case "text_delta":
+			if repErr := s.repetitionGuard.observeText(event.Delta.Text); repErr != nil {
+				s.repetitionErr = repErr
+				return
+			}
+		case "thinking_delta":
+			if repErr := s.repetitionGuard.observeThinking(event.Delta.Thinking); repErr != nil {
+				s.repetitionErr = repErr
+				return
+			}
+		}
 	}
 	s.emitOrBuffer(event)
 }
@@ -315,7 +442,7 @@ func (s *AntigravityGatewayService) handleAntigravityCompatStream(
 func (s *AntigravityGatewayService) handleAntigravityCompatStreamWithKeepaliveInterval(
 	c *gin.Context, resp *http.Response, startTime time.Time, originalModel string,
 	adapter antigravityCompatStreamAdapter, prefix string, interval, maxPreContentWait time.Duration,
-) (*antigravityStreamResult, error) {
+) (streamResult *antigravityStreamResult, streamErr error) {
 	flusher, ok := c.Writer.(http.Flusher)
 	if !ok {
 		return nil, errors.New("streaming not supported")
@@ -334,6 +461,25 @@ func (s *AntigravityGatewayService) handleAntigravityCompatStreamWithKeepaliveIn
 	// failed streams must now report an SSE error rather than request failover.
 	session.preContentKeepaliveSent = IsResponseCommitted(c) && c.Writer.Written()
 	session.preContentKeepaliveInterval = interval
+	diagnostics := &antigravityStreamDiagnostics{}
+	readStarted := time.Now()
+	var firstLineMs, firstDataMs int64 = -1, -1
+	defer func() {
+		fields := append(antigravityDiagnosticCorrelation(c), diagnostics.fields()...)
+		fields = append(fields, "model", originalModel, "elapsed_ms", time.Since(startTime).Milliseconds(),
+			"header_phase_ms", readStarted.Sub(startTime).Milliseconds(), "stream_read_ms", time.Since(readStarted).Milliseconds(),
+			"first_line_ms", firstLineMs, "first_data_ms", firstDataMs,
+			"upstream_status", resp.StatusCode, "upstream_content_type", antigravityDiagnosticContentType(resp.Header.Get("Content-Type")),
+			"meaningful_content", session.hasMeaningfulData(), "processor_content", session.processor.HasContent(),
+			"processor_started", session.processor.MessageStartSent(), "pending_events", len(session.pendingEvents),
+			"keepalive_sent", session.preContentKeepaliveSent, "client_canceled", c.Request.Context().Err() != nil,
+			"client_write_failed", writer.Disconnected(), "error_class", antigravityDiagnosticError(streamErr))
+		if streamErr != nil {
+			slog.WarnContext(c.Request.Context(), "antigravity.stream_summary", fields...)
+		} else {
+			slog.InfoContext(c.Request.Context(), "antigravity.stream_summary", fields...)
+		}
+	}()
 	events, stopScanner, maxLineSize := s.startAntigravityCompatScanner(resp.Body)
 	defer stopScanner()
 
@@ -370,7 +516,19 @@ func (s *AntigravityGatewayService) handleAntigravityCompatStreamWithKeepaliveIn
 	for {
 		select {
 		case event, open := <-events:
-			if !session.hasMeaningfulData() && !writer.Disconnected() && !time.Now().Before(preContentDeadline) {
+			observedAt := time.Now()
+			// Observe before the deadline check so a chunk that arrived after the
+			// first-content deadline is still represented in the diagnostic summary.
+			if open && event.err == nil {
+				diagnostics.observe(event.line)
+				if firstLineMs < 0 {
+					firstLineMs = observedAt.Sub(startTime).Milliseconds()
+				}
+				if firstDataMs < 0 && strings.HasPrefix(strings.TrimSpace(event.line), "data:") {
+					firstDataMs = observedAt.Sub(startTime).Milliseconds()
+				}
+			}
+			if !session.hasMeaningfulData() && !writer.Disconnected() && !observedAt.Before(preContentDeadline) {
 				return preContentTimeout()
 			}
 			if !open {
@@ -385,6 +543,18 @@ func (s *AntigravityGatewayService) handleAntigravityCompatStreamWithKeepaliveIn
 			resetAntigravityCompatTimer(timeoutTimer, timeout)
 			s.observeAntigravityGeminiSSELine(c, event.line)
 			session.consume(event.line)
+			if session.repetitionErr != nil {
+				logger.LegacyPrintf(
+					"service.antigravity_gateway",
+					"Repetition loop detected in stream (%s): stream=%s period_bytes=%d scanned_bytes=%d",
+					prefix,
+					session.repetitionErr.Stream,
+					session.repetitionErr.PeriodBytes,
+					session.repetitionErr.ScannedBytes,
+				)
+				writeAntigravityCompatStreamError(c, adapter, writer, "repetition_loop_detected")
+				return session.collectResult(false), session.repetitionErr
+			}
 
 		case <-timeoutCh:
 			if writer.Disconnected() {

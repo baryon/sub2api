@@ -3,6 +3,7 @@ package middleware
 import (
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
@@ -112,6 +113,59 @@ func TestCORS_AllowedOrigin_HasAllowHeaders(t *testing.T) {
 				"允许的 origin 应收到 Max-Age=86400")
 			assert.Equal(t, "https://allowed.example.com", w.Header().Get("Access-Control-Allow-Origin"),
 				"允许的 origin 应收到 Allow-Origin")
+		})
+	}
+}
+
+func TestCORS_BrowserAPIClientPreflightHeaders(t *testing.T) {
+	tests := []struct {
+		name    string
+		path    string
+		headers []string
+	}{
+		{
+			name:    "immersive_translate_openai",
+			path:    "/v1/chat/completions",
+			headers: []string{"api-key", "authorization", "content-type"},
+		},
+		{
+			name: "claude_browser_client",
+			path: "/v1/messages",
+			headers: []string{
+				"anthropic-version", "anthropic-beta", "anthropic-dangerous-direct-browser-access",
+				"x-api-key", "content-type",
+			},
+		},
+		{
+			name: "openai_browser_sdk",
+			path: "/v1/chat/completions",
+			headers: []string{
+				"authorization", "content-type", "openai-organization", "openai-project",
+				"x-stainless-dangerous-direct-browser-access",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			w := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(w)
+			c.Request = httptest.NewRequest(http.MethodOptions, tt.path, nil)
+			c.Request.Header.Set("Origin", "chrome-extension://bpoadfkcbjbfhfodiogcnhhhpibjhbnh")
+			c.Request.Header.Set("Access-Control-Request-Method", http.MethodPost)
+			c.Request.Header.Set("Access-Control-Request-Headers", strings.Join(tt.headers, ","))
+
+			CORS(config.CORSConfig{AllowedOrigins: []string{"*"}})(c)
+
+			assert.Equal(t, http.StatusNoContent, w.Code)
+			assert.Equal(t, "*", w.Header().Get("Access-Control-Allow-Origin"))
+			allowed := make(map[string]struct{})
+			for _, header := range strings.Split(w.Header().Get("Access-Control-Allow-Headers"), ",") {
+				allowed[strings.ToLower(strings.TrimSpace(header))] = struct{}{}
+			}
+			for _, header := range tt.headers {
+				assert.Contains(t, allowed, header, "browser preflight must allow requested API header %q", header)
+			}
 		})
 	}
 }
