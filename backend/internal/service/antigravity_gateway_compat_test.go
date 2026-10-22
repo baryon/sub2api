@@ -1410,7 +1410,7 @@ func TestAntigravityCompatStreamRepetitionGuard(t *testing.T) {
 	t.Run("stops repeated text cycle >= 8 times with error event", func(t *testing.T) {
 		unit := "Let's run it. Let's call exec_command.我将执行更新并提交。"
 		var builder strings.Builder
-		for i := 0; i < 8; i++ {
+		for i := 0; i < 40; i++ {
 			b, _ := json.Marshal(unit)
 			_, _ = builder.WriteString(makeSSEChunk(`{"text":`+string(b)+`}`, ""))
 		}
@@ -1434,7 +1434,7 @@ func TestAntigravityCompatStreamRepetitionGuard(t *testing.T) {
 	t.Run("stops repeated thinking cycle >= 8 times with error event", func(t *testing.T) {
 		unit := "Thinking about calling exec_command next step in the plan. "
 		var builder strings.Builder
-		for i := 0; i < 8; i++ {
+		for i := 0; i < 40; i++ {
 			b, _ := json.Marshal(unit)
 			_, _ = builder.WriteString(makeSSEChunk(`{"thought":true,"text":`+string(b)+`}`, ""))
 		}
@@ -1484,11 +1484,38 @@ func TestAntigravityCompatStreamRepetitionGuard(t *testing.T) {
 		require.Contains(t, body, "event: response.completed")
 	})
 
+	// 2026-10-22: the first version stopped any 32-byte unit seen eight times (256 bytes), which cut off ordinary
+	// answers with a long divider, a run of zeros or a hex dump. Such runs, and short repeats, now pass.
+	t.Run("allows long dividers, zero runs, hex dumps, repeated table rows and short repeats", func(t *testing.T) {
+		samples := []string{
+			strings.Repeat("-", 600),
+			strings.Repeat("─", 300),
+			"var zeros = []int{" + strings.Repeat("0, ", 400) + "}",
+			strings.Repeat("00 00 00 00 00 00 00 00  ", 120),
+			strings.Repeat("| pending | pending | pending | pending |\n", 12),
+			strings.Repeat("Let's run it. Let's call exec_command.我将执行更新并提交。", 8),
+		}
+		for i, sample := range samples {
+			b, _ := json.Marshal(sample)
+			sse := makeSSEChunk(`{"text":`+string(b)+`}`, "STOP")
+			svc := newAntigravityCompatService(config.GatewayConfig{MaxLineSize: defaultMaxLineSize}, nil)
+			c, recorder := newAntigravityCompatContext(http.MethodPost, "/v1/responses", nil)
+			resp := &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+				Body:       io.NopCloser(strings.NewReader(sse)),
+			}
+			_, err := svc.handleResponsesStreamingFromAntigravity(c, resp, time.Now(), "gemini-4-argon-high")
+			require.NoError(t, err, "sample %d", i)
+			require.Contains(t, recorder.Body.String(), "event: response.completed", "sample %d", i)
+		}
+	})
+
 	t.Run("stops alternating thinking and text cycle and never logs secret content", func(t *testing.T) {
 		thoughtPart := "Let's call exec_command SECRET_MARKER_99. "
 		textPart := "我将执行更新并提交。"
 		var builder strings.Builder
-		for i := 0; i < 8; i++ {
+		for i := 0; i < 40; i++ {
 			b1, _ := json.Marshal(thoughtPart)
 			b2, _ := json.Marshal(textPart)
 			_, _ = builder.WriteString(makeSSEChunk(`{"thought":true,"text":`+string(b1)+`},{"text":`+string(b2)+`}`, ""))
@@ -1512,9 +1539,14 @@ func TestAntigravityCompatStreamRepetitionGuard(t *testing.T) {
 
 	t.Run("enforces 32B and 2048B period boundaries", func(t *testing.T) {
 		for _, periodLen := range []int{32, 2048} {
-			unit := strings.Repeat("ab34cd78", periodLen/8)
+			unit := strings.Repeat("abcdefghijklmnop", periodLen/16)
 			require.Len(t, unit, periodLen)
-			b, _ := json.Marshal(strings.Repeat(unit, 8))
+			// A loop is stopped once it has run for 2 KiB and at least eight cycles.
+			cycles := 8
+			if need := (2048 + periodLen - 1) / periodLen; need > cycles {
+				cycles = need
+			}
+			b, _ := json.Marshal(strings.Repeat(unit, cycles))
 			sse := makeSSEChunk(`{"text":`+string(b)+`}`, "STOP")
 
 			svc := newAntigravityCompatService(config.GatewayConfig{MaxLineSize: defaultMaxLineSize}, nil)

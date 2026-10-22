@@ -139,8 +139,13 @@ const (
 	antigravityRepetitionMinPeriodBytes = 32
 	antigravityRepetitionMaxPeriodBytes = 2048
 	antigravityRepetitionCycles         = 8
-	antigravityRepetitionWindowBytes    = antigravityRepetitionMaxPeriodBytes * antigravityRepetitionCycles
-	antigravityRepetitionMaxTailBytes   = antigravityRepetitionWindowBytes + 8*1024
+	// A loop is stopped only once its repeats span this much: eight 32-byte cycles (256 bytes) are an ordinary divider
+	// line, a run of zeros or a few identical table rows.
+	antigravityRepetitionMinSpanBytes = 2048
+	// A repeated unit made of only a few different bytes ("-----", "0, 0, ", "00 00 ") is padding, not a loop.
+	antigravityRepetitionMinDistinctBytes = 12
+	antigravityRepetitionWindowBytes      = antigravityRepetitionMaxPeriodBytes * antigravityRepetitionCycles
+	antigravityRepetitionMaxTailBytes     = antigravityRepetitionWindowBytes + 8*1024
 )
 
 type antigravityStreamRepetitionError struct {
@@ -186,8 +191,7 @@ func (w *antigravityRepetitionWindow) add(delta string) (int, bool) {
 
 func detectRepeatedCycle(tail []byte) int {
 	n := len(tail)
-	minTotal := antigravityRepetitionMinPeriodBytes * antigravityRepetitionCycles
-	if n < minTotal {
+	if n < antigravityRepetitionMinSpanBytes {
 		return 0
 	}
 	maxPeriod := n / antigravityRepetitionCycles
@@ -195,16 +199,35 @@ func detectRepeatedCycle(tail []byte) int {
 		maxPeriod = antigravityRepetitionMaxPeriodBytes
 	}
 	for period := antigravityRepetitionMinPeriodBytes; period <= maxPeriod; period++ {
-		total := period * antigravityRepetitionCycles
+		cycles := antigravityRepetitionCycles
+		if need := (antigravityRepetitionMinSpanBytes + period - 1) / period; need > cycles {
+			cycles = need
+		}
+		total := period * cycles
+		if total > n {
+			continue
+		}
 		start := n - total
 		if tail[n-1] != tail[n-1-period] || tail[start] != tail[start+period] {
 			continue
 		}
-		if bytes.Equal(tail[start:n-period], tail[start+period:n]) {
+		if bytes.Equal(tail[start:n-period], tail[start+period:n]) && distinctBytes(tail[n-period:]) >= antigravityRepetitionMinDistinctBytes {
 			return period
 		}
 	}
 	return 0
+}
+
+func distinctBytes(unit []byte) int {
+	var seen [256]bool
+	count := 0
+	for _, b := range unit {
+		if !seen[b] {
+			seen[b] = true
+			count++
+		}
+	}
+	return count
 }
 
 type antigravityStreamRepetitionGuard struct {
