@@ -296,7 +296,7 @@ func (s *GatewayService) forwardAnthropicAPIKeyPassthroughWithInput(
 		usage = &ClaudeUsage{}
 	}
 
-	return &ForwardResult{
+	result := &ForwardResult{
 		RequestID:                     openAICompatibleUpstreamRequestID(resp.Header),
 		UpstreamHeaders:               resp.Header,
 		Usage:                         *usage,
@@ -309,7 +309,9 @@ func (s *GatewayService) forwardAnthropicAPIKeyPassthroughWithInput(
 		Duration:                      time.Since(input.StartTime),
 		FirstTokenMs:                  firstTokenMs,
 		ClientDisconnect:              clientDisconnect,
-	}, nil
+	}
+	applyClaudeHostedSearchCount(result)
+	return result, nil
 }
 
 func (s *GatewayService) buildUpstreamRequestAnthropicAPIKeyPassthrough(
@@ -765,6 +767,7 @@ func parseSSEUsagePassthrough(data string, usage *ClaudeUsage) {
 				usage.CacheCreation5mTokens = int(cc5m.Int())
 				usage.CacheCreation1hTokens = int(cc1h.Int())
 			}
+			noteClaudeWebSearchRequests(usage, msgUsage)
 		}
 	case "message_delta":
 		deltaUsage := parsed.Get("usage")
@@ -790,6 +793,7 @@ func parseSSEUsagePassthrough(data string, usage *ClaudeUsage) {
 			if cc1h.Exists() {
 				usage.CacheCreation1hTokens = int(cc1h.Int())
 			}
+			noteClaudeWebSearchRequests(usage, deltaUsage)
 		}
 	}
 
@@ -912,6 +916,7 @@ func parseClaudeUsageFromResponseBody(body []byte) *ClaudeUsage {
 			usage.CacheReadInputTokens = int(cached)
 		}
 	}
+	noteClaudeWebSearchRequests(usage, usageNode)
 	normalizeAnthropicCompatiblePromptUsage(usageNode, usage)
 	return usage
 }

@@ -895,7 +895,7 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 		}
 	}
 
-	return &ForwardResult{
+	result = &ForwardResult{
 		RequestID:                     resp.Header.Get("x-request-id"),
 		UpstreamHeaders:               resp.Header,
 		Usage:                         *usage,
@@ -908,7 +908,9 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 		Duration:                      time.Since(startTime),
 		FirstTokenMs:                  firstTokenMs,
 		ClientDisconnect:              clientDisconnect,
-	}, nil
+	}
+	applyClaudeHostedSearchCount(result)
+	return result, nil
 }
 
 func anthropicSpeedModel(parsed *ParsedRequest, result *ForwardResult) string {

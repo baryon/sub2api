@@ -551,6 +551,9 @@ func (s *GeminiMessagesCompatService) Forward(ctx context.Context, c *gin.Contex
 		mappedModel = account.GetMappedModel(req.Model)
 	}
 
+	if err := hostedWebSearchRefusal(account, mappedModel, "", body); err != nil {
+		return nil, s.writeClaudeError(c, http.StatusBadRequest, "invalid_request_error", hostedWebSearchUnsupportedMessage)
+	}
 	geminiReq, err := convertClaudeMessagesToGeminiGenerateContent(body)
 	if err != nil {
 		return nil, s.writeClaudeError(c, http.StatusBadRequest, "invalid_request_error", err.Error())

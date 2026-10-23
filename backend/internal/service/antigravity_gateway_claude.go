@@ -47,6 +47,11 @@ func (s *AntigravityGatewayService) Forward(ctx context.Context, c *gin.Context,
 	if strings.TrimSpace(claudeReq.Model) == "" {
 		return nil, s.writeClaudeError(c, http.StatusBadRequest, "invalid_request_error", "Missing model")
 	}
+	// Gemini's v1internal API cannot return Anthropic server_tool_use blocks.
+	// Refuse here instead of dropping the tool and answering as if no search was asked.
+	if err := hostedWebSearchRefusal(account, claudeReq.Model, "", body); err != nil {
+		return nil, s.writeClaudeError(c, http.StatusBadRequest, "invalid_request_error", hostedWebSearchUnsupportedMessage)
+	}
 
 	originalModel := claudeReq.Model
 	mappedModel := s.getMappedModelForThinkingLevel(
