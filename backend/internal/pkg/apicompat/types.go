@@ -503,10 +503,18 @@ func (o *ResponsesOutput) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+// WebSearchSource is one page returned with a hosted web_search_call.
+type WebSearchSource struct {
+	Type  string `json:"type,omitempty"`
+	URL   string `json:"url,omitempty"`
+	Title string `json:"title,omitempty"`
+}
+
 // WebSearchAction describes the search action in a web_search_call output item.
 type WebSearchAction struct {
-	Type  string `json:"type,omitempty"`  // "search"
-	Query string `json:"query,omitempty"` // primary search query
+	Type    string            `json:"type,omitempty"`  // "search"
+	Query   string            `json:"query,omitempty"` // primary search query
+	Sources []WebSearchSource `json:"sources,omitempty"`
 }
 
 // ResponsesSummary is a summary text block inside a reasoning output.

@@ -1236,8 +1236,10 @@ type sseUsagePatch struct {
 	cacheCreation1hTokens    int
 	hasCacheCreation1h       bool
 	// compaction replaces the recorded compaction sampling (usage.iterations), when the object carried the table.
-	compaction    compactionIterationUsage
-	hasCompaction bool
+	compaction           compactionIterationUsage
+	hasCompaction        bool
+	webSearchRequests    int
+	hasWebSearchRequests bool
 }
 
 func (s *GatewayService) extractSSEUsagePatch(event map[string]any) *sseUsagePatch {
@@ -1276,6 +1278,10 @@ func (s *GatewayService) extractSSEUsagePatch(event map[string]any) *sseUsagePat
 				patch.cacheCreation1hTokens = v
 				patch.hasCacheCreation1h = true
 			}
+		}
+		if v, ok := webSearchRequestsFromUsageMap(usageObj); ok && v > 0 {
+			patch.webSearchRequests = v
+			patch.hasWebSearchRequests = true
 		}
 		return patch
 
@@ -1317,10 +1323,22 @@ func (s *GatewayService) extractSSEUsagePatch(event map[string]any) *sseUsagePat
 				patch.hasCacheCreation1h = true
 			}
 		}
+		if v, ok := webSearchRequestsFromUsageMap(usageObj); ok && v > 0 {
+			patch.webSearchRequests = v
+			patch.hasWebSearchRequests = true
+		}
 		return patch
 	}
 
 	return nil
+}
+
+func webSearchRequestsFromUsageMap(usageObj map[string]any) (int, bool) {
+	raw, ok := usageObj["server_tool_use"].(map[string]any)
+	if !ok {
+		return 0, false
+	}
+	return parseSSEUsageInt(raw["web_search_requests"])
 }
 
 func mergeSSEUsagePatch(usage *ClaudeUsage, patch *sseUsagePatch) {
@@ -1348,6 +1366,9 @@ func mergeSSEUsagePatch(usage *ClaudeUsage, patch *sseUsagePatch) {
 	}
 	if patch.hasCacheCreation1h {
 		usage.CacheCreation1hTokens = patch.cacheCreation1hTokens
+	}
+	if patch.hasWebSearchRequests {
+		usage.WebSearchRequests = patch.webSearchRequests
 	}
 }
 
@@ -1484,6 +1505,7 @@ func (s *GatewayService) handleNonStreamingResponse(ctx context.Context, resp *h
 		response.Usage.CacheCreation5mTokens = int(cc5m.Int())
 		response.Usage.CacheCreation1hTokens = int(cc1h.Int())
 	}
+	noteClaudeWebSearchRequests(&response.Usage, gjson.GetBytes(body, "usage"))
 
 	// 兼容 Kimi cached_tokens → cache_read_input_tokens
 	if response.Usage.CacheReadInputTokens == 0 {

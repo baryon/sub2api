@@ -72,11 +72,10 @@ func ResponsesToAnthropic(resp *ResponsesResponse, model string) *AnthropicRespo
 				Name:  "web_search",
 				Input: inputJSON,
 			})
-			emptyResults, _ := json.Marshal([]struct{}{})
 			blocks = append(blocks, AnthropicContentBlock{
 				Type:      "web_search_tool_result",
 				ToolUseID: toolUseID,
-				Content:   emptyResults,
+				Content:   anthropicWebSearchResultContent(item.Action),
 			})
 		}
 	}
@@ -669,10 +668,8 @@ func resToAnthHandleWebSearchDone(evt *ResponsesStreamEvent, state *ResponsesEve
 	})
 	state.ContentBlockIndex++
 
-	// Emit web_search_tool_result block (start + stop).
-	// Content is empty because OpenAI does not expose individual search results;
-	// the model consumes them internally and produces text output.
-	emptyResults, _ := json.Marshal([]struct{}{})
+	// Emit web_search_tool_result block (start + stop). Sources are kept when
+	// the upstream sent them; otherwise the result list stays empty.
 	idx2 := state.ContentBlockIndex
 	events = append(events, AnthropicStreamEvent{
 		Type:  "content_block_start",
@@ -680,7 +677,7 @@ func resToAnthHandleWebSearchDone(evt *ResponsesStreamEvent, state *ResponsesEve
 		ContentBlock: &AnthropicContentBlock{
 			Type:      "web_search_tool_result",
 			ToolUseID: toolUseID,
-			Content:   emptyResults,
+			Content:   anthropicWebSearchResultContent(evt.Item.Action),
 		},
 	})
 	events = append(events, AnthropicStreamEvent{
@@ -690,6 +687,40 @@ func resToAnthHandleWebSearchDone(evt *ResponsesStreamEvent, state *ResponsesEve
 	state.ContentBlockIndex++
 
 	return events
+}
+
+// anthropicWebSearchResultContent turns hosted-search sources into Anthropic
+// web_search_result entries. A source without a URL is omitted. A missing title
+// uses the URL so the citation still has a label.
+func anthropicWebSearchResultContent(action *WebSearchAction) json.RawMessage {
+	var results []map[string]string
+	if action != nil {
+		for _, source := range action.Sources {
+			url := strings.TrimSpace(source.URL)
+			if url == "" {
+				continue
+			}
+			title := strings.TrimSpace(source.Title)
+			if title == "" {
+				title = url
+			}
+			results = append(results, map[string]string{
+				"type":  "web_search_result",
+				"url":   url,
+				"title": title,
+			})
+		}
+	}
+	if len(results) == 0 {
+		empty, _ := json.Marshal([]struct{}{})
+		return empty
+	}
+	raw, err := json.Marshal(results)
+	if err != nil {
+		empty, _ := json.Marshal([]struct{}{})
+		return empty
+	}
+	return raw
 }
 
 // resToAnthRecoverTerminalText emits assistant text that only ever appeared in

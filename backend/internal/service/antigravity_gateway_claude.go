@@ -47,6 +47,11 @@ func (s *AntigravityGatewayService) Forward(ctx context.Context, c *gin.Context,
 	if strings.TrimSpace(claudeReq.Model) == "" {
 		return nil, s.writeClaudeError(c, http.StatusBadRequest, "invalid_request_error", "Missing model")
 	}
+	// Gemini's v1internal API cannot return Anthropic server_tool_use blocks.
+	// Refuse here instead of dropping the tool and answering as if no search was asked.
+	if err := hostedWebSearchRefusal(account, claudeReq.Model, "", body); err != nil {
+		return nil, s.writeClaudeError(c, http.StatusBadRequest, "invalid_request_error", hostedWebSearchUnsupportedMessage)
+	}
 
 	originalModel := claudeReq.Model
 	mappedModel := s.getMappedModelForThinkingLevel(
@@ -61,6 +66,9 @@ func (s *AntigravityGatewayService) Forward(ctx context.Context, c *gin.Context,
 	// 应用 thinking 模式自动后缀：如果 thinking 开启且目标是 claude-sonnet-4-5，自动改为 thinking 版本
 	thinkingEnabled := claudeReq.Thinking != nil && (claudeReq.Thinking.Type == "enabled" || claudeReq.Thinking.Type == "adaptive")
 	mappedModel = applyThinkingModelSuffix(mappedModel, thinkingEnabled)
+	if geminiImageGenerationDenied(c, nil, originalModel, mappedModel) {
+		return nil, s.writeClaudeError(c, http.StatusBadRequest, "invalid_request_error", ImageGenerationPermissionMessage())
+	}
 	billingModel := mappedModel
 
 	// 获取 access_token

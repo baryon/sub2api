@@ -50,6 +50,10 @@ func (s *OpenAIGatewayService) forwardAnthropicViaNativeAnthropicEndpoint(
 
 	billingModel := resolveOpenAIForwardModel(account, originalModel, defaultMappedModel)
 	upstreamModel := normalizeOpenAIModelForUpstream(account, billingModel)
+	if err := hostedWebSearchRefusal(account, upstreamModel, APIProtocolAnthropic, body); err != nil {
+		writeAnthropicError(c, http.StatusBadRequest, "invalid_request_error", hostedWebSearchUnsupportedMessage)
+		return nil, err
+	}
 	if upstreamModel != originalModel {
 		rewritten, err := sjson.SetBytes(body, "model", upstreamModel)
 		if err != nil {
@@ -275,7 +279,7 @@ func (s *OpenAIGatewayService) handleNativeAnthropicBufferedResponse(
 	body = reverseToolNamesIfPresent(c, body)
 	c.Data(resp.StatusCode, contentType, body)
 
-	return &OpenAIForwardResult{
+	result := &OpenAIForwardResult{
 		RequestID:        resp.Header.Get("x-request-id"),
 		UpstreamHeaders:  resp.Header,
 		Usage:            claudeUsageToOpenAIUsage(usage),
@@ -286,7 +290,11 @@ func (s *OpenAIGatewayService) handleNativeAnthropicBufferedResponse(
 		Stream:           false,
 		ReasoningEffort:  reasoningEffort,
 		Duration:         time.Since(startTime),
-	}, nil
+	}
+	if usage.WebSearchRequests > 0 {
+		result.SearchCount = usage.WebSearchRequests
+	}
+	return result, nil
 }
 
 // handleNativeAnthropicStreamingResponse 处理流式原生 Anthropic 响应：
@@ -549,7 +557,7 @@ func (s *OpenAIGatewayService) nativeAnthropicStreamResult(
 	if usage == nil {
 		usage = &ClaudeUsage{}
 	}
-	return &OpenAIForwardResult{
+	result := &OpenAIForwardResult{
 		RequestID:        resp.Header.Get("x-request-id"),
 		UpstreamHeaders:  resp.Header,
 		Usage:            claudeUsageToOpenAIUsage(usage),
@@ -563,6 +571,10 @@ func (s *OpenAIGatewayService) nativeAnthropicStreamResult(
 		FirstTokenMs:     firstTokenMs,
 		ClientDisconnect: clientDisconnect,
 	}
+	if usage.WebSearchRequests > 0 {
+		result.SearchCount = usage.WebSearchRequests
+	}
+	return result
 }
 
 // claudeUsageToOpenAIUsage 把 Anthropic 格式 usage 映射到 OpenAI 网关统一的

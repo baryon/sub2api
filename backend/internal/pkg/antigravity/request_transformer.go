@@ -864,8 +864,8 @@ func buildTools(tools []ClaudeTool) []GeminiToolDeclaration {
 
 	// Antigravity v1internal 协议不支持内置工具与 functionDeclarations 混用：
 	// 即便带上 includeServerSideToolInvocations 仍返回 400（issue #6464）。
-	// Codex 默认同时带 web_search 与 shell 等客户端工具，优先保留客户端工具，
-	// 使代理会话可继续，而不是整单 upstream_error。
+	// Claude Messages 请求在进到这里之前就会被拒绝，避免把搜索工具悄悄丢掉。
+	// Chat Completions / Responses 兼容入口仍在这里丢掉内置工具，保住客户端工具。
 	if len(funcDecls) > 0 {
 		if hasWebSearch || hasCodeExecution {
 			log.Printf("[antigravity] dropping built-in tools (web_search/code_execution) because client function tools are present; Antigravity v1internal rejects the mix")

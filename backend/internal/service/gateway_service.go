@@ -604,10 +604,12 @@ type ClaudeUsage struct {
 	CacheCreation5mTokens    int // 5分钟缓存创建token（来自嵌套 cache_creation 对象）
 	CacheCreation1hTokens    int // 1小时缓存创建token（来自嵌套 cache_creation 对象）
 	ImageOutputTokens        int `json:"image_output_tokens,omitempty"`
-
 	// compaction is the compaction sampling reported under usage.iterations; foldCompactionIterations adds it to
 	// the counts above for API-key accounts (TASK-71).
 	compaction compactionIterationUsage
+	// WebSearchRequests is usage.server_tool_use.web_search_requests. It is not
+	// part of the flat usage object, so it is filled by the parsers below.
+	WebSearchRequests int `json:"-"`
 }
 
 // ForwardResult 转发结果

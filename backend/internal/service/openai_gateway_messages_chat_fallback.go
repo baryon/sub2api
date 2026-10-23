@@ -46,6 +46,10 @@ func (s *OpenAIGatewayService) forwardAnthropicViaRawChatCompletions(
 		return nil, fmt.Errorf("parse anthropic request: %w", err)
 	}
 	originalModel := anthropicReq.Model
+	if err := hostedWebSearchRefusal(account, originalModel, APIProtocolChatCompletions, body); err != nil {
+		writeAnthropicError(c, http.StatusBadRequest, "invalid_request_error", hostedWebSearchUnsupportedMessage)
+		return nil, err
+	}
 	if strings.TrimSpace(originalModel) == "" {
 		writeAnthropicError(c, http.StatusBadRequest, "invalid_request_error", "model is required")
 		return nil, fmt.Errorf("missing model in request")
