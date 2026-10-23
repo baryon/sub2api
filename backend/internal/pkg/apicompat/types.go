@@ -430,10 +430,13 @@ type ResponsesOutput struct {
 
 // MarshalJSON 处理 tool_search_call 项的线上形态（复用 CallID/Arguments 字段）：
 // execution 固定为 "client"（codex 的必填字段，非 client 的调用会被静默忽略），
-// arguments 是 JSON 对象而非 function_call 语义下的字符串。reasoning 项始终
-// 携带 summary 数组；其余类型走默认结构体序列化。
+// arguments 是 JSON 对象而非 function_call 语义下的字符串。message 补齐内容字段，
+// reasoning 项始终携带 summary 数组；其余类型走默认结构体序列化。
 func (o ResponsesOutput) MarshalJSON() ([]byte, error) {
 	type responsesOutputAlias ResponsesOutput
+	if o.Type == "message" {
+		return marshalMessageOutput(responsesOutputAlias(o), o.Content)
+	}
 	// Terminal responses must retain summary:[] for signature-only reasoning.
 	// An explicit field overrides the alias's omitempty without a JSON round trip.
 	if o.Type == "reasoning" && len(o.Summary) == 0 {
@@ -885,3 +888,27 @@ func (d ChatDelta) reasoningText() *string {
 const DefaultMinMaxOutputTokens = 128
 
 const minMaxOutputTokens = DefaultMinMaxOutputTokens
+
+// marshalMessageOutput renders a message output item with content always present and each output_text part
+// carrying text/annotations/logprobs, the same shape the streamed parts use (outputTextPartWire): strict Responses
+// clients reject a completed message whose output_text has no annotations. Other part types keep their default form.
+func marshalMessageOutput(item any, content []ResponsesContentPart) ([]byte, error) {
+	raw, err := json.Marshal(item)
+	if err != nil {
+		return nil, err
+	}
+	var m map[string]any
+	if err := json.Unmarshal(raw, &m); err != nil {
+		return nil, err
+	}
+	parts := make([]any, 0, len(content))
+	for i := range content {
+		if content[i].Type == "output_text" {
+			parts = append(parts, outputTextPartWire(&content[i]))
+			continue
+		}
+		parts = append(parts, content[i])
+	}
+	m["content"] = parts
+	return json.Marshal(m)
+}

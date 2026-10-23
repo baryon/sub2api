@@ -123,11 +123,10 @@ func TestResponsesOutput_ReasoningAlwaysCarriesSummary(t *testing.T) {
 		t.Errorf("summary with text lost: %s", withText)
 	}
 
-	// Other item types are unchanged.
-	message, _ := json.Marshal(ResponsesOutput{Type: "message", ID: "m", Role: "assistant"})
-	if string(message) != `{"type":"message","id":"m","role":"assistant"}` {
-		t.Errorf("message output changed: %s", message)
-	}
+	// Keep Otoha's existing message contract, including an empty content array.
+	message, err := json.Marshal(ResponsesOutput{Type: "message", ID: "m", Role: "assistant"})
+	require.NoError(t, err)
+	require.JSONEq(t, `{"type":"message","id":"m","role":"assistant","content":[]}`, string(message))
 }
 
 func TestAnthropicEventToResponses_ReasoningSummaryClosesWithItem(t *testing.T) {
