@@ -593,21 +593,47 @@ func TestAdminService_CreateGroup_DefaultsGrokMediaGenerationEnabled(t *testing.
 	require.True(t, group.AllowImageGeneration)
 }
 
-func TestAdminService_CreateGroup_PreservesNonGrokImageGenerationDisabled(t *testing.T) {
-	repo := &groupRepoStubForAdmin{}
-	svc := &adminServiceImpl{groupRepo: repo}
+func TestAdminService_CreateGroup_DefaultsGeminiFamilyImageGenerationEnabled(t *testing.T) {
+	for _, platform := range []string{PlatformGemini, PlatformAntigravity} {
+		t.Run(platform, func(t *testing.T) {
+			repo := &groupRepoStubForAdmin{}
+			svc := &adminServiceImpl{groupRepo: repo}
 
-	group, err := svc.CreateGroup(context.Background(), &CreateGroupInput{
-		Name:           "anthropic-text",
-		Description:    "Anthropic text group",
-		Platform:       PlatformAnthropic,
-		RateMultiplier: 1.0,
-	})
-	require.NoError(t, err)
-	require.NotNil(t, group)
-	require.NotNil(t, repo.created)
-	require.False(t, repo.created.AllowImageGeneration)
-	require.False(t, group.AllowImageGeneration)
+			group, err := svc.CreateGroup(context.Background(), &CreateGroupInput{
+				Name:           platform + "-images",
+				Description:    "Gemini family group",
+				Platform:       platform,
+				RateMultiplier: 1.0,
+			})
+			require.NoError(t, err)
+			require.NotNil(t, group)
+			require.NotNil(t, repo.created)
+			require.True(t, repo.created.AllowImageGeneration)
+			require.True(t, group.AllowImageGeneration)
+			require.False(t, repo.created.AllowBatchImageGeneration)
+		})
+	}
+}
+
+func TestAdminService_CreateGroup_PreservesImageGenerationDisabledWithoutPlatformDefault(t *testing.T) {
+	for _, platform := range []string{PlatformAnthropic, PlatformComposite} {
+		t.Run(platform, func(t *testing.T) {
+			repo := &groupRepoStubForAdmin{}
+			svc := &adminServiceImpl{groupRepo: repo}
+
+			group, err := svc.CreateGroup(context.Background(), &CreateGroupInput{
+				Name:           platform + "-text",
+				Description:    "Group without image default",
+				Platform:       platform,
+				RateMultiplier: 1.0,
+			})
+			require.NoError(t, err)
+			require.NotNil(t, group)
+			require.NotNil(t, repo.created)
+			require.False(t, repo.created.AllowImageGeneration)
+			require.False(t, group.AllowImageGeneration)
+		})
+	}
 }
 
 func TestAdminService_DeepSeekGroupClearsOAuthOnlyRequirement(t *testing.T) {
@@ -662,13 +688,15 @@ func TestAdminService_GroupPlatformCanonicalizationAndValidation(t *testing.T) {
 	require.Equal(t, "GROUP_PLATFORM_INVALID", infraerrors.Reason(err))
 }
 
-func TestAdminService_CreateGroup_DisablesBatchImageWhenImageGenerationDisabled(t *testing.T) {
+func TestAdminService_CreateGroup_GeminiImageDefaultKeepsRequestedBatchImage(t *testing.T) {
 	repo := &groupRepoStubForAdmin{}
 	svc := &adminServiceImpl{groupRepo: repo}
 
+	// Create treats a false image switch as "use the platform default". Gemini
+	// defaults image generation on, so a requested batch-image switch stays on.
 	group, err := svc.CreateGroup(context.Background(), &CreateGroupInput{
-		Name:                      "gemini-no-image",
-		Description:               "Gemini group without image generation",
+		Name:                      "gemini-images",
+		Description:               "Gemini group with batch images",
 		Platform:                  PlatformGemini,
 		RateMultiplier:            1.0,
 		AllowImageGeneration:      false,
@@ -677,9 +705,9 @@ func TestAdminService_CreateGroup_DisablesBatchImageWhenImageGenerationDisabled(
 	require.NoError(t, err)
 	require.NotNil(t, group)
 	require.NotNil(t, repo.created)
-	require.False(t, repo.created.AllowImageGeneration)
-	require.False(t, repo.created.AllowBatchImageGeneration)
-	require.False(t, group.AllowBatchImageGeneration)
+	require.True(t, repo.created.AllowImageGeneration)
+	require.True(t, repo.created.AllowBatchImageGeneration)
+	require.True(t, group.AllowBatchImageGeneration)
 }
 
 func TestAdminService_CreateGroup_DisablesBatchImageForNonGeminiPlatform(t *testing.T) {
