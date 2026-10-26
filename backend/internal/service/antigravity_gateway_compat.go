@@ -257,15 +257,8 @@ func (s *AntigravityGatewayService) forwardAntigravityCompat(
 	}
 
 	upstream := s.httpUpstream
-	if request.clientStream && !request.isCompaction {
-		interval := antigravityCompatPreContentKeepaliveInterval
-		if s.settingService != nil && s.settingService.cfg != nil {
-			configured := time.Duration(s.settingService.cfg.Gateway.StreamKeepaliveInterval) * time.Second
-			if configured > 0 && configured < interval {
-				interval = configured
-			}
-		}
-		upstream = &antigravityHeaderKeepaliveUpstream{HTTPUpstream: upstream, c: c, interval: interval}
+	if request.clientStream {
+		upstream = &antigravityHeaderKeepaliveUpstream{HTTPUpstream: upstream, c: c, interval: s.antigravityCompatKeepaliveInterval()}
 	}
 	result, err := s.antigravityRetryLoop(antigravityRetryLoopParams{
 		ctx:             ctx,
@@ -742,7 +735,12 @@ func (s *AntigravityGatewayService) handleResponsesCompactionFromAntigravity(
 	call *antigravityCompatUpstreamCall,
 	resp *http.Response,
 ) (*antigravityStreamResult, error) {
-	claudeResponse, result, err := s.collectClaudeStreamResponse(c, resp, call.request.startTime, call.request.originalModel)
+	interval := time.Duration(0)
+	if call.request.clientStream {
+		interval = s.antigravityCompatKeepaliveInterval()
+	}
+	claudeResponse, result, err := s.collectClaudeStreamResponseWithOptions(c, resp, call.request.startTime, call.request.originalModel,
+		antigravityStreamCollectionOptions{keepaliveInterval: interval, requireComplete: true})
 	if err != nil {
 		return nil, s.mapAntigravityCompatCollectionError(c, err)
 	}
@@ -779,10 +777,16 @@ func (s *AntigravityGatewayService) handleResponsesCompactionFromAntigravity(
 func (s *AntigravityGatewayService) mapAntigravityCompatCollectionError(c *gin.Context, err error) error {
 	var failoverError *UpstreamFailoverError
 	if errors.As(err, &failoverError) {
+		if antigravityCompatSSECommitted(c) {
+			return s.writeAntigravityCompatError(c, http.StatusBadGateway, "upstream_error", "Failed to parse upstream response")
+		}
 		return err
 	}
-	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+	if c.Request.Context().Err() != nil {
 		return err
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		return s.writeAntigravityCompatError(c, http.StatusBadGateway, "upstream_timeout", "Upstream response timed out")
 	}
 	if strings.Contains(err.Error(), "stream data interval timeout") {
 		return s.writeAntigravityCompatError(c, http.StatusBadGateway, "upstream_timeout", "Upstream stream data interval timeout")

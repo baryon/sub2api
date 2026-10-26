@@ -24,6 +24,35 @@ type antigravityHeaderResult struct {
 	err      error
 }
 
+func (s *AntigravityGatewayService) antigravityCompatKeepaliveInterval() time.Duration {
+	interval := antigravityCompatPreContentKeepaliveInterval
+	if s.settingService != nil && s.settingService.cfg != nil {
+		configured := time.Duration(s.settingService.cfg.Gateway.StreamKeepaliveInterval) * time.Second
+		if configured > 0 && configured < interval {
+			interval = configured
+		}
+	}
+	return interval
+}
+
+// Keep writes on the request goroutine, including while collecting a compact
+// summary. SSE comments keep proxies alive without exposing a partial checkpoint.
+func writeAntigravityCompatKeepalive(c *gin.Context) error {
+	if !c.Writer.Written() {
+		c.Header("Content-Type", "text/event-stream")
+		c.Header("Cache-Control", "no-cache")
+		c.Header("Connection", "keep-alive")
+		c.Header("X-Accel-Buffering", "no")
+		c.Status(http.StatusOK)
+	}
+	MarkResponseCommitted(c)
+	if _, err := c.Writer.Write([]byte(": ping\n\n")); err != nil {
+		return err
+	}
+	c.Writer.Flush()
+	return nil
+}
+
 func (u *antigravityHeaderKeepaliveUpstream) Do(req *http.Request, proxyURL string, accountID int64, concurrency int) (response *http.Response, requestErr error) {
 	started := time.Now()
 	keepalives := 0
@@ -74,19 +103,10 @@ func (u *antigravityHeaderKeepaliveUpstream) Do(req *http.Request, proxyURL stri
 			cancel()
 			return nil, u.c.Request.Context().Err()
 		case <-ticker.C:
-			if !u.c.Writer.Written() {
-				u.c.Header("Content-Type", "text/event-stream")
-				u.c.Header("Cache-Control", "no-cache")
-				u.c.Header("Connection", "keep-alive")
-				u.c.Header("X-Accel-Buffering", "no")
-				u.c.Status(http.StatusOK)
-			}
-			MarkResponseCommitted(u.c)
-			if _, err := u.c.Writer.Write([]byte(": ping\n\n")); err != nil {
+			if err := writeAntigravityCompatKeepalive(u.c); err != nil {
 				cancel()
 				return nil, err
 			}
-			u.c.Writer.Flush()
 			keepalives++
 		}
 	}
