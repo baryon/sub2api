@@ -421,7 +421,7 @@ func TestAccountGetMappedModel(t *testing.T) {
 	}
 }
 
-func TestAccountGetModelMapping_AntigravityNormalizesGemini31ProAliases(t *testing.T) {
+func TestAccountGetModelMapping_AntigravityPreservesSavedGemini31ProAliases(t *testing.T) {
 	t.Parallel()
 
 	account := &Account{
@@ -437,14 +437,17 @@ func TestAccountGetModelMapping_AntigravityNormalizesGemini31ProAliases(t *testi
 
 	mapping := account.GetModelMapping()
 
-	if got := mapping["gemini-3.1-pro"]; got != domain.AntigravityGemini31ProAgentModel {
-		t.Fatalf("expected gemini-3.1-pro to map to %q, got %q", domain.AntigravityGemini31ProAgentModel, got)
+	if got := mapping["gemini-3.1-pro"]; got != "" {
+		t.Fatalf("unconfigured gemini-3.1-pro must stay absent, got %q", got)
 	}
-	if got := mapping["gemini-3.1-pro-high"]; got != domain.AntigravityGemini31ProAgentModel {
-		t.Fatalf("expected gemini-3.1-pro-high to map to %q, got %q", domain.AntigravityGemini31ProAgentModel, got)
+	if got := mapping["gemini-3.1-pro-high"]; got != "gemini-3.1-pro-high" {
+		t.Fatalf("saved gemini-3.1-pro-high target must stay unchanged, got %q", got)
 	}
-	if got := mapping["gemini-3.1-pro-preview"]; got != domain.AntigravityGemini31ProAgentModel {
-		t.Fatalf("expected gemini-3.1-pro-preview to map to %q, got %q", domain.AntigravityGemini31ProAgentModel, got)
+	if got := mapping["gemini-3.1-pro-preview"]; got != "gemini-3.1-pro-high" {
+		t.Fatalf("saved gemini-3.1-pro-preview target must stay unchanged, got %q", got)
+	}
+	if len(mapping) != 3 {
+		t.Fatalf("expected only the three saved mappings, got %v", mapping)
 	}
 }
 
@@ -470,8 +473,8 @@ func TestAccountGetModelMapping_AntigravityPreservesGemini31ProOverrides(t *test
 	if got := mapping["gemini-3.1-pro-preview"]; got != "custom-preview" {
 		t.Fatalf("expected gemini-3.1-pro-preview override to be preserved, got %q", got)
 	}
-	if got := mapping["gemini-3.1-pro"]; got != domain.AntigravityGemini31ProAgentModel {
-		t.Fatalf("expected gemini-3.1-pro alias to default to %q, got %q", domain.AntigravityGemini31ProAgentModel, got)
+	if got := mapping["gemini-3.1-pro"]; got != "" {
+		t.Fatalf("unconfigured gemini-3.1-pro must stay absent, got %q", got)
 	}
 }
 
@@ -591,7 +594,7 @@ func TestAccountResolveMappedModel(t *testing.T) {
 	}
 }
 
-func TestAccountGetModelMapping_AntigravityEnsuresGeminiDefaultPassthroughs(t *testing.T) {
+func TestAccountGetModelMapping_AntigravityDoesNotInjectGeminiDefaultPassthroughs(t *testing.T) {
 	account := &Account{
 		Platform: PlatformAntigravity,
 		Credentials: map[string]any{
@@ -602,14 +605,13 @@ func TestAccountGetModelMapping_AntigravityEnsuresGeminiDefaultPassthroughs(t *t
 	}
 
 	mapping := account.GetModelMapping()
-	if mapping["gemini-3-flash"] != "gemini-3-flash" {
-		t.Fatalf("expected gemini-3-flash passthrough to be auto-filled, got: %q", mapping["gemini-3-flash"])
+	if mapping["gemini-3-pro-high"] != "gemini-3.1-pro-high" || len(mapping) != 1 {
+		t.Fatalf("expected only the saved model mapping, got: %v", mapping)
 	}
-	if mapping["gemini-3.1-pro-high"] != "gemini-3.1-pro-high" {
-		t.Fatalf("expected gemini-3.1-pro-high passthrough to be auto-filled, got: %q", mapping["gemini-3.1-pro-high"])
-	}
-	if mapping["gemini-3.1-pro-low"] != "gemini-3.1-pro-low" {
-		t.Fatalf("expected gemini-3.1-pro-low passthrough to be auto-filled, got: %q", mapping["gemini-3.1-pro-low"])
+	for _, model := range []string{"gemini-3-flash", "gemini-3.1-pro-high", "gemini-3.1-pro-low"} {
+		if account.IsModelSupported(model) {
+			t.Fatalf("unconfigured model must stay unavailable: %s", model)
+		}
 	}
 }
 
