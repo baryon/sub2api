@@ -557,10 +557,11 @@ func TestBuildCodexModelsManifestAdvertisesPriorityServiceTierForFastGPTModels(t
 		"gpt-5.4-mini",
 		"gpt-5.5",
 		"gpt-5.6-terra",
+		"gpt-6.1-terra",
 	})
 	require.NoError(t, err)
 	models := decodeCodexManifestModels(t, body)
-	require.Len(t, models, 3)
+	require.Len(t, models, 4)
 
 	for _, model := range models {
 		require.Equal(t, []any{
