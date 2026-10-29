@@ -48,7 +48,7 @@ func (f *otohaImageBillingFixture) charge(t *testing.T, model, outputSize string
 	groupID := f.group.ID
 	err := f.openai.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
 		Result: &OpenAIForwardResult{
-			RequestID: "img-" + model + "-" + outputSize, Model: model, ImageCount: 1, ImageOutputSizes: []string{outputSize},
+			RequestID: "img-" + model + "-" + outputSize, Model: model, ImageCount: 1, ImageOutputSizes: []string{outputSize}, ImageEndpoint: true,
 		},
 		APIKey:  &APIKey{ID: 10, GroupID: &groupID, Group: f.group},
 		User:    &User{ID: 20},
@@ -165,6 +165,39 @@ func TestOtohaImageModelOfAGroupWhoseChannelChargesByTokenHasNoPerImagePrice(t *
 
 	_, ok = otohaOpenAIImagePricer{openai: openai}.ImageUnitPrice(context.Background(), group, "grok-imagine-image", "1K")
 	require.True(t, ok, "a model the channel does not price per token is still priced per image")
+}
+
+func TestOtohaOpenAIImagePricerHonorsImageCountBilling(t *testing.T) {
+	for _, platform := range []string{PlatformOpenAI, PlatformComposite} {
+		for _, source := range []string{"channel", "group"} {
+			t.Run(platform+"/"+source, func(t *testing.T) {
+				f := newOtohaImageBillingFixture(t, func(g *Group) {
+					g.Platform = platform
+					g.ImagePrice1K = otohaFloat(0.4)
+				})
+				const model = "gpt-image-2"
+				f.openai.resolver = newOpenAITokenImageChannelPricingResolverForTest(t, f.group.ID, model)
+				if source == "group" {
+					f.group.ModelPricing = []ChannelModelPricing{{Models: []string{model}, BillingMode: BillingModeToken,
+						InputPrice: otohaFloat(3e-6), OutputPrice: otohaFloat(15e-6)}}
+				}
+				pricer := otohaOpenAIImagePricer{openai: f.openai}
+				_, ok := pricer.ImageUnitPrice(context.Background(), f.group, model, "1K")
+				require.False(t, ok, "disabled switch preserves token billing")
+				f.group.ImageCountBilling = true
+				price, ok := pricer.ImageUnitPrice(context.Background(), f.group, model, "1K")
+				require.True(t, ok, "image endpoints now bill per image despite token pricing")
+				require.InDelta(t, 0.4, price, 1e-12)
+				_, err := f.catalog.CreateImageEntry(context.Background(), f.group.ID, imageEntry(model, "1024x1024"))
+				require.NoError(t, err, "the model must remain available in the directory")
+				catalog, err := f.catalog.CatalogForGroup(context.Background(), f.group.ID)
+				require.NoError(t, err)
+				require.Len(t, catalog.ImageModels, 1)
+				require.InDelta(t, 0.6, catalog.ImageModels[0].Sizes[0].Price, 1e-12, "group rate 1.5 applies to the shown price")
+				require.InDelta(t, 0.6, f.charge(t, model, "1024x1024"), 1e-12, "the directory price equals the actual endpoint charge")
+			})
+		}
+	}
 }
 
 func TestOtohaImageBillingHookIsAbsentWithoutACatalog(t *testing.T) {

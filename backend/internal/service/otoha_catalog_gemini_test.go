@@ -402,6 +402,51 @@ func TestOtohaGeminiImagePricerHasNoPriceForANameBillingDoesNotKnow(t *testing.T
 	require.InDelta(t, 0.05, price, 1e-9)
 }
 
+func TestOtohaGeminiImagePricerHonorsImageCountBilling(t *testing.T) {
+	for _, source := range []string{"channel", "group"} {
+		t.Run(source, func(t *testing.T) {
+			f := newGeminiImageBillingFixture(t, func(g *Group) { g.Platform = PlatformComposite })
+			const model = "gemini-3.1-flash-image"
+			resolver := newOpenAITokenImageChannelPricingResolverForTest(t, f.group.ID, model)
+			f.gateway.resolver = NewModelPricingResolver(resolver.channelService, f.gateway.billingService)
+			if source == "group" {
+				f.group.ModelPricing = []ChannelModelPricing{{Models: []string{model}, BillingMode: BillingModeToken,
+					InputPrice: otohaFloat(3e-6), OutputPrice: otohaFloat(15e-6)}}
+			}
+			pricer := otohaGeminiImagePricer{gateway: f.gateway}
+			_, ok := pricer.ImageUnitPrice(context.Background(), f.group, model, "1K")
+			require.False(t, ok, "disabled switch preserves token billing")
+			f.group.ImageCountBilling = true
+			price, ok := pricer.ImageUnitPrice(context.Background(), f.group, model, "1K")
+			require.True(t, ok)
+			require.InDelta(t, 0.0672, price, 1e-12, "the synthetic request must use the image endpoint's price")
+			f.group.ImagePrice1K = otohaFloat(0.05)
+			price, ok = pricer.ImageUnitPrice(context.Background(), f.group, model, "1K")
+			require.True(t, ok)
+			require.InDelta(t, 0.05, price, 1e-12, "configured group image price still wins")
+		})
+	}
+}
+
+func TestOtohaGeminiImageCountBillingDoesNotInventUnknownModelPrices(t *testing.T) {
+	f := newGeminiImageBillingFixture(t, func(g *Group) {
+		g.Platform = PlatformComposite
+		g.ImageCountBilling = true
+	})
+	const unknown = "nano-banana-pro-preview"
+	pricer := otohaGeminiImagePricer{gateway: f.gateway}
+	_, ok := pricer.ImageUnitPrice(context.Background(), f.group, unknown, "1K")
+	require.False(t, ok)
+	resolver := newOpenAITokenImageChannelPricingResolverForTest(t, f.group.ID, unknown)
+	f.gateway.resolver = NewModelPricingResolver(resolver.channelService, f.gateway.billingService)
+	_, ok = pricer.ImageUnitPrice(context.Background(), f.group, unknown, "1K")
+	require.False(t, ok, "a token price is not a model's own image price")
+	f.group.ImagePrice1K = otohaFloat(0.05)
+	price, ok := pricer.ImageUnitPrice(context.Background(), f.group, unknown, "1K")
+	require.True(t, ok, "a configured group image price is valid for an unknown model")
+	require.InDelta(t, 0.05, price, 1e-12)
+}
+
 // ---- Veo ----
 
 func TestOtohaMediaCandidatesOfAGeminiKeyListVeoAsAVideoModel(t *testing.T) {

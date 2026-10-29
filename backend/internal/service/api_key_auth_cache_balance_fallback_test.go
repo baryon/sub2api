@@ -17,7 +17,7 @@ func TestAPIKeyAuthSnapshotGroupBalanceFallbackRoundtrip(t *testing.T) {
 		User: &User{ID: 41, Status: StatusActive},
 		Group: &Group{
 			ID: groupID, Name: "otoha", Platform: PlatformOpenAI, Status: StatusActive,
-			Hydrated: true, SubscriptionType: SubscriptionTypeSubscription, BalanceFallbackEnabled: true,
+			Hydrated: true, SubscriptionType: SubscriptionTypeSubscription, BalanceFallbackEnabled: true, ImageCountBilling: true,
 		},
 	}
 	svc := &APIKeyService{}
@@ -31,4 +31,5 @@ func TestAPIKeyAuthSnapshotGroupBalanceFallbackRoundtrip(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, used)
 	require.True(t, materialized.Group.BalanceFallbackEnabled)
+	require.True(t, materialized.Group.ImageCountBilling)
 }

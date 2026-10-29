@@ -103,6 +103,30 @@ func (h *GatewayHandler) GeminiV1BetaListModels(c *gin.Context) {
 		return
 	}
 
+	// 分组内 Gemini 账号都声明了 model_mapping 时，列表与 /v1/models 同源（含白名单口径），不透传单个账号的上游列表。
+	if declared, err := h.geminiCompatService.DeclaredModelIDs(c.Request.Context(), apiKey.GroupID); err == nil && len(declared) > 0 {
+		declaredModels := make([]gemini.Model, 0, len(declared))
+		for _, id := range declared {
+			declaredModels = append(declaredModels, gemini.FallbackModel(id))
+		}
+		declaredModels = mergeGeminiModelLists(declaredModels, agModels)
+		if apiKey.Group != nil && apiKey.Group.ModelAllowlistEnabled() {
+			ids := make([]string, 0, len(declaredModels))
+			for _, model := range declaredModels {
+				ids = append(ids, strings.TrimPrefix(model.Name, "models/"))
+			}
+			ids = apiKey.Group.ModelAllowlist.FilterForListing(ids)
+			declaredModels = make([]gemini.Model, 0, len(ids))
+			for _, id := range ids {
+				declaredModels = append(declaredModels, gemini.FallbackModel(id))
+			}
+		}
+		c.JSON(http.StatusOK, gemini.ModelsListResponse{
+			Models: filterGeminiModels(declaredModels),
+		})
+		return
+	}
+
 	account, err := h.geminiCompatService.SelectAccountForModelsEndpoints(c.Request.Context(), apiKey.GroupID)
 	if err != nil {
 		if len(agModels) > 0 {
@@ -289,6 +313,18 @@ func (h *GatewayHandler) GeminiV1BetaGetModel(c *gin.Context) {
 	if forcePlatform == service.PlatformAntigravity || effectivePlatform == service.PlatformAntigravity {
 		c.JSON(http.StatusOK, antigravity.FallbackGeminiModel(modelName))
 		return
+	}
+
+	// 分组内 Gemini 账号都声明了 model_mapping 时，按列表接口的同一来源判断模型是否存在。
+	if declared, err := h.geminiCompatService.DeclaredModelIDs(c.Request.Context(), apiKey.GroupID); err == nil && len(declared) > 0 {
+		if agModelIDs, agErr := h.geminiCompatService.AntigravityGeminiModelIDs(c.Request.Context(), apiKey.GroupID, true); agErr == nil {
+			if service.DeclaredModelsCover(declared, modelName) || service.DeclaredModelsCover(agModelIDs, modelName) {
+				c.JSON(http.StatusOK, gemini.FallbackModel(modelName))
+				return
+			}
+			googleError(c, http.StatusNotFound, "models/"+modelName+" is not found")
+			return
+		}
 	}
 
 	account, err := h.geminiCompatService.SelectAccountForModelsEndpoints(c.Request.Context(), apiKey.GroupID)

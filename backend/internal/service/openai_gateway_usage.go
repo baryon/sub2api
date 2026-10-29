@@ -636,7 +636,10 @@ func (s *OpenAIGatewayService) calculateOpenAIRecordUsageCost(
 		if cost, ok := s.otohaImageOverrideCost(ctx, billingModels, apiKey, result, imageMultiplier); ok {
 			return cost, nil
 		}
-		// 渠道定价为 token 计费时走 token 路径，否则走图片计费
+		// 无目录覆盖价时，分组按张开关只对专用图片端点生效；混合请求保留渠道 token 定价。
+		if imageCountBillingApplies(apiKey, result.ImageEndpoint) {
+			return s.calculateOpenAIImageCost(ctx, billingModel, apiKey, result, imageMultiplier), nil
+		}
 		if resolved := s.resolveOpenAIChannelPricing(ctx, billingModel, apiKey); resolved == nil || resolved.Mode != BillingModeToken {
 			return s.calculateOpenAIImageCost(ctx, billingModel, apiKey, result, imageMultiplier), nil
 		}

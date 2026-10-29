@@ -77,12 +77,12 @@ func (p otohaOpenAIImagePricer) ImageUnitPrice(ctx context.Context, group *Group
 	}
 	groupID := group.ID
 	apiKey := &APIKey{GroupID: &groupID, Group: group}
-	if resolved := s.resolveOpenAIChannelPricing(ctx, modelID, apiKey); resolved != nil && resolved.Mode == BillingModeToken {
+	if resolved := s.resolveOpenAIChannelPricing(ctx, modelID, apiKey); resolved != nil && resolved.Mode == BillingModeToken && !imageCountBillingApplies(apiKey, true) {
 		return 0, false
 	}
 	// A price of the billing candidates' own, not the catalog's: the catalog asks for the price that applies when
 	// the admin has set none, so it must not see an override.
-	cost := s.calculateOpenAIImageCost(ctx, modelID, apiKey, &OpenAIForwardResult{ImageCount: 1, ImageSize: tier}, 1)
+	cost := s.calculateOpenAIImageCost(ctx, modelID, apiKey, &OpenAIForwardResult{ImageCount: 1, ImageSize: tier, ImageEndpoint: true}, 1)
 	if cost == nil {
 		return 0, false
 	}
@@ -114,15 +114,16 @@ func (p otohaGeminiImagePricer) ImageUnitPrice(ctx context.Context, group *Group
 	groupID := group.ID
 	apiKey := &APIKey{GroupID: &groupID, Group: group}
 	resolved := s.resolveChannelPricing(ctx, modelID, apiKey)
-	if resolved != nil && resolved.Mode == BillingModeToken {
+	if resolved != nil && resolved.Mode == BillingModeToken && !imageCountBillingApplies(apiKey, true) {
 		return 0, false
 	}
-	if resolved == nil && !apiKeyHasConfiguredImagePrice(apiKey, tier) && !s.billingService.HasOwnImagePrice(modelID) {
+	// A token price bypassed by the count switch is not a price for an image.
+	if (resolved == nil || resolved.Mode == BillingModeToken) && !apiKeyHasConfiguredImagePrice(apiKey, tier) && !s.billingService.HasOwnImagePrice(modelID) {
 		return 0, false
 	}
 	// A price of billing's own, not the catalog's: the catalog asks for the price that applies when the admin has set
 	// none, so it must not see an override.
-	cost := s.calculateImageCost(ctx, &ForwardResult{ImageCount: 1, ImageSize: tier}, apiKey, modelID, 1)
+	cost := s.calculateImageCost(ctx, &ForwardResult{ImageCount: 1, ImageSize: tier, ImageEndpoint: true}, apiKey, modelID, 1)
 	if cost == nil {
 		return 0, false
 	}

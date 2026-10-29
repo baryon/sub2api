@@ -660,3 +660,38 @@ func TestCompositeGeminiAntigravityRouteReachesForwardGeminiWithAntigravityAccou
 	require.Equal(t, int64(21), calls[0].account)
 	require.Equal(t, "Bearer ag-token-21", calls[0].bearer)
 }
+
+func TestCompositeGeminiDeclaredModelsKeepRoutesAliasesAndAllowlist(t *testing.T) {
+	for _, allowlist := range []bool{false, true} {
+		name := "routes and aliases"
+		if allowlist {
+			name = "allowlist narrows declared models and aliases"
+		}
+		t.Run(name, func(t *testing.T) {
+			routes := []service.CompositeModelRoute{
+				{ID: 1, GroupID: compositeGeminiGroupID, PublicModel: "otoha-fast", MatchType: service.CompositeRouteMatchExact,
+					TargetPlatform: service.PlatformGemini, UpstreamModel: "gemini-3.5-flash", Endpoint: service.CompositeRouteEndpointGemini, Priority: 100, Enabled: true},
+				{ID: 2, GroupID: compositeGeminiGroupID, PublicModel: "otoha-claude", MatchType: service.CompositeRouteMatchExact,
+					TargetPlatform: service.PlatformAnthropic, UpstreamModel: "claude-sonnet-4-5", Endpoint: service.CompositeRouteEndpointAny, Priority: 100, Enabled: true},
+			}
+			f := newCompositeGeminiFixture(t, routes, compositeGeminiAccount(12, 1, func(a *service.Account) {
+				a.Credentials["model_mapping"] = map[string]any{
+					"gemini-3.5-flash":   "gemini-3.5-flash",
+					"gemma-3-27b-it":     "gemma-3-27b-it",
+					"text-embedding-004": "text-embedding-004",
+				}
+			}))
+			if allowlist {
+				f.group.ModelAllowlist = service.GroupModelAllowlist{Enabled: true, Models: []string{"otoha-fast"}}
+			}
+			rec := f.list(t)
+			require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+			want := []string{"models/gemini-3.5-flash", "models/otoha-fast"}
+			if allowlist {
+				want = []string{"models/otoha-fast"}
+			}
+			require.Equal(t, want, compositeGeminiModelNames(t, rec.Body.String()))
+			require.Empty(t, f.google.recorded(), "declared account models should not need an upstream list")
+		})
+	}
+}

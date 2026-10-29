@@ -368,15 +368,16 @@ func expectedOpenAICost(t *testing.T, svc *OpenAIGatewayService, model string, u
 }
 
 func TestOpenAIGatewayServiceRecordUsage_DeepSeekCachedReasoningAndIsolationModeCostInvariant(t *testing.T) {
+	// Pro retains its own off-peak price card after September 14.
 	const (
 		model                 = "deepseek-v4-pro"
 		inputTokens           = 1000
 		cacheReadTokens       = 400
 		outputTokens          = 200
 		reasoningTokens       = 150
-		inputPricePerToken    = deepseekFlashOffPeakInputPrice
-		cachePricePerToken    = deepseekFlashOffPeakCacheRead
-		outputPricePerToken   = deepseekFlashOffPeakOutputPrice
+		inputPricePerToken    = 0.66 / 1_000_000
+		cachePricePerToken    = 0.022 / 1_000_000
+		outputPricePerToken   = 1.98 / 1_000_000
 		groupRateMultiplier   = 1.25
 		accountRateMultiplier = 0.8
 	)
