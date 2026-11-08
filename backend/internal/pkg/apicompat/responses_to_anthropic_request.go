@@ -399,7 +399,7 @@ func convertResponsesInputToAnthropicWithGemini(instructions string, inputRaw js
 
 		case item.Type == "agent_message":
 			resetGeminiTurnState()
-			text := strings.TrimSpace(agentMessageText(item.Content))
+			text := strings.TrimSpace(AgentMessageText(item.Content))
 			if text == "" {
 				continue
 			}

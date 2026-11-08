@@ -564,11 +564,15 @@ func TestBuildCodexModelsManifestAdvertisesPriorityServiceTierForFastGPTModels(t
 	require.Len(t, models, 4)
 
 	for _, model := range models {
+		desc := "Priority processing for lower latency."
+		if model["slug"] == "gpt-6.1-terra" {
+			desc = "1.5x speed"
+		}
 		require.Equal(t, []any{
 			map[string]any{
 				"id":          "priority",
 				"name":        "Fast",
-				"description": "Priority processing for lower latency.",
+				"description": desc,
 			},
 		}, model["service_tiers"])
 		require.Nil(t, model["default_service_tier"])

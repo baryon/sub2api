@@ -733,7 +733,7 @@ func (s *OpenAIGatewayService) forwardDeepSeekResponses(
 		if s.cfg != nil && s.cfg.Gateway.MaxLineSize > 0 {
 			maxLineSize = s.cfg.Gateway.MaxLineSize
 		}
-		resp.Body = newGrokResponsesClientToolStreamBody(resp.Body, mapping, maxLineSize)
+		resp.Body = newGrokResponsesClientToolStreamBody(resp.Body, mapping, maxLineSize, s.cfg)
 	}
 
 	if resp.StatusCode >= http.StatusBadRequest {

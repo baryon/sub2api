@@ -26,9 +26,10 @@ describe('clientSetupModels', () => {
     expect(pickDefaultCodexModel(['deepseek-v4-flash', 'deepseek-v4-pro'], 'deepseek')).toBe(
       'deepseek-v4-pro'
     )
+    expect(pickDefaultCodexModel(['gpt-5.4', 'gpt-6.1-sol'], 'openai')).toBe('gpt-6.1-sol')
     expect(pickDefaultCodexModel(['gpt-5.4', 'gpt-5.5'], 'openai')).toBe('gpt-5.5')
     expect(pickDefaultCodexModel(['grok-build-0.1', 'grok-4.5'], 'grok')).toBe('grok-4.5')
-    expect(pickDefaultCodexModel([], 'composite')).toBe('gpt-5.5')
+    expect(pickDefaultCodexModel([], 'composite')).toBe('gpt-6.1-sol')
   })
 
   it('maps DeepSeek Claude slots to pro and flash', () => {

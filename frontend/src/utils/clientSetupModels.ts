@@ -12,7 +12,8 @@ export interface ClaudeModelAliases {
 const DEEPSEEK_FLASH_MODEL = 'deepseek-v4-flash'
 const DEEPSEEK_PRO_MODEL = 'deepseek-v4-pro'
 const GROK_DEFAULT_MODEL = 'grok-4.5'
-const OPENAI_DEFAULT_MODEL = 'gpt-5.5'
+const OPENAI_DEFAULT_MODEL = 'gpt-6.1-sol'
+const OPENAI_LEGACY_DEFAULT_MODEL = 'gpt-5.5'
 
 const PLATFORM_FALLBACK_MODELS: Partial<Record<GroupPlatform, string[]>> = {
   deepseek: [DEEPSEEK_FLASH_MODEL, DEEPSEEK_PRO_MODEL],
@@ -67,6 +68,9 @@ export function pickDefaultCodexModel(
   const preferred = platform ? PLATFORM_PREFERRED_CODEX_MODEL[platform] : undefined
   if (preferred && models.includes(preferred)) {
     return preferred
+  }
+  if ((platform === 'openai' || platform === 'composite') && models.includes(OPENAI_LEGACY_DEFAULT_MODEL)) {
+    return OPENAI_LEGACY_DEFAULT_MODEL
   }
   return models[0] ?? preferred ?? ''
 }
