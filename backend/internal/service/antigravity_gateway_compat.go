@@ -343,7 +343,7 @@ func (s *AntigravityGatewayService) prepareAntigravityCompatCall(
 	mappedModel := s.getMappedModelForThinkingLevel(
 		account,
 		request.originalModel,
-		geminiThinkingLevelFromClaudeThinking(claudeRequest.Thinking),
+		geminiThinkingLevelFromClaudeBody(request.claudeBody, claudeRequest.Thinking),
 	)
 	if mappedModel == "" {
 		MarkOpsClientBusinessLimited(c, OpsClientBusinessLimitedReasonLocalFeatureGate)
@@ -373,7 +373,8 @@ func (s *AntigravityGatewayService) prepareAntigravityCompatCall(
 		_ = s.writeAntigravityCompatError(c, http.StatusBadRequest, "invalid_request_error", err.Error())
 		return nil, err
 	}
-	geminiBody, err := s.buildAntigravityCompatGeminiBody(ctx, request.claudeBody, &claudeRequest, projectID, mappedModel)
+	includeThoughts := request.clientStream && !request.isCompaction
+	geminiBody, err := s.buildAntigravityCompatGeminiBodyWithThoughts(ctx, request.claudeBody, &claudeRequest, projectID, mappedModel, includeThoughts)
 	if err != nil {
 		return nil, s.writeAntigravityCompatError(c, http.StatusBadRequest, "invalid_request_error", "Invalid request")
 	}
@@ -396,6 +397,24 @@ func (s *AntigravityGatewayService) buildAntigravityCompatGeminiBody(
 	projectID string,
 	mappedModel string,
 ) ([]byte, error) {
+	return s.buildAntigravityCompatGeminiBodyWithThoughts(
+		ctx,
+		claudeBody,
+		claudeRequest,
+		projectID,
+		mappedModel,
+		claudeRequest != nil && claudeRequest.Stream,
+	)
+}
+
+func (s *AntigravityGatewayService) buildAntigravityCompatGeminiBodyWithThoughts(
+	ctx context.Context,
+	claudeBody []byte,
+	claudeRequest *antigravity.ClaudeRequest,
+	projectID string,
+	mappedModel string,
+	includeThoughts bool,
+) ([]byte, error) {
 	if strings.HasPrefix(strings.ToLower(mappedModel), "gemini-") {
 		body, err := convertClaudeMessagesToGeminiGenerateContent(claudeBody, mappedModel)
 		if err != nil {
@@ -406,6 +425,7 @@ func (s *AntigravityGatewayService) buildAntigravityCompatGeminiBody(
 			return nil, err
 		}
 		body = ensureGeminiFunctionCallThoughtSignatures(body)
+		body = applyGeminiCompatThinkingConfig(body, claudeBody, mappedModel, includeThoughts)
 		body, err = injectIdentityPatchToGeminiRequest(body)
 		if err != nil {
 			return nil, err

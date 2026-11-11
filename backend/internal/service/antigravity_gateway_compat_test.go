@@ -1791,3 +1791,213 @@ func TestAntigravityCompatStreamRepetitionGuard(t *testing.T) {
 		}
 	})
 }
+
+func TestAntigravityCompatGeminiThinkingConfig(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	t.Run("streaming responses tier suffix enables includeThoughts without thinkingLevel", func(t *testing.T) {
+		upstream := &queuedHTTPUpstreamStub{responses: []*http.Response{antigravityCompatSuccessResponse()}}
+		svc := newAntigravityCompatService(config.GatewayConfig{MaxLineSize: defaultMaxLineSize}, upstream)
+		account := newAntigravityCompatAccount(AccountTypeOAuth)
+		mapping, ok := account.Credentials["model_mapping"].(map[string]any)
+		require.True(t, ok)
+		mapping["gemini-4-carbon-high"] = "gemini-4-carbon-high"
+
+		body := []byte(`{"model":"gemini-4-carbon-high","stream":true,"input":"inspect repository"}`)
+		c, recorder := newAntigravityCompatContext(http.MethodPost, "/v1/responses", body)
+
+		_, err := svc.ForwardAsResponses(context.Background(), c, account, body, nil)
+		require.NoError(t, err)
+		require.Equal(t, http.StatusOK, recorder.Code)
+		require.Len(t, upstream.requestBodies, 1)
+
+		cfg := gjson.GetBytes(upstream.requestBodies[0], "request.generationConfig.thinkingConfig")
+		require.True(t, cfg.Get("includeThoughts").Bool(), "thinkingConfig=%s", cfg.Raw)
+		require.False(t, cfg.Get("thinkingLevel").Exists(), "tier-suffixed model must not set thinkingLevel: %s", cfg.Raw)
+		require.False(t, cfg.Get("thinkingBudget").Exists(), "tier-suffixed model must not set thinkingBudget: %s", cfg.Raw)
+	})
+
+	t.Run("streaming chat completions tier suffix enables includeThoughts without thinkingLevel", func(t *testing.T) {
+		upstream := &queuedHTTPUpstreamStub{responses: []*http.Response{antigravityCompatSuccessResponse()}}
+		svc := newAntigravityCompatService(config.GatewayConfig{MaxLineSize: defaultMaxLineSize}, upstream)
+		account := newAntigravityCompatAccount(AccountTypeOAuth)
+		mapping, ok := account.Credentials["model_mapping"].(map[string]any)
+		require.True(t, ok)
+		mapping["gemini-4-carbon-high"] = "gemini-4-carbon-high"
+
+		body := []byte(`{"model":"gemini-4-carbon-high","stream":true,"messages":[{"role":"user","content":"inspect repository"}]}`)
+		c, recorder := newAntigravityCompatContext(http.MethodPost, "/v1/chat/completions", body)
+
+		_, err := svc.ForwardAsChatCompletions(context.Background(), c, account, body, nil)
+		require.NoError(t, err)
+		require.Equal(t, http.StatusOK, recorder.Code)
+		require.Len(t, upstream.requestBodies, 1)
+
+		cfg := gjson.GetBytes(upstream.requestBodies[0], "request.generationConfig.thinkingConfig")
+		require.True(t, cfg.Get("includeThoughts").Bool(), "thinkingConfig=%s", cfg.Raw)
+		require.False(t, cfg.Get("thinkingLevel").Exists(), "thinkingConfig=%s", cfg.Raw)
+	})
+
+	t.Run("streaming responses bare model with low effort selects low variant and enables includeThoughts", func(t *testing.T) {
+		upstream := &queuedHTTPUpstreamStub{responses: []*http.Response{antigravityCompatSuccessResponse()}}
+		svc := newAntigravityCompatService(config.GatewayConfig{MaxLineSize: defaultMaxLineSize}, upstream)
+		account := newAntigravityCompatAccount(AccountTypeOAuth)
+		mapping, ok := account.Credentials["model_mapping"].(map[string]any)
+		require.True(t, ok)
+		mapping["gemini-4-carbon-low"] = "gemini-4-carbon-low"
+		mapping["gemini-4-carbon-high"] = "gemini-4-carbon-high"
+
+		body := []byte(`{"model":"gemini-4-carbon","stream":true,"reasoning":{"effort":"low"},"input":"quick check"}`)
+		c, recorder := newAntigravityCompatContext(http.MethodPost, "/v1/responses", body)
+
+		result, err := svc.ForwardAsResponses(context.Background(), c, account, body, nil)
+		require.NoError(t, err)
+		require.Equal(t, http.StatusOK, recorder.Code)
+		require.Len(t, upstream.requestBodies, 1)
+		require.Equal(t, "gemini-4-carbon-low", gjson.GetBytes(upstream.requestBodies[0], "model").String())
+		require.Equal(t, "gemini-4-carbon-low", result.UpstreamModel)
+
+		cfg := gjson.GetBytes(upstream.requestBodies[0], "request.generationConfig.thinkingConfig")
+		require.True(t, cfg.Get("includeThoughts").Bool(), "thinkingConfig=%s", cfg.Raw)
+		require.False(t, cfg.Get("thinkingLevel").Exists(), "thinkingConfig=%s", cfg.Raw)
+	})
+
+	t.Run("streaming responses explicit bare model sets thinkingLevel and includeThoughts", func(t *testing.T) {
+		upstream := &queuedHTTPUpstreamStub{responses: []*http.Response{antigravityCompatSuccessResponse()}}
+		svc := newAntigravityCompatService(config.GatewayConfig{MaxLineSize: defaultMaxLineSize}, upstream)
+		account := newAntigravityCompatAccount(AccountTypeOAuth)
+		mapping, ok := account.Credentials["model_mapping"].(map[string]any)
+		require.True(t, ok)
+		mapping["gemini-3.8-flash"] = "gemini-3.8-flash"
+
+		body := []byte(`{"model":"gemini-3.8-flash","stream":true,"reasoning":{"effort":"medium"},"input":"check"}`)
+		c, recorder := newAntigravityCompatContext(http.MethodPost, "/v1/responses", body)
+
+		_, err := svc.ForwardAsResponses(context.Background(), c, account, body, nil)
+		require.NoError(t, err)
+		require.Equal(t, http.StatusOK, recorder.Code)
+		require.Len(t, upstream.requestBodies, 1)
+
+		cfg := gjson.GetBytes(upstream.requestBodies[0], "request.generationConfig.thinkingConfig")
+		require.Equal(t, "medium", cfg.Get("thinkingLevel").String(), "thinkingConfig=%s", cfg.Raw)
+		require.True(t, cfg.Get("includeThoughts").Bool(), "thinkingConfig=%s", cfg.Raw)
+	})
+
+	t.Run("non-streaming responses and compact do not force includeThoughts", func(t *testing.T) {
+		upstream := &queuedHTTPUpstreamStub{responses: []*http.Response{
+			antigravityCompatSuccessResponse(),
+			antigravityCompatSuccessResponse(),
+		}}
+		svc := newAntigravityCompatService(config.GatewayConfig{MaxLineSize: defaultMaxLineSize}, upstream)
+		account := newAntigravityCompatAccount(AccountTypeOAuth)
+		mapping, ok := account.Credentials["model_mapping"].(map[string]any)
+		require.True(t, ok)
+		mapping["gemini-4-carbon-high"] = "gemini-4-carbon-high"
+
+		nonStreamBody := []byte(`{"model":"gemini-4-carbon-high","stream":false,"input":"inspect"}`)
+		c1, rec1 := newAntigravityCompatContext(http.MethodPost, "/v1/responses", nonStreamBody)
+		_, err := svc.ForwardAsResponses(context.Background(), c1, account, nonStreamBody, nil)
+		require.NoError(t, err)
+		require.Equal(t, http.StatusOK, rec1.Code)
+
+		compactBody := []byte(`{"model":"gemini-4-carbon-high","input":[{"type":"message","role":"user","content":"summarize"}]}`)
+		c2, rec2 := newAntigravityCompatContext(http.MethodPost, "/v1/responses/compact", compactBody)
+		ctx2 := context.WithValue(c2.Request.Context(), ctxkey.UserID, int64(42))
+		c2.Request = c2.Request.WithContext(ctx2)
+		_, err = svc.ForwardAsResponses(ctx2, c2, account, compactBody, nil)
+		require.NoError(t, err)
+		require.Equal(t, http.StatusOK, rec2.Code)
+
+		require.Len(t, upstream.requestBodies, 2)
+		require.False(t, gjson.GetBytes(upstream.requestBodies[0], "request.generationConfig.thinkingConfig.includeThoughts").Bool())
+		require.False(t, gjson.GetBytes(upstream.requestBodies[1], "request.generationConfig.thinkingConfig.includeThoughts").Bool())
+	})
+}
+
+func TestAntigravityCompatHeaderWaitExceedingPreContentLimitDoesNotAbortStream(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	for _, protocol := range []antigravityCompatProtocol{antigravityCompatResponses, antigravityCompatChatCompletions} {
+		name := "responses"
+		path := "/v1/responses"
+		wantDone := "event: response.completed"
+		if protocol == antigravityCompatChatCompletions {
+			name = "chat_completions"
+			path = "/v1/chat/completions"
+			wantDone = "data: [DONE]"
+		}
+		t.Run(name, func(t *testing.T) {
+			svc := newAntigravityCompatService(config.GatewayConfig{
+				MaxLineSize:               defaultMaxLineSize,
+				StreamDataIntervalTimeout: 180,
+				StreamKeepaliveInterval:   10,
+			}, nil)
+			c, recorder := newAntigravityCompatContext(http.MethodPost, path, nil)
+			require.NoError(t, writeAntigravityCompatKeepalive(c))
+
+			requestStart := time.Now().Add(-3 * time.Minute)
+			call := &antigravityCompatUpstreamCall{
+				request: antigravityCompatRequest{
+					protocol:      protocol,
+					originalModel: "gemini-4-carbon-high",
+					clientStream:  true,
+					startTime:     requestStart,
+				},
+				billingModel: "gemini-4-carbon-high",
+				prefix:       "test-long-header-wait",
+			}
+
+			result, err := svc.consumeAntigravityCompatResponse(
+				c.Request.Context(),
+				c,
+				newAntigravityCompatAccount(AccountTypeOAuth),
+				call,
+				antigravityCompatSuccessResponse(),
+			)
+			require.NoError(t, err)
+			require.NotNil(t, result)
+			require.NotNil(t, result.FirstTokenMs)
+			require.GreaterOrEqual(t, *result.FirstTokenMs, int((3*time.Minute - time.Second).Milliseconds()))
+			require.Contains(t, recorder.Body.String(), wantDone)
+			require.NotContains(t, recorder.Body.String(), "stream_timeout")
+		})
+	}
+}
+
+func TestAntigravityCompatInterleavedThoughtChunksResetIdleTimeout(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	svc := newAntigravityCompatService(config.GatewayConfig{
+		MaxLineSize:               defaultMaxLineSize,
+		StreamDataIntervalTimeout: 1,
+	}, nil)
+	c, recorder := newAntigravityCompatContext(http.MethodPost, "/v1/responses", nil)
+	reader, writer := io.Pipe()
+	defer func() { _ = reader.Close() }()
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+		Body:       reader,
+	}
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := svc.handleResponsesStreamingFromAntigravity(c, resp, time.Now(), "gemini-4-carbon-high")
+		done <- err
+	}()
+
+	_, err := io.WriteString(writer, `data: {"response":{"responseId":"resp_44276","candidates":[{"content":{"role":"model","parts":[{"text":"Checking files..."}]}}]}}`+"\n\n")
+	require.NoError(t, err)
+	for i := 0; i < 4; i++ {
+		time.Sleep(350 * time.Millisecond)
+		_, err = io.WriteString(writer, fmt.Sprintf(`data: {"response":{"responseId":"resp_44276","candidates":[{"content":{"role":"model","parts":[{"thought":true,"text":"step %d "}]}}]}}`+"\n\n", i+1))
+		require.NoError(t, err)
+	}
+	_, err = io.WriteString(writer, `data: {"response":{"responseId":"resp_44276","candidates":[{"content":{"role":"model","parts":[{"thoughtSignature":"sig_done","functionCall":{"name":"exec_command","args":{"cmd":"ls"},"id":"call_1"}}]},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":100,"candidatesTokenCount":20,"thoughtsTokenCount":50}}}`+"\n\n")
+	require.NoError(t, err)
+	require.NoError(t, writer.Close())
+
+	require.NoError(t, <-done)
+	out := recorder.Body.String()
+	require.Contains(t, out, "event: response.reasoning_summary_text.delta")
+	require.Contains(t, out, "event: response.completed")
+	require.NotContains(t, out, "stream_timeout")
+}
