@@ -73,6 +73,16 @@ func IsHaiku55(model string) bool {
 	return normalizeClaudeModelID(model) == "claude-haiku-5-5"
 }
 
+// IsFable52 identifies Fable 5.2 after provider/local suffix normalization.
+func IsFable52(model string) bool {
+	return normalizeClaudeModelID(model) == "claude-fable-5-2"
+}
+
+// IsMythos52 identifies Mythos 5.2 after provider/local suffix normalization.
+func IsMythos52(model string) bool {
+	return normalizeClaudeModelID(model) == "claude-mythos-5-2"
+}
+
 // EffortLevelsForModel returns the Anthropic effort values this Claude model
 // accepts, in ascending order. Unknown or non-Claude models return nil.
 func EffortLevelsForModel(model string) []string {

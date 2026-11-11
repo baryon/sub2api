@@ -4695,7 +4695,11 @@ const loadModelRestrictionFromMapping = (rawMapping?: Record<string, unknown>) =
 }
 
 const buildModelRestrictionMapping = () =>
-  buildModelMappingObject(modelRestrictionMode.value, allowedModels.value, modelMappings.value)
+  buildModelMappingObject(
+    props.account?.platform === 'grok' ? 'combined' : modelRestrictionMode.value,
+    allowedModels.value,
+    modelMappings.value
+  )
 
 const applyOpenAIModelMappingCredentials = (credentials: Record<string, unknown>) => {
   const shouldApplyModelMapping = !openaiPassthroughEnabled.value
