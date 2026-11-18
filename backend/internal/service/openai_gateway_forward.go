@@ -595,7 +595,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		// Account namespace is orthogonal to fingerprint convergence: preserve
 		// each client's identity cardinality, but never reuse it across OAuth
 		// credentials after scheduler failover.
-		if !isCompactRequest && applyCodexAccountIdentityClientMetadataMap(decoded, codexAccountIdentitySource(c, account), getAPIKeyIDFromContext(c)) {
+		if !isCompactRequest && applyCodexAccountIdentityClientMetadataMap(decoded, codexAccountIdentitySource(c, account), getAPIKeyIDFromContext(c), codexClientSessionID(c)) {
 			markDecodedModified()
 		}
 		stageCodexFingerprintIDs(c, nil)
@@ -699,10 +699,10 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	}
 
 	rawTier := requestView.ServiceTier
-	if openAIGroupForcesFast(ctx, account) {
-		rawTier = OpenAIFastTierPriority
-		if requestView.ServiceTier != OpenAIFastTierPriority {
-			markPatchSet("service_tier", OpenAIFastTierPriority)
+	if forcedTier := openAIGroupForcedServiceTier(ctx, account, upstreamModel); forcedTier != "" {
+		rawTier = forcedTier
+		if requestView.ServiceTier != forcedTier {
+			markPatchSet("service_tier", forcedTier)
 		}
 	}
 	if rawTier != "" {
@@ -1144,9 +1144,9 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			_ = resp.Body.Close()
 			resp.Body = io.NopCloser(bytes.NewReader(respBody))
 
-			upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(respBody))
+			upstreamMsg := strings.TrimSpace(upstreamErrorMessageForAccount(respBody, account))
 			upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
-			upstreamCode := extractUpstreamErrorCode(respBody)
+			upstreamCode := upstreamErrorCodeForAccount(respBody, account)
 			if !agentTaskRecoveryTried && s.isAgentIdentityAccount(ctx, account) && isAgentIdentityTaskInvalidHTTPResponse(resp.StatusCode, respBody) {
 				agentTaskRecoveryTried = true
 				expectedTaskID := account.GetCredential("task_id")

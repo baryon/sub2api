@@ -560,6 +560,7 @@ func (s *GatewayService) handleStreamingResponseAnthropicAPIKeyPassthrough(
 		keepaliveTimer.Reset(keepaliveInterval)
 	}
 	inPartialEvent := false
+	clientModel := compositeClientModel(ctx, "")
 	deepSeekEventName := ""
 	deepSeekDataTerminal := false
 	deepSeekSawData := false
@@ -678,6 +679,12 @@ func (s *GatewayService) handleStreamingResponseAnthropicAPIKeyPassthrough(
 				deepSeekEventName = ""
 				deepSeekDataTerminal = false
 				deepSeekSawData = false
+			}
+
+			if data, ok := extractAnthropicSSEDataLine(line); ok && clientModel != "" && gjson.Get(data, "type").String() == "message_start" && gjson.Get(data, "message.model").Exists() {
+				if rewritten, err := sjson.Set(data, "message.model", clientModel); err == nil {
+					line = "data: " + rewritten
+				}
 			}
 
 			if sensitiveGuard != nil {
@@ -1029,6 +1036,7 @@ func (s *GatewayService) handleNonStreamingResponseAnthropicAPIKeyPassthrough(
 	if contentType == "" {
 		contentType = "application/json"
 	}
+	body = restoreCompositeClientModel(ctx, body)
 	if !account.IsDeepSeekAPIKey() {
 		body = reverseToolNamesIfPresent(c, body)
 	}

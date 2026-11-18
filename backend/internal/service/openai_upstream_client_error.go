@@ -37,11 +37,15 @@ func isOpenAIDeterministicClientError(statusCode int) bool {
 // redactAgentIdentitySensitiveBody；这里不重复清洗，也不回落读取原始 body 的
 // message，避免绕开那两道脱敏。
 func writeOpenAIUpstreamClientError(c *gin.Context, statusCode int, body []byte, upstreamMsg string) {
+	writeOpenAIUpstreamClientErrorWithCode(c, statusCode, body, upstreamMsg, extractUpstreamErrorCode(body))
+}
+
+func writeOpenAIUpstreamClientErrorWithCode(c *gin.Context, statusCode int, body []byte, upstreamMsg, code string) {
 	errorPayload := gin.H{"type": openAIUpstreamClientErrorFallbackType}
 	if errType := strings.TrimSpace(gjson.GetBytes(body, "error.type").String()); errType != "" {
 		errorPayload["type"] = errType
 	}
-	if code := strings.TrimSpace(extractUpstreamErrorCode(body)); code != "" {
+	if code != "" {
 		errorPayload["code"] = code
 	}
 	if param := strings.TrimSpace(gjson.GetBytes(body, "error.param").String()); param != "" {

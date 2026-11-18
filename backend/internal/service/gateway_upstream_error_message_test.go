@@ -13,6 +13,7 @@ func TestExtractUpstreamErrorMessageSupportsProviderEnvelopes(t *testing.T) {
 		name string
 		body string
 		want string
+		grok bool
 	}{
 		{
 			name: "openai object message",
@@ -26,11 +27,13 @@ func TestExtractUpstreamErrorMessageSupportsProviderEnvelopes(t *testing.T) {
 		},
 		{
 			name: "xai string error",
+			grok: true,
 			body: `{"code":"invalid-argument","error":"This model does not support ` + "`reasoning_effort`" + ` value ` + "`none`" + `."}`,
 			want: "This model does not support `reasoning_effort` value `none`.",
 		},
 		{
 			name: "xai nested object without message",
+			grok: true,
 			body: `{"code":"invalid-argument","error":{"error":"Could not decrypt the provided encrypted_content."}}`,
 			want: "Could not decrypt the provided encrypted_content.",
 		},
@@ -41,6 +44,7 @@ func TestExtractUpstreamErrorMessageSupportsProviderEnvelopes(t *testing.T) {
 		},
 		{
 			name: "quoted json inside string error",
+			grok: true,
 			body: `{"error":"{\"code\":\"invalid-argument\",\"error\":\"Could not decrypt the provided encrypted_content.\"}"}`,
 			want: "Could not decrypt the provided encrypted_content.",
 		},
@@ -64,7 +68,11 @@ func TestExtractUpstreamErrorMessageSupportsProviderEnvelopes(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			require.Equal(t, tt.want, extractUpstreamErrorMessage([]byte(tt.body)))
+			var account *Account
+			if tt.grok {
+				account = &Account{Platform: PlatformGrok}
+			}
+			require.Equal(t, tt.want, upstreamErrorMessageForAccount([]byte(tt.body), account))
 		})
 	}
 }
@@ -73,8 +81,8 @@ func TestExtractUpstreamErrorCodeSupportsXAIFlatCode(t *testing.T) {
 	t.Parallel()
 
 	require.Equal(t, "invalid_function_parameters", extractUpstreamErrorCode([]byte(openAIInvalidFunctionParametersBody)))
-	require.Equal(t, "invalid-argument", extractUpstreamErrorCode([]byte(
+	require.Equal(t, "invalid-argument", upstreamErrorCodeForAccount([]byte(
 		`{"code":"invalid-argument","error":"This model does not support reasoning_effort value none."}`,
-	)))
+	), &Account{Platform: PlatformGrok}))
 	require.Equal(t, "", extractUpstreamErrorCode([]byte(`{"error":{"message":"Invalid 'input': expected an array."}}`)))
 }

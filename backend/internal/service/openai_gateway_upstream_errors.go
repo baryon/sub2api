@@ -654,7 +654,7 @@ func (s *OpenAIGatewayService) handleErrorResponse(
 		return nil, fmt.Errorf("grok content policy rejection: %s", clientMsg)
 	}
 
-	upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(body))
+	upstreamMsg := strings.TrimSpace(upstreamErrorMessageForAccount(body, account))
 	upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
 	upstreamDetail := ""
 	if s.cfg != nil && s.cfg.Gateway.LogUpstreamErrorBody {
@@ -800,7 +800,7 @@ func (s *OpenAIGatewayService) handleErrorResponse(
 	// 回真实状态码 + invalid_request_error + 真实 message；/v1/images 还额外透传
 	// code/param。原生 Responses 是唯一漏掉的一条。
 	if isOpenAIDeterministicClientError(resp.StatusCode) {
-		writeOpenAIUpstreamClientError(c, resp.StatusCode, body, upstreamMsg)
+		writeOpenAIUpstreamClientErrorWithCode(c, resp.StatusCode, body, upstreamMsg, upstreamErrorCodeForAccount(body, account))
 		if upstreamMsg == "" {
 			return nil, fmt.Errorf("upstream error: %d", resp.StatusCode)
 		}
@@ -901,7 +901,7 @@ func (s *OpenAIGatewayService) handleCompatErrorResponse(
 		return nil, fmt.Errorf("grok content policy rejection: %s", clientMsg)
 	}
 
-	upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(body))
+	upstreamMsg := strings.TrimSpace(upstreamErrorMessageForAccount(body, account))
 	if upstreamMsg == "" {
 		upstreamMsg = fmt.Sprintf("Upstream error: %d", resp.StatusCode)
 	}

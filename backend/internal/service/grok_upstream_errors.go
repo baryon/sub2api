@@ -185,11 +185,73 @@ func grokContentPolicyMessage(value string) bool {
 }
 
 func grokContentPolicyClientMessage(responseBody []byte) string {
-	message := sanitizeUpstreamErrorMessage(strings.TrimSpace(extractUpstreamErrorMessage(responseBody)))
+	message := sanitizeUpstreamErrorMessage(strings.TrimSpace(grokUpstreamErrorMessage(responseBody)))
 	if message == "" {
 		return "Request blocked by upstream content policy"
 	}
 	return message
+}
+
+// grokUpstreamErrorMessage extends the shared extractor with xAI's flat error
+// body {"code":"...","error":"..."}. It is Grok-only on purpose: the shared
+// extractUpstreamErrorMessage feeds failover, model-not-found and account
+// disable decisions on every platform and must not drift with xAI's format.
+// Non-string error values are never surfaced so unknown objects cannot leak.
+func grokUpstreamErrorMessage(body []byte) string {
+	if message := extractUpstreamErrorMessage(body); strings.TrimSpace(message) != "" {
+		return message
+	}
+	return extractJSONErrorText(string(body))
+}
+
+// grokUpstreamErrorCode extends the shared extractor with xAI's top-level code.
+// Nested error.code keeps priority. Like grokUpstreamErrorMessage it stays
+// Grok-only: a top-level code would otherwise short-circuit the OpenAI-
+// compatible model-not-found failover for bodies such as
+// {"object":"error","message":"model not found","code":400}.
+func grokUpstreamErrorCode(body []byte) string {
+	if code := strings.TrimSpace(extractUpstreamErrorCode(body)); code != "" {
+		return code
+	}
+	if code := upstreamErrorCodeValue(gjson.GetBytes(body, "code")); code != "" {
+		return code
+	}
+	for _, path := range []string{"error.message", "error"} {
+		if msg := gjson.GetBytes(body, path); msg.Type == gjson.String {
+			inner := strings.TrimSpace(msg.String())
+			if strings.HasPrefix(inner, "{") {
+				if code := upstreamErrorCodeValue(gjson.Get(inner, "error.code")); code != "" {
+					return code
+				}
+				if code := upstreamErrorCodeValue(gjson.Get(inner, "code")); code != "" {
+					return code
+				}
+			}
+		}
+	}
+	return ""
+}
+
+func upstreamErrorMessageForAccount(body []byte, account *Account) string {
+	if account != nil {
+		return ExtractUpstreamErrorMessageForPlatform(body, account.Platform)
+	}
+	return extractUpstreamErrorMessage(body)
+}
+
+// ExtractUpstreamErrorMessageForPlatform reads platform-specific error envelopes.
+func ExtractUpstreamErrorMessageForPlatform(body []byte, platform string) string {
+	if platform == PlatformGrok {
+		return grokUpstreamErrorMessage(body)
+	}
+	return extractUpstreamErrorMessage(body)
+}
+
+func upstreamErrorCodeForAccount(body []byte, account *Account) string {
+	if account != nil && account.IsGrok() {
+		return grokUpstreamErrorCode(body)
+	}
+	return extractUpstreamErrorCode(body)
 }
 
 // shouldFailoverGrokUpstreamError is the body-aware counterpart of the
