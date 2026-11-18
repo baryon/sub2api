@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -337,7 +338,6 @@ func (s *OpenAIGatewayService) streamRawChatCompletions(
 	}
 	requestID := openAICompatibleUpstreamRequestID(resp.Header)
 	writeStreamHeaders := s.newStreamHeaderWriter(c, resp.Header)
-	scanner := s.newUpstreamSSEScanner(resp.Body)
 
 	var usage OpenAIUsage
 	var firstTokenMs *int
@@ -346,6 +346,13 @@ func (s *OpenAIGatewayService) streamRawChatCompletions(
 	sawDone := false
 	pendingDone := false
 	var streamProtocolErr error
+	flushPending := false
+	flushToClient := func() {
+		if flushPending && !clientDisconnected && clientOutputStarted {
+			c.Writer.Flush()
+		}
+		flushPending = false
+	}
 	pendingLines := make([]string, 0, 8)
 	refusalDetector := newOpenAIChatSilentRefusalDetector(requestBodyLen)
 	var sensitiveGuard *deepSeekSSESensitiveEventGuard
@@ -387,6 +394,7 @@ func (s *OpenAIGatewayService) streamRawChatCompletions(
 				zap.String("request_id", requestID),
 			)
 		}
+		flushPending = true
 	}
 	emitGuardedWire := func(wire []byte) error {
 		line := bytes.TrimSuffix(wire, []byte{'\n'})
@@ -398,6 +406,12 @@ func (s *OpenAIGatewayService) streamRawChatCompletions(
 	if account.IsDeepSeek() && s.cfg != nil && s.cfg.Gateway.StreamDataIntervalTimeout > 0 {
 		streamInterval = time.Duration(s.cfg.Gateway.StreamDataIntervalTimeout) * time.Second
 	}
+	var upstreamReader io.Reader = resp.Body
+	// An idle-timed scanner reads on a separate goroutine; only the handler may flush.
+	if streamInterval == 0 {
+		upstreamReader = &flushBeforeUpstreamRead{r: resp.Body, flush: flushToClient}
+	}
+	scanner := s.newUpstreamSSEScanner(upstreamReader)
 	scanErr := scanDeepSeekSSELinesWithIdleTimeout(scanner, resp.Body, streamInterval, func(line string) bool {
 		eventBoundary := line == "" || line == "\r"
 		refusalDetector.ObserveSSELine(line)
@@ -446,17 +460,13 @@ func (s *OpenAIGatewayService) streamRawChatCompletions(
 			writeLine(line)
 		}
 		if eventBoundary {
-			if !clientDisconnected && clientOutputStarted {
-				c.Writer.Flush()
-			}
 			if account.IsDeepSeek() && pendingDone {
 				sawDone = true
 				return false
 			}
-			return true
 		}
-		if !clientDisconnected && clientOutputStarted {
-			c.Writer.Flush()
+		if streamInterval > 0 {
+			flushToClient()
 		}
 		return true
 	})
@@ -478,6 +488,7 @@ func (s *OpenAIGatewayService) streamRawChatCompletions(
 			streamProtocolErr = guardErr
 		}
 	}
+	flushToClient()
 
 	resultWithUsage := func() *OpenAIForwardResult {
 		return &OpenAIForwardResult{

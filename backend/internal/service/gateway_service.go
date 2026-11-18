@@ -666,6 +666,11 @@ type ClaudeUsage struct {
 	// WebSearchRequests is usage.server_tool_use.web_search_requests. It is not
 	// part of the flat usage object, so it is filled by the parsers below.
 	WebSearchRequests int `json:"-"`
+
+	cacheCreationInputTokensPresent     bool
+	cacheCreationInputTokensFromDetails bool
+	promptTotalTokens                   int
+	promptTotalPresent                  bool
 }
 
 // ForwardResult 转发结果
