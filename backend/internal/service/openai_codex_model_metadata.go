@@ -253,10 +253,25 @@ func groupCodexModelMetadata(
 			}
 			lookupModel = account.GetMappedModel(upstreamModel)
 		}
-		if strings.TrimSpace(lookupModel) != modelID {
+		sameAntigravityBase := false
+		if account.Platform == PlatformAntigravity {
+			if base, _, isTier := splitAntigravityThinkingTierVariant(lookupModel); isTier && strings.EqualFold(base, upstreamModel) {
+				sameAntigravityBase = true
+			}
+		}
+		if strings.TrimSpace(lookupModel) != modelID && (!sameAntigravityBase || upstreamModel != modelID) {
 			publicAlias = true
 		}
-		metadata, ok := account.GetUpstreamModelMetadata(lookupModel)
+		var (
+			metadata UpstreamModelMetadata
+			ok       bool
+		)
+		if account.Platform == PlatformAntigravity {
+			metadata, ok = antigravityBaseModelMetadata(account, upstreamModel)
+		}
+		if !ok {
+			metadata, ok = account.GetUpstreamModelMetadata(lookupModel)
+		}
 		if !ok {
 			if explicitTargetsConflict {
 				return codexModelMetadataOverride{
@@ -285,12 +300,21 @@ func groupCodexModelMetadata(
 	return metadata, true
 }
 
+func normalizeAntigravitySameBaseTarget(account *Account, modelID, mappedModel string) string {
+	if account != nil && account.Platform == PlatformAntigravity {
+		if base, _, isTier := splitAntigravityThinkingTierVariant(mappedModel); isTier && strings.EqualFold(base, modelID) {
+			return modelID
+		}
+	}
+	return mappedModel
+}
+
 func codexExplicitModelTargetsConflict(accounts []Account, modelID string) bool {
 	targets := make(map[string]struct{})
 	for i := range accounts {
 		account := &accounts[i]
 		mappedModel, matched := account.ResolveMappedModel(modelID)
-		mappedModel = strings.TrimSpace(mappedModel)
+		mappedModel = normalizeAntigravitySameBaseTarget(account, modelID, strings.TrimSpace(mappedModel))
 		if !matched || mappedModel == "" {
 			continue
 		}
@@ -307,7 +331,7 @@ func codexExplicitModelTargetsConflictForPlatform(accounts []Account, platform, 
 			continue
 		}
 		mappedModel, matched := account.ResolveMappedModel(modelID)
-		mappedModel = strings.TrimSpace(mappedModel)
+		mappedModel = normalizeAntigravitySameBaseTarget(account, modelID, strings.TrimSpace(mappedModel))
 		if !matched || mappedModel == "" {
 			continue
 		}

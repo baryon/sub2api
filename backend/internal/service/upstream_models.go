@@ -382,10 +382,16 @@ func configuredUpstreamModelsForCapabilitySync(account *Account) []string {
 		return nil
 	}
 	models := make([]string, 0)
-	for _, mappedModel := range account.GetModelMapping() {
+	for sourceModel, mappedModel := range account.GetModelMapping() {
 		mappedModel = strings.TrimSpace(mappedModel)
 		if mappedModel == "" || strings.Contains(mappedModel, "*") {
 			continue
+		}
+		if account.Platform == PlatformAntigravity &&
+			strings.EqualFold(strings.TrimSpace(sourceModel), mappedModel) {
+			if _, resolved := resolveGeminiThinkingVariantForLevel(account, mappedModel, ""); resolved {
+				continue
+			}
 		}
 		models = append(models, mappedModel)
 	}

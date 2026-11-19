@@ -927,6 +927,9 @@ func (s *GatewayService) BuildCodexModelsManifestForGroup(
 			compositeRoutesAvailable = false
 		}
 	}
+	if strings.TrimSpace(platformOverride) == "" {
+		modelIDs = foldAntigravityMultiTierCodexModelIDs(effectivePlatform, modelIDs, catalog, compositeRoutes)
+	}
 	return buildCodexModelsManifestForAccounts(
 		effectivePlatform,
 		modelIDs,
@@ -1154,6 +1157,11 @@ func uniqueCodexMappedModel(accounts []Account, platform string, modelID string)
 		mappedModel = strings.TrimSpace(mappedModel)
 		if !matched || mappedModel == "" {
 			continue
+		}
+		if account.Platform == PlatformAntigravity {
+			if base, _, isTier := splitAntigravityThinkingTierVariant(mappedModel); isTier && strings.EqualFold(base, modelID) {
+				mappedModel = modelID
+			}
 		}
 		targets[mappedModel] = struct{}{}
 	}
@@ -2752,4 +2760,74 @@ func (d configuredCodexModelDescriptor) MarshalJSON() ([]byte, error) {
 		return nil, err
 	}
 	return json.Marshal(fields)
+}
+
+// foldAntigravityMultiTierCodexModelIDs hides backing thinking-tier slugs (-low/-medium/-high/-xhigh/-tiered*/-sonar)
+// from Codex manifests when the self-mapped base slug itself is in modelIDs and served by an eligible Antigravity
+// account, while keeping explicit non-self mappings (TASK-126) and forced /antigravity/* catalogs untouched.
+func foldAntigravityMultiTierCodexModelIDs(effectivePlatform string, modelIDs []string, accounts []Account, compositeRoutes []CompositeModelRoute) []string {
+	presentInList := make(map[string]bool, len(modelIDs))
+	for _, rawID := range modelIDs {
+		if id := strings.ToLower(strings.TrimSpace(rawID)); id != "" {
+			presentInList[id] = true
+		}
+	}
+	selfMappedBases := map[string]bool{}
+	for i := range accounts {
+		acc := &accounts[i]
+		if acc.Platform != PlatformAntigravity {
+			continue
+		}
+		for key, target := range explicitAntigravityModelMapping(acc) {
+			key = strings.TrimSpace(key)
+			target = strings.TrimSpace(target)
+			if key == "" || !strings.EqualFold(key, target) || !isAntigravityTieredBaseCandidate(key) {
+				continue
+			}
+			if effectivePlatform != PlatformComposite && !codexAccountServesPlatformModel(acc, effectivePlatform, key) {
+				continue
+			}
+			if !presentInList[strings.ToLower(key)] {
+				continue
+			}
+			if _, ok := resolveGeminiThinkingVariantForLevel(acc, key, ""); ok {
+				selfMappedBases[strings.ToLower(key)] = true
+			}
+		}
+	}
+	if len(selfMappedBases) == 0 {
+		return modelIDs
+	}
+	out := make([]string, 0, len(modelIDs))
+	for _, rawID := range modelIDs {
+		id := strings.TrimSpace(rawID)
+		base, _, isTier := splitAntigravityThinkingTierVariant(id)
+		if !isTier || !selfMappedBases[base] {
+			out = append(out, rawID)
+			continue
+		}
+		claimedElsewhere := false
+		if _, supported, matched := matchCompositeRoute(compositeRoutes, id, CompositeRouteEndpointResponses); matched && supported {
+			claimedElsewhere = true
+		}
+		for i := range accounts {
+			acc := &accounts[i]
+			if acc.Platform != PlatformAntigravity && codexExplicitModelMappingClaims(*acc, id) {
+				claimedElsewhere = true
+				break
+			}
+			if acc.Platform == PlatformAntigravity {
+				for k, target := range explicitAntigravityModelMapping(acc) {
+					if strings.EqualFold(strings.TrimSpace(k), id) && target != "" && !strings.EqualFold(target, id) {
+						claimedElsewhere = true
+						break
+					}
+				}
+			}
+		}
+		if claimedElsewhere {
+			out = append(out, rawID)
+		}
+	}
+	return out
 }

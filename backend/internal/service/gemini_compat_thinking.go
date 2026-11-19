@@ -66,7 +66,7 @@ func geminiThinkingParamForModel(model string) geminiThinkingParam {
 // 这类名字由上游按名字选档，不再叠加思考档位参数。
 func geminiModelNameCarriesThinkingTier(model string) bool {
 	name := strings.ToLower(strings.TrimSpace(model))
-	for _, suffix := range []string{"-minimal", "-low", "-medium", "-high", "-xhigh", "-max", "-tiered"} {
+	for _, suffix := range []string{"-minimal", "-low", "-medium", "-high", "-xhigh", "-max", "-tiered", "-sonar"} {
 		if strings.HasSuffix(name, suffix) {
 			return true
 		}
@@ -98,8 +98,10 @@ func parseClaudeThinkingIntent(claudeBody []byte) claudeThinkingIntent {
 		intent.tier = "low"
 	case "medium":
 		intent.tier = "medium"
-	case "high", "xhigh", "max":
+	case "high":
 		intent.tier = "high"
+	case "xhigh", "max":
+		intent.tier = "xhigh"
 	}
 	if intent.thinkingType == "enabled" {
 		intent.budgetTokens = int(gjson.GetBytes(claudeBody, "thinking.budget_tokens").Int())
@@ -137,7 +139,11 @@ func geminiThinkingLevelFor(model string, intent claudeThinkingIntent) string {
 	if tier == "minimal" && !isFlash {
 		tier = "low"
 	}
-	if tier == "medium" && !isFlash && !strings.HasPrefix(name, "gemini-3.1-pro") && name != "gemini-4-carbon" {
+	isGemini4 := name == "gemini-4-carbon" || name == "gemini-4-hydrogen" || name == "gemini-4-neon"
+	if tier == "medium" && !isFlash && !strings.HasPrefix(name, "gemini-3.1-pro") && !isGemini4 {
+		tier = "high"
+	}
+	if tier == "xhigh" && name != "gemini-4-hydrogen" && name != "gemini-4-neon" {
 		tier = "high"
 	}
 	return tier
@@ -166,7 +172,7 @@ func geminiThinkingBudgetFor(model string, intent claudeThinkingIntent) (budget 
 		budget = 1024
 	case "medium":
 		budget = 8192
-	case "high":
+	case "high", "xhigh":
 		budget = maxBudget
 	default:
 		if intent.budgetTokens <= 0 {

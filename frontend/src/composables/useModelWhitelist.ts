@@ -71,7 +71,9 @@ const geminiModels = [
   'gemini-3.7-flash',
   'gemini-3.8-flash',
   'gemini-4-argon',
-  'gemini-4-carbon'
+  'gemini-4-carbon',
+  'gemini-4-hydrogen',
+  'gemini-4-neon'
 ]
 
 // Antigravity 官方支持的模型（精确匹配）
@@ -129,6 +131,8 @@ const antigravityModels = [
   'gemini-3.8-flash-tiered',
   // Gemini 4 系列
   'gemini-4-carbon',
+  'gemini-4-hydrogen',
+  'gemini-4-neon',
   'gemini-4-argon-low',
   'gemini-4-argon-medium',
   'gemini-4-argon-high',
@@ -413,7 +417,9 @@ const deepseekPresetMappings = [
 // Antigravity 预设映射（支持通配符）
 const antigravityPresetMappings = [
   // Claude 5.5 / Gemini 4 Argon / 3.8 Flash 推荐映射
+  { label: '4 Neon', from: 'gemini-4-neon', to: 'gemini-4-neon', color: 'bg-sky-100 text-sky-700 hover:bg-sky-200 dark:bg-sky-900/30 dark:text-sky-400' },
   { label: '4 Carbon', from: 'gemini-4-carbon', to: 'gemini-4-carbon', color: 'bg-amber-100 text-amber-700 hover:bg-amber-200 dark:bg-amber-900/30 dark:text-amber-400' },
+  { label: '4 Hydrogen', from: 'gemini-4-hydrogen', to: 'gemini-4-hydrogen', color: 'bg-teal-100 text-teal-700 hover:bg-teal-200 dark:bg-teal-900/30 dark:text-teal-400' },
   { label: '4 Argon→High', from: 'gemini-4-argon', to: 'gemini-4-argon-high', color: 'bg-amber-100 text-amber-700 hover:bg-amber-200 dark:bg-amber-900/30 dark:text-amber-400' },
   { label: '4 Argon High', from: 'gemini-4-argon-high', to: 'gemini-4-argon-high', color: 'bg-orange-100 text-orange-700 hover:bg-orange-200 dark:bg-orange-900/30 dark:text-orange-400' },
   { label: '4 Argon Medium', from: 'gemini-4-argon-medium', to: 'gemini-4-argon-medium', color: 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200 dark:bg-yellow-900/30 dark:text-yellow-400' },
@@ -666,4 +672,64 @@ export function buildModelMappingObject(
   }
 
   return Object.keys(mapping).length > 0 ? mapping : null
+}
+
+const ANTIGRAVITY_GEMINI_TIER_SUFFIXES = [
+  '-tiered-xhigh',
+  '-tiered-high',
+  '-tiered',
+  '-sonar',
+  '-xhigh',
+  '-high',
+  '-medium',
+  '-low'
+] as const
+
+const ANTIGRAVITY_CLAUDE_TIER_BASES = ['claude-opus-5-5', 'claude-sonnet-5-5'] as const
+
+function extractAntigravityThinkingBaseModel(model: string): string | null {
+  const trimmed = model.trim()
+  const lower = trimmed.toLowerCase()
+  for (const base of ANTIGRAVITY_CLAUDE_TIER_BASES) {
+    if (lower === `${base}-low` || lower === `${base}-medium` || lower === `${base}-high`) {
+      return base
+    }
+  }
+  if (!lower.startsWith('gemini-')) {
+    return null
+  }
+  for (const suffix of ANTIGRAVITY_GEMINI_TIER_SUFFIXES) {
+    if (lower.endsWith(suffix)) {
+      const base = trimmed.slice(0, trimmed.length - suffix.length)
+      return base && base.toLowerCase() !== 'gemini' ? base : null
+    }
+  }
+  return null
+}
+
+export function mergeAntigravitySyncedMappings(
+  current: ModelMappingEntry[],
+  upstreamModels: string[]
+): { mappings: ModelMappingEntry[]; addedCount: number } {
+  const mappings = current.map((item) => ({ ...item }))
+  const seen = new Set(mappings.map((item) => item.from.trim()).filter(Boolean))
+  let addedCount = 0
+
+  for (const rawModel of upstreamModels) {
+    const model = rawModel.trim()
+    if (!model) continue
+    const base = extractAntigravityThinkingBaseModel(model)
+    if (base && !seen.has(base)) {
+      mappings.push({ from: base, to: base })
+      seen.add(base)
+      addedCount += 1
+    }
+    if (!seen.has(model)) {
+      mappings.push({ from: model, to: model })
+      seen.add(model)
+      addedCount += 1
+    }
+  }
+
+  return { mappings, addedCount }
 }

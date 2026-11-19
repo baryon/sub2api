@@ -182,6 +182,8 @@ var DefaultAntigravityModelMapping = map[string]string{
 	// Gemini 4 models
 	// Carbon uses the published model ID; do not infer Argon-style tier aliases.
 	"gemini-4-carbon":       "gemini-4-carbon",
+	"gemini-4-hydrogen":     "gemini-4-hydrogen",
+	"gemini-4-neon":         "gemini-4-neon",
 	"gemini-4-argon":        "gemini-4-argon-high",
 	"gemini-4-argon-high":   "gemini-4-argon-high",
 	"gemini-4-argon-low":    "gemini-4-argon-low",

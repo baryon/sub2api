@@ -215,3 +215,47 @@ func TestGetMappedModelResolvesBareGeminiModelForAllEntrypoints(t *testing.T) {
 		require.Empty(t, svc.getMappedModel(account, "gemini-9.9-flash"))
 	})
 }
+
+func TestGetMappedModelResolvesXHighAndClaude55ThinkingVariants(t *testing.T) {
+	svc := &AntigravityGatewayService{}
+	account := newAntigravityAccountWithMapping(map[string]string{
+		"gemini-4-neon":                  "gemini-4-neon",
+		"gemini-4-neon-low":              "gemini-4-neon-low",
+		"gemini-4-neon-medium":           "gemini-4-neon-medium",
+		"gemini-4-neon-high":             "gemini-4-neon-high",
+		"gemini-4-neon-xhigh":            "gemini-4-neon-xhigh",
+		"gemini-4-hydrogen":              "gemini-4-hydrogen",
+		"gemini-4-hydrogen-tiered-high":  "gemini-4-hydrogen-tiered-high",
+		"gemini-4-hydrogen-tiered-xhigh": "gemini-4-hydrogen-tiered-xhigh",
+		"claude-opus-5-5":                "claude-opus-5-5",
+		"claude-opus-5-5-low":            "claude-opus-5-5-low",
+		"claude-opus-5-5-medium":         "claude-opus-5-5-medium",
+		"claude-opus-5-5-high":           "claude-opus-5-5-high",
+		"claude-sonnet-5-5":              "claude-sonnet-5-5-medium",
+		"claude-sonnet-5-5-high":         "claude-sonnet-5-5-high",
+	})
+
+	require.Equal(t, "xhigh", geminiThinkingLevelFromBody([]byte(`{"generationConfig":{"thinkingConfig":{"thinkingLevel":"xhigh"}}}`)))
+	require.Equal(t, "low", geminiThinkingLevelFromBody([]byte(`{"generationConfig":{"thinkingConfig":{"thinkingLevel":"minimal"}}}`)))
+	require.Equal(t, "xhigh", geminiThinkingLevelFromBody([]byte(`{"generation_config":{"thinking_config":{"thinking_level":"xhigh"}}}`)))
+	require.Equal(t, "xhigh", geminiThinkingLevelFromClaudeBody([]byte(`{"output_config":{"effort":"xhigh"}}`), nil))
+	effort := extractGeminiReasoningEffortFromBody([]byte(`{"generationConfig":{"thinkingConfig":{"thinkingLevel":"xhigh"}}}`))
+	require.NotNil(t, effort)
+	require.Equal(t, "xhigh", *effort)
+
+	require.Equal(t, "gemini-4-neon-xhigh", svc.getMappedModelForThinkingLevel(account, "gemini-4-neon", "xhigh"))
+	require.Equal(t, "gemini-4-neon-high", svc.getMappedModelForThinkingLevel(account, "gemini-4-neon", ""))
+	require.Equal(t, "gemini-4-hydrogen-tiered-xhigh", svc.getMappedModelForThinkingLevel(account, "gemini-4-hydrogen", "xhigh"))
+	require.Equal(t, "gemini-4-hydrogen-tiered-high", svc.getMappedModelForThinkingLevel(account, "gemini-4-hydrogen", "high"))
+	require.Equal(t, "claude-opus-5-5-low", svc.getMappedModelForThinkingLevel(account, "claude-opus-5-5", "low"))
+	require.Equal(t, "claude-opus-5-5-medium", svc.getMappedModelForThinkingLevel(account, "claude-opus-5-5", "medium"))
+	require.Equal(t, "claude-opus-5-5-high", svc.getMappedModelForThinkingLevel(account, "claude-opus-5-5", "high"))
+	require.Equal(t, "claude-sonnet-5-5-medium", svc.getMappedModelForThinkingLevel(account, "claude-sonnet-5-5", "high"))
+
+	syncIDs := configuredUpstreamModelsForCapabilitySync(account)
+	require.NotContains(t, syncIDs, "gemini-4-neon")
+	require.NotContains(t, syncIDs, "gemini-4-hydrogen")
+	require.NotContains(t, syncIDs, "claude-opus-5-5")
+	require.Contains(t, syncIDs, "gemini-4-neon-xhigh")
+	require.Contains(t, syncIDs, "claude-sonnet-5-5-medium")
+}

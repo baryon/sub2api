@@ -3587,7 +3587,8 @@ import {
   commonErrorCodes,
   buildModelMappingObject,
   splitModelMappingObject,
-  isValidWildcardPattern
+  isValidWildcardPattern,
+  mergeAntigravitySyncedMappings
 } from '@/composables/useModelWhitelist'
 
 interface Props {
@@ -5276,14 +5277,9 @@ const syncAntigravityUpstreamModels = async () => {
       return
     }
 
-    let addedCount = 0
-    for (const model of upstreamModels) {
-      const exists = antigravityModelMappings.value.some((mapping) => mapping.from === model)
-      if (!exists) {
-        antigravityModelMappings.value.push({ from: model, to: model })
-        addedCount += 1
-      }
-    }
+    const merged = mergeAntigravitySyncedMappings(antigravityModelMappings.value, upstreamModels)
+    antigravityModelMappings.value = merged.mappings
+    const addedCount = merged.addedCount
 
     const warnings = result.warnings ?? []
     const hasPartialMetadata = warnings.some(

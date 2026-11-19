@@ -915,3 +915,119 @@ func TestCodexAliasFailoverMappingHonorsModelRouting(t *testing.T) {
 }
 
 // Scenario: mixed groups prefer capability metadata synced for the routed account.
+
+func TestBuildCodexModelsManifestForGroupFoldsAndAggregatesAntigravityMultiTierModels(t *testing.T) {
+	t.Parallel()
+
+	const groupID int64 = 790
+	reasoningTrue := true
+	account := Account{
+		ID:          25,
+		Platform:    PlatformAntigravity,
+		Type:        AccountTypeOAuth,
+		Status:      StatusActive,
+		Schedulable: true,
+		Extra:       map[string]any{"mixed_scheduling": true},
+		Credentials: map[string]any{
+			"model_mapping": map[string]any{
+				"gemini-4-neon":          "gemini-4-neon",
+				"gemini-4-neon-low":      "gemini-4-neon-low",
+				"gemini-4-neon-medium":   "gemini-4-neon-medium",
+				"gemini-4-neon-high":     "gemini-4-neon-high",
+				"gemini-4-neon-xhigh":    "gemini-4-neon-xhigh",
+				"claude-opus-5-5":        "claude-opus-5-5",
+				"claude-opus-5-5-low":    "claude-opus-5-5-low",
+				"claude-opus-5-5-medium": "claude-opus-5-5-medium",
+				"claude-opus-5-5-high":   "claude-opus-5-5-high",
+			},
+		},
+	}
+	account.SetUpstreamModelMetadataSnapshot(UpstreamModelMetadataSnapshot{
+		Source: "upstream",
+		Models: map[string]UpstreamModelMetadata{
+			"gemini-4-neon-low": {
+				ID: "gemini-4-neon-low", DisplayName: "Gemini 4 Neon (Low)", Reasoning: &reasoningTrue,
+				SupportedReasoningLevels: []string{"low"}, DefaultReasoningLevel: "low",
+				InputModalities: []string{"text", "image"}, ContextWindow: 1_048_576, MaxOutputTokens: 262_144,
+			},
+			"gemini-4-neon-medium": {
+				ID: "gemini-4-neon-medium", DisplayName: "Gemini 4 Neon (Medium)", Reasoning: &reasoningTrue,
+				SupportedReasoningLevels: []string{"medium"}, DefaultReasoningLevel: "medium",
+				InputModalities: []string{"text", "image"}, ContextWindow: 1_048_576, MaxOutputTokens: 262_144,
+			},
+			"gemini-4-neon-high": {
+				ID: "gemini-4-neon-high", DisplayName: "Gemini 4 Neon (High)", Reasoning: &reasoningTrue,
+				SupportedReasoningLevels: []string{"high"}, DefaultReasoningLevel: "high",
+				InputModalities: []string{"text", "image"}, ContextWindow: 1_048_576, MaxOutputTokens: 262_144,
+			},
+			"gemini-4-neon-xhigh": {
+				ID: "gemini-4-neon-xhigh", DisplayName: "Gemini 4 Neon (XHigh)", Reasoning: &reasoningTrue,
+				SupportedReasoningLevels: []string{"xhigh"}, DefaultReasoningLevel: "xhigh",
+				InputModalities: []string{"text", "image"}, ContextWindow: 1_048_576, MaxOutputTokens: 262_144,
+			},
+			"claude-opus-5-5-low": {
+				ID: "claude-opus-5-5-low", DisplayName: "Claude Opus 5.5 (Low)", Reasoning: &reasoningTrue,
+				SupportedReasoningLevels: []string{"low"}, DefaultReasoningLevel: "low",
+				InputModalities: []string{"text", "image"}, ContextWindow: 1_000_000, MaxOutputTokens: 128_000,
+			},
+			"claude-opus-5-5-medium": {
+				ID: "claude-opus-5-5-medium", DisplayName: "Claude Opus 5.5 (Medium)", Reasoning: &reasoningTrue,
+				SupportedReasoningLevels: []string{"medium"}, DefaultReasoningLevel: "medium",
+				InputModalities: []string{"text", "image"}, ContextWindow: 1_000_000, MaxOutputTokens: 128_000,
+			},
+			"claude-opus-5-5-high": {
+				ID: "claude-opus-5-5-high", DisplayName: "Claude Opus 5.5 (High)", Reasoning: &reasoningTrue,
+				SupportedReasoningLevels: []string{"high"}, DefaultReasoningLevel: "high",
+				InputModalities: []string{"text", "image"}, ContextWindow: 1_000_000, MaxOutputTokens: 128_000,
+			},
+		},
+	})
+
+	svc := &GatewayService{accountRepo: codexModelsVisibilityAccountRepo{
+		byGroup: map[int64][]Account{groupID: {account}},
+	}}
+	inputIDs := []string{
+		"gemini-4-neon", "gemini-4-neon-low", "gemini-4-neon-medium", "gemini-4-neon-high", "gemini-4-neon-xhigh",
+		"claude-opus-5-5", "claude-opus-5-5-low", "claude-opus-5-5-medium", "claude-opus-5-5-high",
+	}
+	body, err := svc.BuildCodexModelsManifestForGroup(
+		context.Background(),
+		&Group{ID: groupID, Platform: PlatformComposite},
+		"",
+		inputIDs,
+	)
+	require.NoError(t, err)
+
+	models := decodeCodexManifestModels(t, body)
+	require.Equal(t, []string{"gemini-4-neon", "claude-opus-5-5"}, codexManifestModelSlugs(t, body))
+
+	require.Equal(t, "Gemini 4 Neon", models[0]["display_name"])
+	require.Equal(t, []any{"text", "image"}, models[0]["input_modalities"])
+	require.Equal(t, "high", models[0]["default_reasoning_level"])
+	require.Equal(t, []string{"low", "medium", "high", "xhigh"}, effortsFromManifestModel(t, models[0]))
+
+	require.Equal(t, "Claude Opus 5.5", models[1]["display_name"])
+	require.Equal(t, []any{"text", "image"}, models[1]["input_modalities"])
+	require.Equal(t, "high", models[1]["default_reasoning_level"])
+	require.Equal(t, []string{"low", "medium", "high"}, effortsFromManifestModel(t, models[1]))
+
+	// Forced /antigravity/* platformOverride keeps raw backing variants visible.
+	rawBody, err := svc.BuildCodexModelsManifestForGroup(
+		context.Background(),
+		&Group{ID: groupID, Platform: PlatformComposite},
+		PlatformAntigravity,
+		inputIDs,
+	)
+	require.NoError(t, err)
+	require.Contains(t, codexManifestModelSlugs(t, rawBody), "gemini-4-neon-xhigh")
+
+	// If a group allowlist filters out the base model and keeps only a specific tier slug, do not drop that tier slug.
+	tierOnlyBody, err := svc.BuildCodexModelsManifestForGroup(
+		context.Background(),
+		&Group{ID: groupID, Platform: PlatformComposite},
+		"",
+		[]string{"gemini-4-neon-xhigh"},
+	)
+	require.NoError(t, err)
+	require.Equal(t, []string{"gemini-4-neon-xhigh"}, codexManifestModelSlugs(t, tierOnlyBody))
+}

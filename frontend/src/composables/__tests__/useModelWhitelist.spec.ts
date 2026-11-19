@@ -4,7 +4,7 @@ vi.mock('@/api/admin/accounts', () => ({
   getAntigravityDefaultModelMapping: vi.fn()
 }))
 
-import { buildModelMappingObject, getModelsByPlatform, getPresetMappingsByPlatform, splitModelMappingObject } from '../useModelWhitelist'
+import { buildModelMappingObject, getModelsByPlatform, getPresetMappingsByPlatform, mergeAntigravitySyncedMappings, splitModelMappingObject } from '../useModelWhitelist'
 import { BUILTIN_PLATFORM_CATALOG, resetPlatformCatalog, setPlatformCatalog } from '@/constants/platformCatalog'
 
 describe('useModelWhitelist', () => {
@@ -304,5 +304,46 @@ describe('useModelWhitelist', () => {
       allowedModels: ['gpt-5.4'],
       modelMappings: [{ from: 'gpt-latest', to: 'gpt-5.4' }]
     })
+  })
+
+  it('Gemini 4 Hydrogen and Neon expose official models and presets', () => {
+    for (const model of ['gemini-4-hydrogen', 'gemini-4-neon']) {
+      expect(getModelsByPlatform('gemini')).toContain(model)
+      expect(getModelsByPlatform('antigravity')).toContain(model)
+      expect(getPresetMappingsByPlatform('antigravity')).toEqual(expect.arrayContaining([
+        expect.objectContaining({ from: model, to: model })
+      ]))
+    }
+  })
+
+  it('mergeAntigravitySyncedMappings adds bare base mappings for synced thinking-tier families without clobbering existing targets', () => {
+    const existing = [
+      { from: 'gemini-4-argon', to: 'gemini-4-argon-medium' },
+      { from: 'gemini-4-argon-medium', to: 'gemini-4-argon-medium' }
+    ]
+    const { mappings, addedCount } = mergeAntigravitySyncedMappings(existing, [
+      'gemini-4-argon-low',
+      'gemini-4-argon-medium',
+      'gemini-4-argon-high',
+      'gemini-4-neon-low',
+      'gemini-4-neon-medium',
+      'gemini-4-neon-high',
+      'gemini-4-neon-xhigh',
+      'gemini-4-hydrogen-tiered-high',
+      'gemini-4-hydrogen-sonar',
+      'claude-opus-5-5-low',
+      'claude-opus-5-5-high',
+      'gpt-oss-120b-medium',
+      'gemini-2.5-flash'
+    ])
+
+    expect(mappings).toContainEqual({ from: 'gemini-4-argon', to: 'gemini-4-argon-medium' })
+    expect(mappings).toContainEqual({ from: 'gemini-4-neon', to: 'gemini-4-neon' })
+    expect(mappings).toContainEqual({ from: 'gemini-4-neon-xhigh', to: 'gemini-4-neon-xhigh' })
+    expect(mappings).toContainEqual({ from: 'gemini-4-hydrogen', to: 'gemini-4-hydrogen' })
+    expect(mappings).toContainEqual({ from: 'claude-opus-5-5', to: 'claude-opus-5-5' })
+    expect(mappings).toContainEqual({ from: 'gpt-oss-120b-medium', to: 'gpt-oss-120b-medium' })
+    expect(mappings.some((m) => m.from === 'gpt-oss-120b')).toBe(false)
+    expect(addedCount).toBe(15)
   })
 })

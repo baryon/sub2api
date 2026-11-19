@@ -696,9 +696,9 @@ func isAntigravityOpusHighTierModel(model string) bool {
 		strings.HasPrefix(lower, "claude-opus-4-8")
 }
 
-// carbonThinkingConfig preserves the upstream default when no effort is specified.
-// https://aistudio.google.com/docs/whats-new-gemini-4-carbon
-func carbonThinkingConfig(req *ClaudeRequest, bareModel bool) *GeminiThinkingConfig {
+// gemini4LevelThinkingConfig preserves the upstream default when no effort is specified.
+// Carbon supports low/medium/high; Hydrogen and Neon also accept xhigh.
+func gemini4LevelThinkingConfig(req *ClaudeRequest, bareModel, allowXHigh bool) *GeminiThinkingConfig {
 	cfg := &GeminiThinkingConfig{}
 	if req.Thinking != nil {
 		cfg.IncludeThoughts = req.Thinking.Type == "enabled" || req.Thinking.Type == "adaptive"
@@ -710,8 +710,14 @@ func carbonThinkingConfig(req *ClaudeRequest, bareModel bool) *GeminiThinkingCon
 				cfg.ThinkingLevel = "low"
 			case "medium":
 				cfg.ThinkingLevel = "medium"
-			case "high", "xhigh", "max":
+			case "high":
 				cfg.ThinkingLevel = "high"
+			case "xhigh", "max":
+				if allowXHigh {
+					cfg.ThinkingLevel = "xhigh"
+				} else {
+					cfg.ThinkingLevel = "high"
+				}
 			}
 		}
 		if req.Thinking != nil {
@@ -735,6 +741,22 @@ func carbonThinkingConfig(req *ClaudeRequest, bareModel bool) *GeminiThinkingCon
 	return cfg
 }
 
+func classifyGemini4LevelModel(model string) (matched, bare, allowXHigh bool) {
+	trimmed := strings.TrimPrefix(strings.ToLower(strings.TrimSpace(model)), "models/")
+	for _, base := range []string{"gemini-4-carbon", "gemini-4-hydrogen", "gemini-4-neon"} {
+		xhigh := base == "gemini-4-hydrogen" || base == "gemini-4-neon"
+		if trimmed == base {
+			return true, true, xhigh
+		}
+		for _, suffix := range []string{"-low", "-medium", "-high", "-xhigh", "-tiered", "-tiered-high", "-tiered-xhigh", "-sonar"} {
+			if trimmed == base+suffix {
+				return true, false, xhigh
+			}
+		}
+	}
+	return false, false, false
+}
+
 func buildGenerationConfig(req *ClaudeRequest) *GeminiGenerationConfig {
 	maxLimit := maxOutputTokensLimit(req.Model)
 	config := &GeminiGenerationConfig{
@@ -751,16 +773,15 @@ func buildGenerationConfig(req *ClaudeRequest) *GeminiGenerationConfig {
 		config.MaxOutputTokens = req.MaxTokens
 	}
 
-	// Carbon accepts thinking levels rather than token budgets. Tiered IDs, when
-	// supplied by the account catalog, already select the level upstream.
-	carbonModel := strings.TrimPrefix(strings.ToLower(strings.TrimSpace(req.Model)), "models/")
-	isCarbon := carbonModel == "gemini-4-carbon" || carbonModel == "gemini-4-carbon-low" || carbonModel == "gemini-4-carbon-medium" || carbonModel == "gemini-4-carbon-high"
-	if isCarbon {
-		config.ThinkingConfig = carbonThinkingConfig(req, carbonModel == "gemini-4-carbon")
+	// Gemini 4 Carbon/Hydrogen/Neon accept thinking levels rather than token budgets.
+	// Tiered IDs supplied by the account catalog already select the level upstream.
+	isGemini4Level, isBareGemini4, allowXHigh := classifyGemini4LevelModel(req.Model)
+	if isGemini4Level {
+		config.ThinkingConfig = gemini4LevelThinkingConfig(req, isBareGemini4, allowXHigh)
 	}
 
 	// Thinking 配置
-	if !isCarbon && req.Thinking != nil && (req.Thinking.Type == "enabled" || req.Thinking.Type == "adaptive") {
+	if !isGemini4Level && req.Thinking != nil && (req.Thinking.Type == "enabled" || req.Thinking.Type == "adaptive") {
 		config.ThinkingConfig = &GeminiThinkingConfig{
 			IncludeThoughts: true,
 		}
