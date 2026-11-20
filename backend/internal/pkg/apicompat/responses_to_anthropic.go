@@ -53,9 +53,24 @@ func ResponsesToAnthropic(resp *ResponsesResponse, model string) *AnthropicRespo
 				Type:  "tool_use",
 				ID:    fromResponsesCallID(item.CallID),
 				Name:  item.Name,
-				Input: sanitizeAnthropicToolUseInput(item.Name, item.Arguments),
+				Input: anthropicToolUseInput(item.Type, item.Name, item.Arguments),
 			})
+		case "custom_tool_call":
+			if !resp.RenderCustomToolCalls || (resp.XAIServerSideSearch && IsServerSideSearchCall(item.Type, item.CallID)) {
+				continue
+			}
+			blocks = append(blocks, AnthropicContentBlock{
+				Type:  "tool_use",
+				ID:    fromResponsesCallID(item.CallID),
+				Name:  item.Name,
+				Input: anthropicToolUseInput(item.Type, item.Name, item.Input),
+			})
+		case "tool_search_call":
+			blocks = append(blocks, toolSearchCallToolUse(item))
 		case "web_search_call":
+			if item.Status != "completed" {
+				continue
+			}
 			toolUseID := "srvtoolu_" + item.ID
 			query := ""
 			if item.Action != nil {
@@ -71,7 +86,7 @@ func ResponsesToAnthropic(resp *ResponsesResponse, model string) *AnthropicRespo
 			blocks = append(blocks, AnthropicContentBlock{
 				Type:      "web_search_tool_result",
 				ToolUseID: toolUseID,
-				Content:   anthropicWebSearchResultContent(item.Action),
+				Content:   webSearchCallResults(&item),
 			})
 		}
 	}
@@ -139,6 +154,26 @@ func containsAnthropicToolUseBlock(blocks []AnthropicContentBlock) bool {
 		}
 	}
 	return false
+}
+
+// anthropicToolUseInput returns the input of a non-streaming tool_use block,
+// which must be a JSON object. An object is kept as it is. A function_call whose
+// arguments are not an object (truncated by max_output_tokens, or empty) gets {};
+// a custom_tool_call's free-form input is wrapped in the same {"input": ...}
+// shape that downgrades a custom tool to a function tool, so that
+// extractCustomToolCallInput gives the text back; an empty custom input is {} as
+// it is in the streamed tool_use.
+func anthropicToolUseInput(itemType, name, raw string) json.RawMessage {
+	if trimmed := strings.TrimSpace(raw); strings.HasPrefix(trimmed, "{") && json.Valid([]byte(trimmed)) {
+		return sanitizeAnthropicToolUseInput(name, raw)
+	}
+	if itemType == "custom_tool_call" && raw != "" {
+		wrapped, err := json.Marshal(map[string]string{"input": raw})
+		if err == nil {
+			return wrapped
+		}
+	}
+	return json.RawMessage("{}")
 }
 
 func sanitizeAnthropicToolUseInput(name string, raw string) json.RawMessage {
@@ -637,6 +672,10 @@ func resToAnthHandleOutputItemDone(evt *ResponsesStreamEvent, state *ResponsesEv
 	if evt.Item.Type == "web_search_call" && evt.Item.Status == "completed" {
 		return resToAnthHandleWebSearchDone(evt, state)
 	}
+	// The native tool_search_call carries its arguments only on done.
+	if evt.Item.Type == "tool_search_call" {
+		return resToAnthHandleToolSearchDone(evt, state)
+	}
 
 	// Capture encrypted_content on reasoning item done (often only present here).
 	if evt.Item.Type == "reasoning" {
@@ -692,7 +731,7 @@ func resToAnthHandleWebSearchDone(evt *ResponsesStreamEvent, state *ResponsesEve
 		ContentBlock: &AnthropicContentBlock{
 			Type:      "web_search_tool_result",
 			ToolUseID: toolUseID,
-			Content:   anthropicWebSearchResultContent(evt.Item.Action),
+			Content:   webSearchCallResults(evt.Item),
 		},
 	})
 	events = append(events, AnthropicStreamEvent{
@@ -702,40 +741,6 @@ func resToAnthHandleWebSearchDone(evt *ResponsesStreamEvent, state *ResponsesEve
 	state.ContentBlockIndex++
 
 	return events
-}
-
-// anthropicWebSearchResultContent turns hosted-search sources into Anthropic
-// web_search_result entries. A source without a URL is omitted. A missing title
-// uses the URL so the citation still has a label.
-func anthropicWebSearchResultContent(action *WebSearchAction) json.RawMessage {
-	var results []map[string]string
-	if action != nil {
-		for _, source := range action.Sources {
-			url := strings.TrimSpace(source.URL)
-			if url == "" {
-				continue
-			}
-			title := strings.TrimSpace(source.Title)
-			if title == "" {
-				title = url
-			}
-			results = append(results, map[string]string{
-				"type":  "web_search_result",
-				"url":   url,
-				"title": title,
-			})
-		}
-	}
-	if len(results) == 0 {
-		empty, _ := json.Marshal([]struct{}{})
-		return empty
-	}
-	raw, err := json.Marshal(results)
-	if err != nil {
-		empty, _ := json.Marshal([]struct{}{})
-		return empty
-	}
-	return raw
 }
 
 // resToAnthRecoverTerminalText emits assistant text that only ever appeared in

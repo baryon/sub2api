@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"strconv"
@@ -14,6 +15,7 @@ import (
 
 	pkgerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/requestmodel"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/websearch"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -31,6 +33,14 @@ type toolsSearchProvider func(context.Context, websearch.SearchRequest) (*websea
 type toolsSearchAdmission interface {
 	CheckBillingEligibility(context.Context, *service.User, *service.APIKey, *service.Group, *service.UserSubscription, string) error
 	ReserveFixedCharge(context.Context, *service.User, *service.APIKey, *service.Group, *service.UserSubscription, float64) (*service.InflightReservation, error)
+}
+
+type toolsSearchConflictingFieldError struct {
+	field string
+}
+
+func (e toolsSearchConflictingFieldError) Error() string {
+	return fmt.Sprintf("request body declares field %.64q more than once", e.field)
 }
 
 type toolsSearchRequest struct {
@@ -64,9 +74,14 @@ func decodeToolsSearchRequest(body io.Reader) (toolsSearchRequest, error) {
 	if err := json.Unmarshal(raw, &fields); err != nil || fields == nil {
 		return request, errors.New("query must be supplied in a JSON object")
 	}
+	if field, conflict := requestmodel.ConflictingField("application/json", raw); conflict {
+		return request, toolsSearchConflictingFieldError{field: field}
+	}
 	for _, field := range []string{"query", "count", "need_content", "localization"} {
-		if bytes.Equal(bytes.TrimSpace(fields[field]), []byte("null")) {
-			return request, errors.New(field + " cannot be null")
+		for key, val := range fields {
+			if strings.EqualFold(key, field) && bytes.Equal(bytes.TrimSpace(val), []byte("null")) {
+				return request, errors.New(field + " cannot be null")
+			}
 		}
 	}
 	if err := json.Unmarshal(raw, &request); err != nil {
@@ -101,6 +116,10 @@ func (h *GatewayHandler) ToolsSearch(c *gin.Context) {
 		if errors.As(err, &sizeError) {
 			toolsSearchError(c, http.StatusRequestEntityTooLarge, "invalid_request_error", "Search request body is too large")
 			return
+		}
+		var conflictErr toolsSearchConflictingFieldError
+		if errors.As(err, &conflictErr) {
+			middleware2.MarkIngressRejected(c, middleware2.IngressRejectConflictingRequestFields)
 		}
 		toolsSearchError(c, http.StatusBadRequest, "invalid_request_error", err.Error())
 		return

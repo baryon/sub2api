@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/requestmodel"
 	coderws "github.com/coder/websocket"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -118,6 +119,7 @@ func ensureDeepSeekWSUsageRequestID(c *gin.Context, result *OpenAIForwardResult,
 // per-turn concurrency admission and billing at the correct lifecycle points.
 type DeepSeekWSIngressHooks struct {
 	ClientLifecycleContext context.Context
+	ValidateRawFrame       func(payload []byte) error
 	BeforeRequest          func(turn int, payload []byte, originalModel string) ([]byte, error)
 	ExecuteTurn            func(turnCtx context.Context, turn int, payload []byte, write func([]byte) error) (*OpenAIForwardResult, error)
 	AfterTurn              func(turn int, result *OpenAIForwardResult, turnErr error)
@@ -157,6 +159,9 @@ func parseDeepSeekWSCreateFrame(payload []byte, fallbackModel string) ([]byte, s
 	trimmed := bytes.TrimSpace(payload)
 	if len(trimmed) == 0 || !gjson.ValidBytes(trimmed) {
 		return nil, "", "", errors.New("invalid websocket request payload")
+	}
+	if field, conflict := requestmodel.ConflictingField("application/json", trimmed); conflict {
+		return nil, "", "", NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, fmt.Sprintf("websocket request payload declares field %.64q more than once", field), nil)
 	}
 	if err := ValidateDeepSeekUserIdentityRequest(trimmed, DeepSeekUserIdentityResponses); err != nil {
 		return nil, "", "", err
@@ -334,6 +339,9 @@ func classifyDeepSeekWSControlFrame(payload []byte) (string, string, error) {
 	if len(trimmed) == 0 || !gjson.ValidBytes(trimmed) {
 		return "", "", errors.New("invalid websocket request payload")
 	}
+	if field, conflict := requestmodel.ConflictingField("application/json", trimmed); conflict {
+		return "", "", NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, fmt.Sprintf("websocket request payload declares field %.64q more than once", field), nil)
+	}
 	var object map[string]json.RawMessage
 	if err := json.Unmarshal(trimmed, &object); err != nil || object == nil {
 		return "", "", errors.New("websocket payload must be a JSON object")
@@ -420,8 +428,17 @@ func (s *OpenAIGatewayService) ProxyDeepSeekResponsesWebSocket(
 	var pending *deepSeekWSClientFrame
 
 	for turn := 1; ; turn++ {
+		if hooks.ValidateRawFrame != nil {
+			if rawErr := hooks.ValidateRawFrame(current); rawErr != nil {
+				return rawErr
+			}
+		}
 		payload, originalModel, previousResponseID, err := parseDeepSeekWSCreateFrame(current, model)
 		if err != nil {
+			var closeErr *OpenAIWSClientCloseError
+			if errors.As(err, &closeErr) {
+				return err
+			}
 			return closeWithProtocolError(err.Error(), err)
 		}
 		model = originalModel
@@ -519,12 +536,26 @@ func (s *OpenAIGatewayService) ProxyDeepSeekResponsesWebSocket(
 					}
 					return closeWithProtocolError("unsupported websocket client message type", nil)
 				}
+				if hooks.ValidateRawFrame != nil {
+					if rawErr := hooks.ValidateRawFrame(frame.payload); rawErr != nil {
+						cancelTurn(rawErr)
+						outcome = <-outcomes
+						if hooks.AfterTurn != nil {
+							hooks.AfterTurn(turn, outcome.result, outcome.err)
+						}
+						return rawErr
+					}
+				}
 				eventType, responseID, frameErr := classifyDeepSeekWSControlFrame(frame.payload)
 				if frameErr != nil {
 					cancelTurn(frameErr)
 					outcome = <-outcomes
 					if hooks.AfterTurn != nil {
 						hooks.AfterTurn(turn, outcome.result, outcome.err)
+					}
+					var closeErr *OpenAIWSClientCloseError
+					if errors.As(frameErr, &closeErr) {
+						return frameErr
 					}
 					return closeWithProtocolError(frameErr.Error(), frameErr)
 				}
@@ -676,8 +707,17 @@ func (s *OpenAIGatewayService) ProxyDeepSeekResponsesWebSocket(
 			if frame.messageType != coderws.MessageText && frame.messageType != coderws.MessageBinary {
 				return closeWithProtocolError("unsupported websocket client message type", nil)
 			}
+			if hooks.ValidateRawFrame != nil {
+				if rawErr := hooks.ValidateRawFrame(frame.payload); rawErr != nil {
+					return rawErr
+				}
+			}
 			eventType, _, frameErr := classifyDeepSeekWSControlFrame(frame.payload)
 			if frameErr != nil {
+				var closeErr *OpenAIWSClientCloseError
+				if errors.As(frameErr, &closeErr) {
+					return frameErr
+				}
 				return closeWithProtocolError(frameErr.Error(), frameErr)
 			}
 			if eventType != "response.create" {

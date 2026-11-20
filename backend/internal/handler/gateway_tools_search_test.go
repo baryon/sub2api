@@ -11,6 +11,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/websearch"
 	"github.com/Wei-Shaw/sub2api/internal/securityaudit"
+	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
@@ -214,5 +215,70 @@ func TestToolsSearchBillingQuotaErrorsRemainRetryable(t *testing.T) {
 		router.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/t", nil))
 		require.Equal(t, http.StatusTooManyRequests, response.Code)
 		require.NotEmpty(t, response.Header().Get("Retry-After"))
+	}
+}
+
+func TestToolsSearchRejectsConflictingAndCaseVariantNullFields(t *testing.T) {
+	for _, tc := range []struct {
+		name           string
+		body           string
+		wantContains   string
+		wantIngressRej bool
+	}{
+		{
+			name:           "duplicate query",
+			body:           `{"query":"safe","query":"override"}`,
+			wantContains:   `declares field "query" more than once`,
+			wantIngressRej: true,
+		},
+		{
+			name:           "case-variant duplicate count",
+			body:           `{"query":"go","count":5,"COUNT":null}`,
+			wantContains:   `declares field "COUNT" more than once`,
+			wantIngressRej: true,
+		},
+		{
+			name:         "case-variant single COUNT null",
+			body:         `{"query":"go","COUNT":null}`,
+			wantContains: "count cannot be null",
+		},
+		{
+			name:         "case-variant single Query null",
+			body:         `{"Query":null}`,
+			wantContains: "query cannot be null",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			billing := &toolsSearchBillingStub{}
+			h := &GatewayHandler{toolsSearchBilling: billing, toolsSearchAdmission: billing, toolsSearchRateLimit: func(*gin.Context) {}}
+			providerCalled := false
+			h.toolsSearchProvider = func(context.Context, websearch.SearchRequest) (*websearch.SearchResponse, string, error) {
+				providerCalled = true
+				return &websearch.SearchResponse{}, "deepseek", nil
+			}
+			var gotRej middleware2.IngressRejectReason
+			router := gin.New()
+			router.POST("/v1/tools/search", securityAuditMediaTestMiddleware, func(c *gin.Context) {
+				c.Next()
+				gotRej, _ = middleware2.GetIngressRejectReason(c)
+			}, h.ToolsSearch)
+
+			rec := httptest.NewRecorder()
+			router.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/v1/tools/search", strings.NewReader(tc.body)))
+			require.Equal(t, http.StatusBadRequest, rec.Code)
+			var errEnvelope struct {
+				Error struct {
+					Message string `json:"message"`
+				} `json:"error"`
+			}
+			require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &errEnvelope))
+			require.Contains(t, errEnvelope.Error.Message, tc.wantContains)
+			require.Contains(t, rec.Body.String(), `"param":null`)
+			require.False(t, providerCalled)
+			require.Zero(t, billing.settled)
+			if tc.wantIngressRej {
+				require.Equal(t, middleware2.IngressRejectConflictingRequestFields, gotRej)
+			}
+		})
 	}
 }

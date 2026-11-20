@@ -16,12 +16,9 @@ func TestResponsesToAnthropicKeepsWebSearchSources(t *testing.T) {
 			ID:     "ws_1",
 			Status: "completed",
 			Action: &WebSearchAction{
-				Type:  "search",
-				Query: "IANA example domains",
-				Sources: []WebSearchSource{{
-					Type: "url",
-					URL:  "https://www.iana.org/domains/reserved",
-				}},
+				Type:    "search",
+				Query:   "IANA example domains",
+				Sources: json.RawMessage(`[{"type":"url","url":"https://www.iana.org/domains/reserved","title":"IANA Reserved Domains"}]`),
 			},
 		}},
 	}
@@ -37,4 +34,5 @@ func TestResponsesToAnthropicKeepsWebSearchSources(t *testing.T) {
 	require.Len(t, results, 1)
 	require.Equal(t, "web_search_result", results[0]["type"])
 	require.Equal(t, "https://www.iana.org/domains/reserved", results[0]["url"])
+	require.Equal(t, "IANA Reserved Domains", results[0]["title"])
 }

@@ -13,6 +13,7 @@ import (
 	"github.com/tidwall/sjson"
 	"go.uber.org/zap"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/requestmodel"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 )
@@ -97,6 +98,18 @@ func (h *OpenAIGatewayHandler) responsesDeepSeekWebSocket(
 
 	hooks := &service.DeepSeekWSIngressHooks{
 		ClientLifecycleContext: clientLifecycleCtx,
+		ValidateRawFrame: func(raw []byte) error {
+			if blocked := blockedModelAllowlistCandidate(apiKey.Group, requestmodel.FromBodyCandidates("", "application/json", raw)); blocked != "" {
+				service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalModelConfiguration)
+				middleware2.MarkIngressRejected(c, middleware2.IngressRejectModelNotAllowed)
+				return service.NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, fmt.Sprintf("Model %q is not available for this group", blocked), nil)
+			}
+			if field, conflict := requestmodel.ConflictingField("application/json", raw); conflict {
+				middleware2.MarkIngressRejected(c, middleware2.IngressRejectConflictingRequestFields)
+				return service.NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, fmt.Sprintf("websocket request payload declares field %.64q more than once", field), nil)
+			}
+			return nil
+		},
 		BeforeRequest: func(turn int, payload []byte, originalModel string) ([]byte, error) {
 			// A previous turn installs a cancellable context on the shared Gin
 			// request. Always start policy processing from the connection context.
@@ -117,6 +130,17 @@ func (h *OpenAIGatewayHandler) responsesDeepSeekWebSocket(
 			}
 			if requestedModel == "" {
 				return nil, service.NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "model is required in response.create payload", nil)
+			}
+			frameModelCandidates := requestmodel.FromBodyCandidates("", "application/json", payload)
+			candidates := append([]string{requestedModel}, frameModelCandidates...)
+			if blocked := blockedModelAllowlistCandidate(apiKey.Group, candidates); blocked != "" {
+				service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalModelConfiguration)
+				middleware2.MarkIngressRejected(c, middleware2.IngressRejectModelNotAllowed)
+				return nil, service.NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, fmt.Sprintf("Model %q is not available for this group", blocked), nil)
+			}
+			if field, conflict := requestmodel.ConflictingField("application/json", payload); conflict {
+				middleware2.MarkIngressRejected(c, middleware2.IngressRejectConflictingRequestFields)
+				return nil, service.NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, fmt.Sprintf("websocket request payload declares field %.64q more than once", field), nil)
 			}
 
 			decision, targetPlatform, err := resolveResponsesWebSocketTarget(c, apiKey, connectionCtx, requestedModel)

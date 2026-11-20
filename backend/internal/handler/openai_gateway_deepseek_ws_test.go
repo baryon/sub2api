@@ -160,35 +160,41 @@ func TestDeepSeekResponsesWebSocketHandlerBridgesNativeHTTPAndRecordsUsage(t *te
 func TestDeepSeekResponsesWebSocketRejectsRoutingAuditAndWireAmbiguityBeforeScheduling(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	tests := []struct {
-		name      string
-		composite bool
-		payload   string
+		name            string
+		composite       bool
+		payload         string
+		preRoutingClose bool
 	}{
 		{
-			name:    "direct duplicate model",
-			payload: `{"type":"response.create","model":"deepseek-v4-pro","model":"gpt-5.6-sol","input":"hello"}`,
+			name:            "direct duplicate model",
+			payload:         `{"type":"response.create","model":"deepseek-v4-pro","model":"gpt-5.6-sol","input":"hello"}`,
+			preRoutingClose: true,
 		},
 		{
-			name:    "direct non-canonical input",
-			payload: `{"type":"response.create","model":"deepseek-v4-pro","Input":"hidden from audit","input":"visible to audit"}`,
+			name:            "direct non-canonical input",
+			payload:         `{"type":"response.create","model":"deepseek-v4-pro","Input":"hidden from audit","input":"visible to audit"}`,
+			preRoutingClose: true,
 		},
 		{
-			name:    "direct duplicate stream",
-			payload: `{"type":"response.create","model":"deepseek-v4-pro","input":"hello","stream":true,"stream":false}`,
+			name:            "direct duplicate stream",
+			payload:         `{"type":"response.create","model":"deepseek-v4-pro","input":"hello","stream":true,"stream":false}`,
+			preRoutingClose: true,
 		},
 		{
 			name:    "direct non-canonical stream",
 			payload: `{"type":"response.create","model":"deepseek-v4-pro","input":"hello","Stream":true}`,
 		},
 		{
-			name:      "composite non-canonical model",
-			composite: true,
-			payload:   `{"type":"response.create","model":"company-coding-model","Model":"gpt-5.6-sol","input":"hello"}`,
+			name:            "composite non-canonical model",
+			composite:       true,
+			payload:         `{"type":"response.create","model":"company-coding-model","Model":"gpt-5.6-sol","input":"hello"}`,
+			preRoutingClose: true,
 		},
 		{
-			name:      "composite duplicate input",
-			composite: true,
-			payload:   `{"type":"response.create","model":"company-coding-model","input":"audited","input":"forwarded"}`,
+			name:            "composite duplicate input",
+			composite:       true,
+			payload:         `{"type":"response.create","model":"company-coding-model","input":"audited","input":"forwarded"}`,
+			preRoutingClose: true,
 		},
 	}
 
@@ -246,19 +252,29 @@ func TestDeepSeekResponsesWebSocketRejectsRoutingAuditAndWireAmbiguityBeforeSche
 			cancelWrite()
 			require.NoError(t, err)
 
-			readCtx, cancelRead := context.WithTimeout(context.Background(), 3*time.Second)
-			_, event, err := conn.Read(readCtx)
-			cancelRead()
-			require.NoError(t, err)
-			require.Equal(t, "error", gjson.GetBytes(event, "type").String())
-			require.Equal(t, "invalid_request_error", gjson.GetBytes(event, "error.type").String())
+			if tt.preRoutingClose {
+				readCtx, cancelRead := context.WithTimeout(context.Background(), 3*time.Second)
+				_, _, err := conn.Read(readCtx)
+				cancelRead()
+				var closeErr coderws.CloseError
+				require.ErrorAs(t, err, &closeErr)
+				require.Equal(t, coderws.StatusPolicyViolation, closeErr.Code)
+				require.Contains(t, closeErr.Reason, "more than once")
+			} else {
+				readCtx, cancelRead := context.WithTimeout(context.Background(), 3*time.Second)
+				_, event, err := conn.Read(readCtx)
+				cancelRead()
+				require.NoError(t, err)
+				require.Equal(t, "error", gjson.GetBytes(event, "type").String())
+				require.Equal(t, "invalid_request_error", gjson.GetBytes(event, "error.type").String())
 
-			readCtx, cancelRead = context.WithTimeout(context.Background(), 3*time.Second)
-			_, _, err = conn.Read(readCtx)
-			cancelRead()
-			var closeErr coderws.CloseError
-			require.ErrorAs(t, err, &closeErr)
-			require.Equal(t, coderws.StatusPolicyViolation, closeErr.Code)
+				readCtx, cancelRead = context.WithTimeout(context.Background(), 3*time.Second)
+				_, _, err = conn.Read(readCtx)
+				cancelRead()
+				var closeErr coderws.CloseError
+				require.ErrorAs(t, err, &closeErr)
+				require.Equal(t, coderws.StatusPolicyViolation, closeErr.Code)
+			}
 
 			require.Zero(t, upstream.calls, "ambiguous WS input must not reach account scheduling or upstream")
 			require.Equal(t, service.OpenAIAccountSchedulerMetricsSnapshot{}, h.gatewayService.SnapshotOpenAIAccountSchedulerMetrics())
@@ -684,5 +700,116 @@ func TestDeepSeekResponsesWebSocketHandlerCompositeFailoverAndPerTurnSlots(t *te
 		}
 		require.Equal(t, wantModel, gjson.GetBytes(body, "model").String(), "account mapping must be recomputed for every failover attempt")
 		require.Equal(t, wantUpstreamUserID, gjson.GetBytes(body, "user").String(), "composite turns and account failover must retain one authenticated-user identity")
+	}
+}
+
+func TestDeepSeekResponsesWebSocketSubsequentTurnRejectsAllowlistAndNestedConflictingFields(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	tests := []struct {
+		name              string
+		secondPayload     string
+		wantReasonContain string
+	}{
+		{
+			name:              "nested duplicate reasoning.effort",
+			secondPayload:     `{"type":"response.create","model":"deepseek-v4-pro","reasoning":{"effort":"low","effort":"max"},"input":"second"}`,
+			wantReasonContain: `declares field "reasoning.effort" more than once`,
+		},
+		{
+			name:              "disallowed model on second turn",
+			secondPayload:     `{"type":"response.create","model":"deepseek-v4-flash","input":"second"}`,
+			wantReasonContain: `Model "deepseek-v4-flash" is not available for this group`,
+		},
+		{
+			name:              "top-level duplicate previous_response_id on second turn",
+			secondPayload:     `{"type":"response.create","model":"deepseek-v4-pro","previous_response_id":"","previous_response_id":"resp_other","input":"second"}`,
+			wantReasonContain: `declares field "previous_response_id" more than once`,
+		},
+		{
+			name:              "top-level duplicate service_tier on second turn",
+			secondPayload:     `{"type":"response.create","model":"deepseek-v4-pro","service_tier":"default","service_tier":"priority","input":"second"}`,
+			wantReasonContain: `declares field "service_tier" more than once`,
+		},
+		{
+			name:              "case-variant duplicate model hits allowlist before conflict error",
+			secondPayload:     `{"type":"response.create","model":"deepseek-v4-pro","Model":"deepseek-v4-flash","input":"second"}`,
+			wantReasonContain: `Model "deepseek-v4-flash" is not available for this group`,
+		},
+		{
+			name:              "control frame response.cancel duplicate response_id",
+			secondPayload:     `{"type":"response.cancel","response_id":"","response_id":"resp_wrong"}`,
+			wantReasonContain: `declares field "response_id" more than once`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			upstreamBody := deepSeekCompactCompletedResponsesSSE(t, "resp_ds_ws_turn1", "done", 7, 3)
+			h, usageRepo, apiKey, upstream := newDeepSeekPartialUsageHandler(t, upstreamBody)
+			h.cfg.Gateway.OpenAIWS.Enabled = true
+			h.cfg.Gateway.OpenAIWS.ModeRouterV2Enabled = true
+			h.cfg.Gateway.OpenAIWS.HTTPBridgeEnabled = true
+			h.cfg.Gateway.OpenAIWS.ReadTimeoutSeconds = 3
+			h.cfg.Gateway.OpenAIWS.WriteTimeoutSeconds = 3
+			h.cfg.DeepSeek.UserIDSecret = "deepseek-ws-turn2-guard-secret"
+			apiKey.Group.ModelAllowlist = service.GroupModelAllowlist{
+				Enabled: true,
+				Models:  []string{"deepseek-v4-pro"},
+			}
+
+			router := gin.New()
+			router.Use(func(c *gin.Context) {
+				c.Request = c.Request.WithContext(context.WithValue(c.Request.Context(), ctxkey.UserID, apiKey.User.ID))
+				c.Set(string(middleware.ContextKeyAPIKey), apiKey)
+				c.Set(string(middleware.ContextKeyUser), middleware.AuthSubject{UserID: apiKey.User.ID})
+				c.Next()
+			})
+			router.GET("/backend-api/codex/responses", h.ResponsesWebSocket)
+			server := httptest.NewServer(router)
+			defer server.Close()
+
+			dialCtx, cancelDial := context.WithTimeout(context.Background(), 3*time.Second)
+			conn, _, err := coderws.Dial(
+				dialCtx,
+				"ws"+strings.TrimPrefix(server.URL, "http")+"/backend-api/codex/responses",
+				&coderws.DialOptions{CompressionMode: coderws.CompressionContextTakeover},
+			)
+			cancelDial()
+			require.NoError(t, err)
+			defer func() { _ = conn.CloseNow() }()
+
+			writeCtx, cancelWrite := context.WithTimeout(context.Background(), 3*time.Second)
+			require.NoError(t, conn.Write(writeCtx, coderws.MessageText, []byte(`{"type":"response.create","model":"deepseek-v4-pro","input":"first"}`)))
+			cancelWrite()
+
+			for {
+				readCtx, cancelRead := context.WithTimeout(context.Background(), 3*time.Second)
+				_, event, readErr := conn.Read(readCtx)
+				cancelRead()
+				require.NoError(t, readErr)
+				if gjson.GetBytes(event, "type").String() == "response.completed" {
+					break
+				}
+			}
+			select {
+			case <-usageRepo.created:
+			case <-time.After(3 * time.Second):
+				t.Fatal("waiting for first-turn usage record timed out")
+			}
+			require.Equal(t, 1, upstream.calls)
+
+			writeCtx2, cancelWrite2 := context.WithTimeout(context.Background(), 3*time.Second)
+			require.NoError(t, conn.Write(writeCtx2, coderws.MessageText, []byte(tt.secondPayload)))
+			cancelWrite2()
+
+			readCtx, cancelRead := context.WithTimeout(context.Background(), 3*time.Second)
+			_, _, err = conn.Read(readCtx)
+			cancelRead()
+			var closeErr coderws.CloseError
+			require.ErrorAs(t, err, &closeErr)
+			require.Equal(t, coderws.StatusPolicyViolation, closeErr.Code)
+			require.Contains(t, closeErr.Reason, tt.wantReasonContain)
+			require.Equal(t, 1, upstream.calls, "second-turn policy rejection must not reach upstream")
+		})
 	}
 }

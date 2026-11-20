@@ -57,10 +57,13 @@ func (f *AntigravityQuotaFetcher) FetchQuota(ctx context.Context, account *Accou
 		return nil, fmt.Errorf("create antigravity client failed: %w", err)
 	}
 
-	// 配额必须与实际转发使用同一端点，避免读取到另一环境的过期用量。
+	// Query the same endpoint that receives forwarded requests for this account (daily for
+	// paid tiers, prod otherwise), because Google accounts quota separately per endpoint.
 	baseURL := resolveAntigravityForwardBaseURL(account)
+	if baseURL == "" {
+		return nil, errors.New("no antigravity base url configured")
+	}
 
-	// 调用 API 获取配额
 	bodyLimit := resolveModelsListReadLimit(f.cfg)
 	modelsResp, modelsRaw, err := client.FetchAvailableModelsFromURL(ctx, baseURL, accessToken, projectID, bodyLimit)
 	if err != nil {

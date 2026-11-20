@@ -163,6 +163,7 @@ func TestSanitizeCursorResponsesShapeBodyUsesOfficialHostPolicy(t *testing.T) {
 		"prompt_cache_options": {"ttl":"30m"},
 		"metadata": {"trace_id":"abc","caller":"cursor"},
 		"stream_options": {"include_usage": true},
+		"stop": ["STOP_HERE"],
 		"input": [{"role":"user","content":"hi"}]
 	}`)
 	tests := []struct {
@@ -193,6 +194,7 @@ func TestSanitizeCursorResponsesShapeBodyUsesOfficialHostPolicy(t *testing.T) {
 			}
 			require.Equal(t, tt.preserveOfficial, gjson.GetBytes(result, "metadata").Exists())
 			require.False(t, gjson.GetBytes(result, "stream_options").Exists())
+			require.False(t, gjson.GetBytes(result, "stop").Exists())
 			require.Equal(t, "gpt-5.4", gjson.GetBytes(result, "model").String())
 			require.True(t, gjson.GetBytes(result, "input").IsArray())
 		})
