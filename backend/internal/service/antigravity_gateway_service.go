@@ -93,6 +93,8 @@ type AntigravityAccountSwitchError struct {
 	RateLimitedModel  string
 	IsStickySession   bool // 是否为粘性会话切换（决定是否缓存计费）
 	QuotaExhausted    bool
+	ResponseBody      []byte
+	ResponseHeaders   http.Header
 }
 
 func (e *AntigravityAccountSwitchError) statusCode() int {
@@ -100,6 +102,15 @@ func (e *AntigravityAccountSwitchError) statusCode() int {
 		return http.StatusTooManyRequests
 	}
 	return http.StatusServiceUnavailable
+}
+
+func (e *AntigravityAccountSwitchError) failoverError() *UpstreamFailoverError {
+	return &UpstreamFailoverError{
+		StatusCode:        e.statusCode(),
+		ResponseBody:      e.ResponseBody,
+		ResponseHeaders:   e.ResponseHeaders,
+		ForceCacheBilling: e.IsStickySession,
+	}
 }
 
 func (e *AntigravityAccountSwitchError) Error() string {

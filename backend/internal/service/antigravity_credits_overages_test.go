@@ -551,16 +551,22 @@ func TestAntigravityRetryLoop_ExplicitQuotaExhaustion(t *testing.T) {
 		name         string
 		allowCredits bool
 		preLimited   bool
+		longReset    bool
 		creditStatus int
 		wantCalls    int
 	}{
 		{name: "credits disabled", wantCalls: 1},
+		{name: "long absolute reset is capped", wantCalls: 1, longReset: true},
 		{name: "credits fail", allowCredits: true, creditStatus: http.StatusTooManyRequests, wantCalls: 2},
 		{name: "credits succeed", allowCredits: true, creditStatus: http.StatusOK, wantCalls: 2},
 		{name: "first request already uses credits", allowCredits: true, preLimited: true, wantCalls: 1},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			resetAt := time.Now().Add(10 * time.Minute).UTC().Truncate(time.Second)
+			now := time.Now().UTC().Truncate(time.Second)
+			resetAt := now.Add(10 * time.Minute)
+			if tc.longReset {
+				resetAt = now.Add(24 * time.Hour)
+			}
 			quota := `{"error":{"status":"RESOURCE_EXHAUSTED","details":[{"@type":"type.googleapis.com/google.rpc.ErrorInfo","reason":"QUOTA_EXHAUSTED","metadata":{"quotaResetTimeStamp":"` + resetAt.Format(time.RFC3339) + `"}}]}}`
 			account := bare429Account(103)
 			account.Type = AccountTypeOAuth
@@ -607,16 +613,22 @@ func TestAntigravityRetryLoop_ExplicitQuotaExhaustion(t *testing.T) {
 			require.Equal(t, params.requestedModel, switchErr.RateLimitedModel)
 			require.NotEmpty(t, repo.modelRateLimitCalls)
 			require.Equal(t, switchErr.RateLimitedModel, repo.modelRateLimitCalls[0].modelKey)
-			require.True(t, resetAt.Equal(repo.modelRateLimitCalls[0].resetAt))
+			if tc.longReset {
+				resetAt = now.Add(2 * time.Hour)
+			}
+			require.WithinDuration(t, resetAt, repo.modelRateLimitCalls[0].resetAt, time.Second)
 		})
 	}
 }
 
 func TestAntigravityForwardAsResponses_QuotaExhaustionReturns429Failover(t *testing.T) {
 	setupBare429Test(t)
-	upstream := &fixed429Upstream{
-		body: `{"error":{"status":"RESOURCE_EXHAUSTED","details":[{"@type":"type.googleapis.com/google.rpc.ErrorInfo","reason":"QUOTA_EXHAUSTED","metadata":{"quotaResetDelay":"10m"}}]}}`,
-	}
+	quotaBody := `{"error":{"status":"RESOURCE_EXHAUSTED","details":[{"@type":"type.googleapis.com/google.rpc.ErrorInfo","reason":"QUOTA_EXHAUSTED","metadata":{"quotaResetDelay":"10m"}}]}}`
+	upstream := &queuedHTTPUpstreamStub{responses: []*http.Response{{
+		StatusCode: http.StatusTooManyRequests,
+		Header:     http.Header{"Retry-After": {"600"}},
+		Body:       io.NopCloser(strings.NewReader(quotaBody)),
+	}}}
 	svc := newAntigravityCompatService(config.GatewayConfig{}, upstream)
 	svc.accountRepo = &stubAntigravityAccountRepo{}
 	account := newAntigravityCompatAccount(AccountTypeOAuth)
@@ -630,5 +642,7 @@ func TestAntigravityForwardAsResponses_QuotaExhaustionReturns429Failover(t *test
 	require.Equal(t, http.StatusTooManyRequests, failoverErr.StatusCode)
 	require.True(t, failoverErr.ShouldRetryNextAccount())
 	require.False(t, failoverErr.RetryableOnSameAccount)
-	require.Equal(t, 1, upstream.calls)
+	require.Equal(t, 1, upstream.callCount)
+	require.Equal(t, "600", failoverErr.ResponseHeaders.Get("Retry-After"))
+	require.JSONEq(t, quotaBody, string(failoverErr.ResponseBody))
 }

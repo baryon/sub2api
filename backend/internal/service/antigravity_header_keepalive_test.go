@@ -158,7 +158,7 @@ func TestAntigravityCompatFailoverAfterHeaderKeepaliveWritesError(t *testing.T) 
 					&antigravityCompatUpstreamCall{request: antigravityCompatRequest{originalModel: "gemini-3.1-pro-high"}},
 					&http.Response{StatusCode: http.StatusUnauthorized, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(`{"error":{"message":"Invalid bearer token"}}`))})
 			} else {
-				err = svc.handleAntigravityCompatTransportError(c, &AntigravityAccountSwitchError{OriginalAccountID: 1})
+				err = svc.handleAntigravityCompatTransportError(c, nil, &AntigravityAccountSwitchError{OriginalAccountID: 1})
 			}
 			require.Error(t, err)
 			var failover *UpstreamFailoverError

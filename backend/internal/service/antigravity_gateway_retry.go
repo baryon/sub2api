@@ -165,6 +165,8 @@ func (s *AntigravityGatewayService) handleSmartRetry(p antigravityRetryLoopParam
 				RateLimitedModel:  resolveCreditsOveragesModelKey(p.ctx, p.account, "", p.requestedModel),
 				IsStickySession:   p.isStickySession,
 				QuotaExhausted:    true,
+				ResponseBody:      respBody,
+				ResponseHeaders:   resp.Header.Clone(),
 			},
 		}
 	}
@@ -1277,8 +1279,10 @@ func (s *AntigravityGatewayService) handleUpstreamError(
 		resetAt := ParseGeminiRateLimitResetTime(body)
 		if resetAt == nil {
 			stamp := antigravityQuotaExhaustedDetail(body).Get("metadata.quotaResetTimeStamp").Time()
-			if stamp.After(time.Now()) {
-				unix := stamp.Unix()
+			now := time.Now()
+			if stamp.After(now) {
+				const maxAbsoluteQuotaCooldown = 2 * time.Hour
+				unix := now.Add(min(stamp.Sub(now), maxAbsoluteQuotaCooldown)).Unix()
 				resetAt = &unix
 			}
 		}

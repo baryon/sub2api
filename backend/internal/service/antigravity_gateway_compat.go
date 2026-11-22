@@ -323,7 +323,7 @@ func (s *AntigravityGatewayService) forwardAntigravityCompat(
 		sessionHash:     "",
 	})
 	if err != nil {
-		return nil, s.handleAntigravityCompatTransportError(c, err)
+		return nil, s.handleAntigravityCompatTransportError(c, account, err)
 	}
 
 	return s.consumeAntigravityCompatResponse(ctx, c, account, call, result.resp)
@@ -517,15 +517,15 @@ func antigravityCompatProxyURL(account *Account) string {
 	return account.Proxy.URL()
 }
 
-func (s *AntigravityGatewayService) handleAntigravityCompatTransportError(c *gin.Context, err error) error {
+func (s *AntigravityGatewayService) handleAntigravityCompatTransportError(c *gin.Context, account *Account, err error) error {
 	if switchErr, ok := IsAntigravityAccountSwitchError(err); ok {
 		if antigravityCompatSSECommitted(c) {
+			if switchErr.QuotaExhausted {
+				return s.writeMappedAntigravityCompatError(c, account, switchErr.statusCode(), switchErr.ResponseHeaders.Get("x-request-id"), switchErr.ResponseBody)
+			}
 			return s.writeAntigravityCompatError(c, switchErr.statusCode(), "upstream_error", "Upstream account is temporarily unavailable")
 		}
-		return &UpstreamFailoverError{
-			StatusCode:        switchErr.statusCode(),
-			ForceCacheBilling: switchErr.IsStickySession,
-		}
+		return switchErr.failoverError()
 	}
 	if c.Request.Context().Err() != nil {
 		return s.writeAntigravityCompatError(c, antigravityStatusClientClosed, "client_disconnected", "Client disconnected before upstream response")

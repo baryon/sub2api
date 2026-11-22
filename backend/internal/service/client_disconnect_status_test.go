@@ -73,7 +73,7 @@ func TestAntigravityCompatTransportError_ClientDisconnectWrites499(t *testing.T)
 	cancel()
 	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil).WithContext(ctx)
 
-	err := (&AntigravityGatewayService{}).handleAntigravityCompatTransportError(c, context.Canceled)
+	err := (&AntigravityGatewayService{}).handleAntigravityCompatTransportError(c, nil, context.Canceled)
 
 	require.Error(t, err)
 	require.Equal(t, antigravityStatusClientClosed, rec.Code)
