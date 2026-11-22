@@ -520,10 +520,10 @@ func antigravityCompatProxyURL(account *Account) string {
 func (s *AntigravityGatewayService) handleAntigravityCompatTransportError(c *gin.Context, err error) error {
 	if switchErr, ok := IsAntigravityAccountSwitchError(err); ok {
 		if antigravityCompatSSECommitted(c) {
-			return s.writeAntigravityCompatError(c, http.StatusServiceUnavailable, "upstream_error", "Upstream account is temporarily unavailable")
+			return s.writeAntigravityCompatError(c, switchErr.statusCode(), "upstream_error", "Upstream account is temporarily unavailable")
 		}
 		return &UpstreamFailoverError{
-			StatusCode:        http.StatusServiceUnavailable,
+			StatusCode:        switchErr.statusCode(),
 			ForceCacheBilling: switchErr.IsStickySession,
 		}
 	}

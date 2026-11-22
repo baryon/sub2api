@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
 	"github.com/stretchr/testify/require"
 )
@@ -541,4 +542,93 @@ func TestClearCreditsExhausted(t *testing.T) {
 		_, exists = rawLimits["claude-sonnet-4-5"]
 		require.True(t, exists, "普通模型限流应保留")
 	})
+}
+
+func TestAntigravityRetryLoop_ExplicitQuotaExhaustion(t *testing.T) {
+	setupBare429Test(t)
+
+	for _, tc := range []struct {
+		name         string
+		allowCredits bool
+		preLimited   bool
+		creditStatus int
+		wantCalls    int
+	}{
+		{name: "credits disabled", wantCalls: 1},
+		{name: "credits fail", allowCredits: true, creditStatus: http.StatusTooManyRequests, wantCalls: 2},
+		{name: "credits succeed", allowCredits: true, creditStatus: http.StatusOK, wantCalls: 2},
+		{name: "first request already uses credits", allowCredits: true, preLimited: true, wantCalls: 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			resetAt := time.Now().Add(10 * time.Minute).UTC().Truncate(time.Second)
+			quota := `{"error":{"status":"RESOURCE_EXHAUSTED","details":[{"@type":"type.googleapis.com/google.rpc.ErrorInfo","reason":"QUOTA_EXHAUSTED","metadata":{"quotaResetTimeStamp":"` + resetAt.Format(time.RFC3339) + `"}}]}}`
+			account := bare429Account(103)
+			account.Type = AccountTypeOAuth
+			account.Extra = map[string]any{"allow_overages": tc.allowCredits}
+			if tc.preLimited {
+				account.Extra[modelRateLimitsKey] = map[string]any{
+					"gemini-4-argon-high": map[string]any{"rate_limit_reset_at": time.Now().Add(time.Minute).UTC().Format(time.RFC3339)},
+				}
+			}
+			upstream := &queuedHTTPUpstreamStub{}
+			for i := 0; i < antigravityMaxRetries*2; i++ {
+				status := http.StatusTooManyRequests
+				if i == 1 && tc.creditStatus != 0 {
+					status = tc.creditStatus
+				}
+				upstream.responses = append(upstream.responses, &http.Response{
+					StatusCode: status,
+					Body:       io.NopCloser(strings.NewReader(quota)),
+				})
+			}
+
+			repo := &stubAntigravityAccountRepo{}
+			svc := &AntigravityGatewayService{accountRepo: repo}
+			params := newRetryParams(account, upstream, svc.handleUpstreamError)
+			params.ctx = ctxWithSingleAccountRetry()
+			params.accountRepo = repo
+			params.requestedModel = "gemini-4-argon-high"
+			result, err := svc.antigravityRetryLoop(params)
+			require.Equal(t, tc.wantCalls, upstream.callCount)
+			if tc.allowCredits {
+				require.Contains(t, string(upstream.requestBodies[tc.wantCalls-1]), "enabledCreditTypes")
+			}
+			if tc.creditStatus == http.StatusOK {
+				require.NoError(t, err)
+				require.Equal(t, http.StatusOK, result.resp.StatusCode)
+				require.NoError(t, result.resp.Body.Close())
+				require.Empty(t, repo.modelRateLimitCalls)
+				return
+			}
+			var switchErr *AntigravityAccountSwitchError
+			require.ErrorAs(t, err, &switchErr)
+			require.Equal(t, account.ID, switchErr.OriginalAccountID)
+			require.Equal(t, http.StatusTooManyRequests, switchErr.statusCode())
+			require.Equal(t, params.requestedModel, switchErr.RateLimitedModel)
+			require.NotEmpty(t, repo.modelRateLimitCalls)
+			require.Equal(t, switchErr.RateLimitedModel, repo.modelRateLimitCalls[0].modelKey)
+			require.True(t, resetAt.Equal(repo.modelRateLimitCalls[0].resetAt))
+		})
+	}
+}
+
+func TestAntigravityForwardAsResponses_QuotaExhaustionReturns429Failover(t *testing.T) {
+	setupBare429Test(t)
+	upstream := &fixed429Upstream{
+		body: `{"error":{"status":"RESOURCE_EXHAUSTED","details":[{"@type":"type.googleapis.com/google.rpc.ErrorInfo","reason":"QUOTA_EXHAUSTED","metadata":{"quotaResetDelay":"10m"}}]}}`,
+	}
+	svc := newAntigravityCompatService(config.GatewayConfig{}, upstream)
+	svc.accountRepo = &stubAntigravityAccountRepo{}
+	account := newAntigravityCompatAccount(AccountTypeOAuth)
+	body := []byte(`{"model":"gemini-3.1-pro-high","stream":false,"input":"hello"}`)
+	c, _ := newAntigravityCompatContext(http.MethodPost, "/v1/responses", body)
+
+	_, err := svc.ForwardAsResponses(c.Request.Context(), c, account, body, nil)
+
+	var failoverErr *UpstreamFailoverError
+	require.ErrorAs(t, err, &failoverErr)
+	require.Equal(t, http.StatusTooManyRequests, failoverErr.StatusCode)
+	require.True(t, failoverErr.ShouldRetryNextAccount())
+	require.False(t, failoverErr.RetryableOnSameAccount)
+	require.Equal(t, 1, upstream.calls)
 }

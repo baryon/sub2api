@@ -40,7 +40,7 @@ func (u *fixed429Upstream) DoWithTLS(req *http.Request, proxyURL string, account
 // reached, while the same accounts served other requests: no reason, no delay.
 const bareAntigravity429Body = `{"error":{"code":429,"message":"Resource has been exhausted (e.g. check quota).","status":"RESOURCE_EXHAUSTED"}}`
 
-func runBare429Loop(t *testing.T, c *gin.Context, account *Account, body string) (cooled bool) {
+func runBare429Loop(t *testing.T, c *gin.Context, account *Account, body string, wantSwitch bool) (cooled bool) {
 	t.Helper()
 	svc := &AntigravityGatewayService{}
 	result, err := svc.antigravityRetryLoop(antigravityRetryLoopParams{
@@ -58,6 +58,13 @@ func runBare429Loop(t *testing.T, c *gin.Context, account *Account, body string)
 			return nil
 		},
 	})
+	if wantSwitch {
+		var switchErr *AntigravityAccountSwitchError
+		require.ErrorAs(t, err, &switchErr)
+		require.Equal(t, http.StatusTooManyRequests, switchErr.statusCode())
+		require.Equal(t, account.ID, switchErr.OriginalAccountID)
+		return cooled
+	}
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	require.NotNil(t, result.resp)
@@ -96,10 +103,10 @@ func TestAntigravityRetryLoop_Bare429_CoolsOnlyTheFirstAccountPerRequest(t *test
 	setupBare429Test(t)
 	c := newBare429TestContext()
 
-	require.True(t, runBare429Loop(t, c, bare429Account(13), bareAntigravity429Body), "first account is cooled")
-	require.False(t, runBare429Loop(t, c, bare429Account(6), bareAntigravity429Body), "same request on a second account: not cooled")
-	require.False(t, runBare429Loop(t, c, bare429Account(2), bareAntigravity429Body), "same request on a third account: not cooled")
-	require.True(t, runBare429Loop(t, c, bare429Account(13), bareAntigravity429Body), "the account it already cooled may be cooled again")
+	require.True(t, runBare429Loop(t, c, bare429Account(13), bareAntigravity429Body, false), "first account is cooled")
+	require.False(t, runBare429Loop(t, c, bare429Account(6), bareAntigravity429Body, false), "same request on a second account: not cooled")
+	require.False(t, runBare429Loop(t, c, bare429Account(2), bareAntigravity429Body, false), "same request on a third account: not cooled")
+	require.True(t, runBare429Loop(t, c, bare429Account(13), bareAntigravity429Body, false), "the account it already cooled may be cooled again")
 }
 
 // Another request that reaches the second account first still cools it, so an
@@ -107,8 +114,8 @@ func TestAntigravityRetryLoop_Bare429_CoolsOnlyTheFirstAccountPerRequest(t *test
 func TestAntigravityRetryLoop_Bare429_OtherRequestStillCools(t *testing.T) {
 	setupBare429Test(t)
 
-	require.True(t, runBare429Loop(t, newBare429TestContext(), bare429Account(13), bareAntigravity429Body))
-	require.True(t, runBare429Loop(t, newBare429TestContext(), bare429Account(6), bareAntigravity429Body))
+	require.True(t, runBare429Loop(t, newBare429TestContext(), bare429Account(13), bareAntigravity429Body, false))
+	require.True(t, runBare429Loop(t, newBare429TestContext(), bare429Account(6), bareAntigravity429Body, false))
 }
 
 // A 429 that says when it resets is Google's statement about the account and is
@@ -118,6 +125,6 @@ func TestAntigravityRetryLoop_429WithResetDelay_CoolsEveryAccount(t *testing.T) 
 	c := newBare429TestContext()
 	body := `{"error":{"code":429,"message":"You have exhausted your capacity on this model. Your quota will reset after 2h.","status":"RESOURCE_EXHAUSTED","details":[{"@type":"type.googleapis.com/google.rpc.ErrorInfo","reason":"QUOTA_EXHAUSTED","metadata":{"quotaResetDelay":"2h0m0s"}}]}}`
 
-	require.True(t, runBare429Loop(t, c, bare429Account(13), body))
-	require.True(t, runBare429Loop(t, c, bare429Account(6), body))
+	require.True(t, runBare429Loop(t, c, bare429Account(13), body, true))
+	require.True(t, runBare429Loop(t, c, bare429Account(6), body, true))
 }

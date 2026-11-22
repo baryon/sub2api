@@ -92,6 +92,14 @@ type AntigravityAccountSwitchError struct {
 	OriginalAccountID int64
 	RateLimitedModel  string
 	IsStickySession   bool // 是否为粘性会话切换（决定是否缓存计费）
+	QuotaExhausted    bool
+}
+
+func (e *AntigravityAccountSwitchError) statusCode() int {
+	if e.QuotaExhausted {
+		return http.StatusTooManyRequests
+	}
+	return http.StatusServiceUnavailable
 }
 
 func (e *AntigravityAccountSwitchError) Error() string {

@@ -19,6 +19,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/gin-gonic/gin"
+	"github.com/tidwall/gjson"
 )
 
 // antigravityRetryLoopParams 重试循环的参数
@@ -36,6 +37,7 @@ type antigravityRetryLoopParams struct {
 	accountRepo     AccountRepository // 用于智能重试的模型级别限流
 	handleError     func(ctx context.Context, prefix string, account *Account, statusCode int, headers http.Header, body []byte, requestedModel string, groupID int64, sessionHash string, isStickySession bool) *handleModelRateLimitResult
 	requestedModel  string // 用于限流检查的原始请求模型
+	creditsInjected bool
 	isStickySession bool   // 是否为粘性会话（用于账号切换时的缓存计费判断）
 	groupID         int64  // 用于模型级限流时清除粘性会话
 	sessionHash     string // 用于模型级限流时清除粘性会话
@@ -98,11 +100,23 @@ type smartRetryResult struct {
 	switchError *AntigravityAccountSwitchError // 模型限流时返回账号切换信号
 }
 
+func antigravityQuotaExhaustedDetail(body []byte) gjson.Result {
+	if gjson.GetBytes(body, "error.status").String() == googleRPCStatusResourceExhausted {
+		for _, detail := range gjson.GetBytes(body, "error.details").Array() {
+			if detail.Get("@type").String() == googleRPCTypeErrorInfo && detail.Get("reason").String() == "QUOTA_EXHAUSTED" {
+				return detail
+			}
+		}
+	}
+	return gjson.Result{}
+}
+
 // handleSmartRetry 处理 OAuth 账号的智能重试逻辑
 // 将 429/503 限流处理逻辑抽取为独立函数，减少 antigravityRetryLoop 的复杂度
 func (s *AntigravityGatewayService) handleSmartRetry(p antigravityRetryLoopParams, resp *http.Response, respBody []byte, baseURL string, urlIdx int, availableURLs []string) *smartRetryResult {
+	explicitQuotaExhausted := resp.StatusCode == http.StatusTooManyRequests && antigravityQuotaExhaustedDetail(respBody).Exists()
 	// "Resource has been exhausted" 是 URL 级别限流，切换 URL（仅 429）
-	if resp.StatusCode == http.StatusTooManyRequests && isURLLevelRateLimit(respBody) && urlIdx < len(availableURLs)-1 {
+	if resp.StatusCode == http.StatusTooManyRequests && !explicitQuotaExhausted && isURLLevelRateLimit(respBody) && urlIdx < len(availableURLs)-1 {
 		logger.LegacyPrintf("service.antigravity_gateway", "%s URL fallback (429): %s -> %s", p.prefix, baseURL, availableURLs[urlIdx+1])
 		return &smartRetryResult{action: smartRetryActionContinueURL}
 	}
@@ -118,7 +132,7 @@ func (s *AntigravityGatewayService) handleSmartRetry(p antigravityRetryLoopParam
 	// AI Credits 超量请求：
 	// 仅在上游明确返回免费配额耗尽时才允许切换到 credits。
 	if resp.StatusCode == http.StatusTooManyRequests &&
-		category == antigravity429QuotaExhausted &&
+		category == antigravity429QuotaExhausted && !p.creditsInjected &&
 		p.account.IsOveragesEnabled() &&
 		!p.account.isCreditsExhausted() {
 		result := s.attemptCreditsOveragesRetry(p, baseURL, modelName, waitDuration, resp.StatusCode, respBody)
@@ -127,6 +141,31 @@ func (s *AntigravityGatewayService) handleSmartRetry(p antigravityRetryLoopParam
 				action: smartRetryActionBreakWithResp,
 				resp:   result.resp,
 			}
+		}
+	}
+
+	if explicitQuotaExhausted {
+		p.handleError(p.ctx, p.prefix, p.account, resp.StatusCode, resp.Header, respBody, p.requestedModel, p.groupID, p.sessionHash, p.isStickySession)
+		appendOpsUpstreamError(p.c, OpsUpstreamErrorEvent{
+			ProxyID:            opsUpstreamProxyID(p.account),
+			ProxyName:          opsUpstreamProxyName(p.account),
+			Platform:           p.account.Platform,
+			AccountID:          p.account.ID,
+			AccountName:        p.account.Name,
+			UpstreamStatusCode: resp.StatusCode,
+			UpstreamRequestID:  resp.Header.Get("x-request-id"),
+			Kind:               "failover",
+			Message:            sanitizeUpstreamErrorMessage(extractAntigravityErrorMessage(respBody)),
+			Detail:             s.getUpstreamErrorDetail(respBody),
+		})
+		return &smartRetryResult{
+			action: smartRetryActionBreakWithResp,
+			switchError: &AntigravityAccountSwitchError{
+				OriginalAccountID: p.account.ID,
+				RateLimitedModel:  resolveCreditsOveragesModelKey(p.ctx, p.account, "", p.requestedModel),
+				IsStickySession:   p.isStickySession,
+				QuotaExhausted:    true,
+			},
 		}
 	}
 
@@ -461,13 +500,12 @@ func (s *AntigravityGatewayService) handleSingleAccountRetryInPlace(
 // antigravityRetryLoop 执行带 URL fallback 的重试循环
 func (s *AntigravityGatewayService) antigravityRetryLoop(p antigravityRetryLoopParams) (*antigravityRetryLoopResult, error) {
 	// 预检查：模型限流 + overages 启用 + 积分未耗尽 → 直接注入 AI Credits
-	overagesInjected := false
 	if p.requestedModel != "" && p.account.Platform == PlatformAntigravity &&
 		p.account.IsOveragesEnabled() && !p.account.isCreditsExhausted() &&
 		p.account.isModelRateLimitedWithContext(p.ctx, p.requestedModel) {
 		if creditsBody := injectEnabledCreditTypes(p.body); creditsBody != nil {
 			p.body = creditsBody
-			overagesInjected = true
+			p.creditsInjected = true
 			logger.LegacyPrintf("service.antigravity_gateway", "%s pre_check: model_rate_limited_credits_inject model=%s account=%d (injecting enabledCreditTypes)",
 				p.prefix, p.requestedModel, p.account.ID)
 		}
@@ -477,7 +515,7 @@ func (s *AntigravityGatewayService) antigravityRetryLoop(p antigravityRetryLoopP
 	if p.requestedModel != "" {
 		if remaining := p.account.GetRateLimitRemainingTimeWithContext(p.ctx, p.requestedModel); remaining > 0 {
 			// 已注入积分的请求不再受普通模型限流预检查阻断。
-			if overagesInjected {
+			if p.creditsInjected {
 				logger.LegacyPrintf("service.antigravity_gateway", "%s pre_check: credits_injected_ignore_rate_limit remaining=%v model=%s account=%d",
 					p.prefix, remaining.Truncate(time.Millisecond), p.requestedModel, p.account.ID)
 			} else if isSingleAccountRetry(p.ctx) {
@@ -575,7 +613,7 @@ urlFallbackLoop:
 				respBody := s.readUpstreamErrorBody(resp)
 				_ = resp.Body.Close()
 
-				if overagesInjected && shouldMarkCreditsExhausted(resp, respBody, nil) {
+				if p.creditsInjected && shouldMarkCreditsExhausted(resp, respBody, nil) {
 					modelKey := resolveCreditsOveragesModelKey(p.ctx, p.account, "", p.requestedModel)
 					s.handleCreditsRetryFailure(p.ctx, p.prefix, modelKey, p.account, &http.Response{
 						StatusCode: resp.StatusCode,
@@ -1237,6 +1275,13 @@ func (s *AntigravityGatewayService) handleUpstreamError(
 		}
 
 		resetAt := ParseGeminiRateLimitResetTime(body)
+		if resetAt == nil {
+			stamp := antigravityQuotaExhaustedDetail(body).Get("metadata.quotaResetTimeStamp").Time()
+			if stamp.After(time.Now()) {
+				unix := stamp.Unix()
+				resetAt = &unix
+			}
+		}
 		defaultDur := s.getDefaultRateLimitDuration()
 
 		// 尝试解析模型 key 并设置模型级限流

@@ -179,7 +179,7 @@ func (s *AntigravityGatewayService) ForwardGemini(ctx context.Context, c *gin.Co
 		// 检查是否是账号切换信号，转换为 UpstreamFailoverError 让 Handler 切换账号
 		if switchErr, ok := IsAntigravityAccountSwitchError(err); ok {
 			return nil, &UpstreamFailoverError{
-				StatusCode:        http.StatusServiceUnavailable,
+				StatusCode:        switchErr.statusCode(),
 				ForceCacheBilling: switchErr.IsStickySession,
 			}
 		}
@@ -314,12 +314,12 @@ func (s *AntigravityGatewayService) ForwardGemini(ctx context.Context, c *gin.Co
 							Platform:           account.Platform,
 							AccountID:          account.ID,
 							AccountName:        account.Name,
-							UpstreamStatusCode: http.StatusServiceUnavailable,
+							UpstreamStatusCode: switchErr.statusCode(),
 							Kind:               "failover",
 							Message:            sanitizeUpstreamErrorMessage(retryErr.Error()),
 						})
 						return nil, &UpstreamFailoverError{
-							StatusCode:        http.StatusServiceUnavailable,
+							StatusCode:        switchErr.statusCode(),
 							ForceCacheBilling: switchErr.IsStickySession,
 						}
 					}
