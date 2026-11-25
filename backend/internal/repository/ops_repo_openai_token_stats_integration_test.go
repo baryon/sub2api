@@ -45,7 +45,7 @@ VALUES
 	require.NoError(t, err)
 
 	repo := NewOpsRepository(integrationDB)
-	stats, err := repo.GetOpenAITokenStats(ctx, &service.OpsOpenAITokenStatsFilter{
+	stats, err := repo.GetTokenStats(ctx, &service.OpsTokenStatsFilter{
 		StartTime: now.Add(-time.Minute),
 		EndTime:   now.Add(time.Minute),
 		GroupID:   &group.ID,

@@ -289,7 +289,7 @@ func (s *OpenAIGatewayService) sendCCUpstreamRequest(
 
 	// 账号级请求头覆写：放在所有内置默认头（含 Grok CLI 身份头）之后应用，
 	// 使配置值获得除共享传输层强制头之外的最高优先级。
-	account.ApplyHeaderOverrides(upstreamReq.Header)
+	account.ApplyHeaderOverrides(upstreamReq.Context(), upstreamReq.Header)
 	if account.IsDeepSeekAPIKey() {
 		// DeepSeek credentials always come from credentials.api_key. Prevent
 		// account header overrides from replacing or duplicating authentication.

@@ -407,7 +407,7 @@ func (s *GatewayService) buildUpstreamRequestAnthropicAPIKeyPassthrough(
 	}
 
 	// 账号级请求头覆写（最终生效，覆盖上面所有来源的同名头）
-	account.ApplyHeaderOverrides(req.Header)
+	account.ApplyHeaderOverrides(req.Context(), req.Header)
 	if account.UsesNativeDeepSeekGateway() && account.IsDeepSeekAPIKey() {
 		// Account header overrides are not allowed to replace the credential or
 		// switch DeepSeek's native Anthropic endpoint to Bearer authentication.

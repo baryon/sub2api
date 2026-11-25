@@ -779,7 +779,7 @@ func (s *OpenAIGatewayService) buildDeepSeekWSHTTPBridgeRequest(
 			}
 		}
 	}
-	account.ApplyHeaderOverrides(req.Header)
+	account.ApplyHeaderOverrides(req.Context(), req.Header)
 	req.Header.Del("Authorization")
 	req.Header.Del("X-Api-Key")
 	req.Header.Del("X-Goog-Api-Key")
